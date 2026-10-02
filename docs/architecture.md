@@ -507,13 +507,33 @@ Payments run through a simulated clearing system in which the bank holds a settl
 
 ## Dashboard
 
-- **Story view.** One plain sentence per event, including refusals and the reason.
+The dashboard has two views, matching the two kinds of [scenario](scenarios.md).
+
+| View | When | Shows |
+|---|---|---|
+| **Daily** | By default | Story view with its waiting strip, bank map, balance sheet, income statement, and the reserve panel once the stablecoin is in |
+| **Adverse** | While an adverse scenario runs | The same, with a scenario card pinned above the story view, the refusals and incidents it causes highlighted, and the panel it concerns brought forward |
+
+- **Story view.** One plain sentence per event, including refusals and the reason. See [story lines](#story-lines).
 - **Under-the-hood toggle.** Signer, role check and transaction reference for each line, linking to Blockscout.
+- **Waiting strip.** Beside the story view, everything started and not yet finished: operations awaiting an approver, with who must approve next; ATM holds; payments queued or awaiting clearance; frozen credits and other named holds; funds in suspense; held redemptions; governance changes in their waiting period. An item leaves the strip with a story line when it completes, is refused or is reversed.
+- **Scenario card.** What is being attempted, which control should fire and the expected outcome, then pass or fail once the scenario ends.
 - **Bank map.** Branch, staff, devices and cash positions.
 - **Balance sheet.** Assets against deposits and equity, the capital and liquidity ratios against their minimums, and the age of each attested figure.
 - **Reserve panel.** Stablecoin outstanding against confirmed reserve, the buffer, funds in transit and funds due back to the bank, time since the custodian's last confirmation, held redemptions, governance changes in their waiting period.
 - **Income statement.** Loan interest as it is collected, securities and reserve yield and fees against savings interest and loan loss charges.
 - **Network panel.** Status of each node, whether the chain has quorum, and the observers' latest checkpoints.
+
+### Story lines
+
+Each line says who acted, for whom, what, how much, and through which channel and authorisation. Names come from the personal data store under the viewer's role.
+
+| Line | Shape | Example | Under the hood adds |
+|---|---|---|---|
+| **Allowed** | Who did what, and who approved | "The teller paid 20,000 from customer A to customer B on a paper slip. The supervisor approved." | Each signer, the role checked, the transaction reference |
+| **Refused** | Who attempted what, and the rule that stopped it | "The ATM refused customer A's withdrawal of 6,000: over the 5,000 daily ATM limit." | The signer and the check that failed. There is no transaction; the submission service reported it. |
+| **Waiting** | What is held, and for whom or what | "Customer A's payment of 80,000 is waiting for compliance." | The operation's reference and the approvals so far |
+| **Operator** | What the operator commanded, marked apart from bank events | "Operator: started the scenario forged paper slip." | The command as sent to the control service |
 
 ### Control panel
 
@@ -522,13 +542,14 @@ The operator can drive the simulation from the dashboard.
 | Control | What it does |
 |---|---|
 | **Instruct an agent** | Pick an agent and type an instruction in plain language, for example "withdraw 3,000 at the ATM" or "approve your own operation". The agent attempts it within its tools; the chain decides the outcome. |
-| **Trigger a scenario** | Start a preset: ordinary day, lost phone, all devices lost, teller leaves, payment rejected, payment from an unknown payer, forged paper slip, ATM fails to dispense, red-team attack, ledger mismatch, lending stopped by the capital ratio, loan in arrears, run on deposits, buffer exhausted by conversions, surge of stablecoin redemptions. |
+| **Run daily operation** | Start or stop the baseline of [daily routines](scenarios.md#daily-operation). |
+| **Inject an adverse scenario** | Start a preset from one of four groups: customer mishap, fraud and attack, operational incident, financial stress. See [adverse scenarios](scenarios.md#adverse-scenarios). |
 | **Control time** | Pause, resume, change speed, jump to end of day or to a chosen date. |
 | **Control the network** | Stop or start a node or a channel gateway, split the network, cut a branch link, restore it. |
 | **Take over a role** | Act directly as a customer or staff member, signing with a real passkey. |
 | **Switch agent mode** | Run agents autonomously in the background, or keep them idle until instructed. |
 
-Presets are scripted sequences of the same commands, so a scenario can be replayed identically and scored.
+Presets are scripted sequences of the same commands, so a run can be replayed identically. Adverse scenarios are scored against the pass criteria in [scenarios](scenarios.md).
 
 ## Repository layout (planned)
 

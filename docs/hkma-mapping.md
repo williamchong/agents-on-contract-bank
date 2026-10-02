@@ -59,7 +59,7 @@ This is a design mapping, not a compliance assessment. The separate HKMA guideli
 |---|---|---|
 | Three independent lines of defence | 6.2.3 | [Roles](roles.md#three-lines-of-defence) |
 | Internal limits on credit, liquidity and market risk of the reserve, with breach response | 6.4.2 to 6.4.5 | Treasury operates within risk limits; a breach raises an alert |
-| Stress tests on severe but plausible scenarios | 6.4.6 | A redemption surge scenario in the control panel |
+| Stress tests on severe but plausible scenarios | 6.4.6 | The [financial stress](scenarios.md#financial-stress) scenarios: a redemption surge, and the buffer exhausted with the custodian silent |
 | Stablecoin manager appointed where the licensee is a bank | 7.1.5, 7.2.3 | A named governance signer |
 | Compliance and internal audit independent of the business | 7.1.6 to 7.1.9 | Separate roles; internal audit is read-only |
 | Conflicts of interest managed through segregation of duties | 7.1.11 | [Separation of duties](roles.md#separation-of-duties) |
@@ -87,10 +87,10 @@ This is a design mapping, not a compliance assessment. The separate HKMA guideli
 
 | Requirement | Para | How it is reflected |
 |---|---|---|
-| Incident classification, detection and response | 6.8.2 to 6.8.4 | Risk can pause at once; resuming needs governance; scenarios exercise it |
+| Incident classification, detection and response | 6.8.2 to 6.8.4 | Risk can pause at once; resuming needs governance; the pause and resume [scenario](scenarios.md#operational-incident) exercises it |
 | Back-up records to allow redemption if the ledger fails irrecoverably | 6.8.7 | Periodic off-chain balance snapshots; the auditor's and regulator's nodes hold their own copies and signed checkpoints |
 | Continuity of critical functions; alternate sites | 6.8.9, 6.8.15 | Validators at independent sites; node loss and recovery can be exercised |
-| Regular testing and simulation exercises | 6.8.19 | Replayable scenarios |
+| Regular testing and simulation exercises | 6.8.19 | Replayable, scored [adverse scenarios](scenarios.md#adverse-scenarios) |
 
 ### Conduct
 

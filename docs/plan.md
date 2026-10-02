@@ -41,6 +41,7 @@ A demo that a salesperson or a developer with no web3 background can start local
 **Simulation**
 - AI agents for the main roles, scripts for machines, outside parties and secondary roles.
 - A scenario clock that advances time and injects events.
+- Daily routines that run as the baseline, and adverse scenarios injected on top and scored. See [scenarios](scenarios.md).
 - A dashboard with a plain-language story view and an under-the-hood toggle.
 - A control panel to instruct agents, trigger scenarios, control time, and stop or start nodes.
 
@@ -50,11 +51,13 @@ A demo that a salesperson or a developer with no web3 background can start local
 |---|---|---|
 | 1 | Documents | This folder, plus the open questions below resolved |
 | 2 | Working demo | Deposit token with the general ledger, accounts, roles, cash and transfers by all three authorisation modes, payments in and out with the clearing simulator and its signature checked on chain, forced transfer and account recovery, second-person approval, scripted actors, story view, balance sheet, scenario triggers and time controls. Runs with no API key. |
-| 3 | Products | Loans with the lending guard and the loss allowance, savings account, standing orders, bank-set rates, with an income statement on the dashboard |
+| 3 | Products | Loans with the lending guard and the loss allowance, savings account, standing orders, bank-set rates, pause and resume through governance, with an income statement on the dashboard |
 | 4 | Stablecoin | Conversion to and from deposits, mint guard, buffer, custodian simulator, reserve panel |
 | 5 | AI agents | Default set of six first, then the optional six, with plain-language instructions from the control panel. Needs an Anthropic API key. |
 | 6 | Institutional layer | Multi-node Besu network with node controls and failure scenarios, observer checkpoints, channel gateways on separate network zones, signer service with key inventory and logs, passkey devices, Blockscout |
 | 7 | Remaining documents | Single-key exposure inventory, expansion paper |
+
+A milestone is done when its [daily routines](scenarios.md#daily-operation) run and its [adverse scenarios](scenarios.md#adverse-scenarios) pass.
 
 Milestone 2 is the first point at which the project is demonstrable on its own. Milestone 3 is the first at which it behaves like a bank and not a payment account, because lending is what creates money.
 

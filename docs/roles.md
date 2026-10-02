@@ -44,6 +44,8 @@ Tentative. The role list and the permission matrix are the specification the con
 
 In the one-branch demo the supervisor and branch manager can be the same agent for small scenarios, but they are separate roles so the approval ladder works.
 
+A second branch exists in the contracts as a role scope only, with no premises, staff or customers. The red team holds its teller role, so branch scoping can be shown refusing it at the first branch.
+
 Six AI agents run by default: retail customer, teller, supervisor, back office, compliance, red team. Six more are switchable. Every role exists in the contracts whichever way it is played.
 
 The stablecoin manager is the named officer a bank must appoint when it holds a stablecoin licence.
@@ -165,4 +167,4 @@ No one person should be able to complete both sides of any of these pairs.
 - The role restrictions in an agent's tool list are a convenience. The contracts are the control, which is what the red-team agent tests.
 - The operator can instruct any agent in plain language from the control panel. An instruction is input to the agent, not authority: it changes what the agent attempts, never what the chain allows.
 - Scripted roles use the same tools and signer service as AI agents, so any of them can be switched to an AI agent later.
-- A fixed set of scenarios scores whether agents stayed within their roles and whether refusals happened where expected.
+- A fixed set of [adverse scenarios](scenarios.md#adverse-scenarios) scores whether agents stayed within their roles and whether refusals happened where expected.
