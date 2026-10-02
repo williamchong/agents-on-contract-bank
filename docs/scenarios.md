@@ -11,6 +11,8 @@ What the demo runs, and what each run is meant to show. There are two kinds.
 
 Both are presets: scripted sequences of [control panel](architecture.md#control-panel) commands, so a run can be replayed identically. Before milestone 5 scripted actors play every role; from then on AI agents play the main ones. The routines and scenarios are the same either way.
 
+A third preset, the [guided tour](#guided-tour), runs some of each in a fixed order as one presentation.
+
 A milestone in the [plan](plan.md#milestones) is done when its daily routines run and its adverse scenarios pass.
 
 ## Daily operation
@@ -69,6 +71,24 @@ Pause and resume depends on how scenario time maps onto time locks, which is [op
 | **Run on deposits** | Many customers withdraw and pay out at once | Payments queue when the settlement account is short; liquidity ratio | The queue grows, the liquidity ratio falls, treasury sells securities and the queue drains. The bank stays solvent throughout. | No payment is released beyond the settlement balance; every queued payment goes through once funded; lending is refused while the ratio is below its minimum | 3 |
 | **Buffer exhausted, then custodian silent** | Conversions outpace the custodian's confirmations. Later the custodian stops confirming. | Funds in transit capped by the buffer; mint guard on a stale confirmation | The reserve panel: funds in transit reach the buffer and conversions are refused; a confirmation restores them; then the confirmation ages out and all issuance stops | Supply never exceeds the confirmed reserve; redemption at par works throughout | 4 |
 | **Redemption surge** | Many holders redeem at once, one of them frozen | Conversion at par; funds due from the reserve not counted as liquid | Stablecoin outstanding and the reserve fall together. Funds due back rise, then clear. The frozen holder's redemption is shown as held, with its reason. | Every redemption is at par in one transaction; the custodian returns no more than was burned | 4 |
+
+## Guided tour
+
+The [five-minute pitch](plan.md#1-the-five-minute-pitch) as a preset. It runs the routines and scenarios above in a fixed order, one beat at a time, and waits for the presenter before the next. Each beat makes one claim and puts it on screen.
+
+| # | Beat | Runs | The presenter points at | The claim | Milestone |
+|---|---|---|---|---|---|
+| 1 | **An ordinary day** | Counter and ATM day | The story view and the waiting strip: cash in, an ATM withdrawal, a paper slip waiting for the supervisor | It reads like a bank, in plain sentences | 2 |
+| 2 | **Books that cannot disagree** | One cash deposit from the same routine, opened under the hood | The ledger entry it posted, the two balance sheet rows it highlights, and the invariant strip | The token and the ledger entry are one transaction | 2 |
+| 3 | **Try to break it** | Red team | One refusal after another, each with its reason | The chain decides; an agent's instructions are not the control | 2 |
+| 4 | **Fraud, with a way back** | Forged paper slip | The scenario card, the transfer waiting for an approver, the freeze, the reversal waiting for compliance, then the pass | No member of staff acts alone, and a wrong is reversed on the record | 2 |
+| 5 | **Money creation and stress** | Lending stopped by the capital ratio, then run on deposits | The capital ratio falling to its minimum and the refused drawdown; the payment queue growing, then draining as treasury sells securities | Lending creates money only within limits; a bank can be solvent and still run short | 3 |
+| 6 | **Who checks the bank** | No preset: any story line under the hood, then the network panel | The signer, role check and transaction; the checkpoints the auditor and the regulator signed | The bank cannot rewrite its history unnoticed | 6 |
+
+- **It grows with the milestones.** The tour runs the beats the current milestone has reached, so it is four beats long at milestone 2.
+- **Not scored as a whole.** The adverse scenarios inside it are scored as usual and their cards show pass or fail.
+- **Beat 3 from milestone 5.** The presenter can also type an instruction of their own to an agent, for example "approve your own operation", and watch it refused.
+- **The stablecoin is left out.** Its scenarios are a follow-up for an audience that asks, not part of the five minutes.
 
 ## Coverage
 

@@ -14,6 +14,28 @@ A demo that a salesperson or a developer with no web3 background can start local
 - customers served both on their own devices and by tellers acting on their instruction, including on paper;
 - AI agents working inside those rules, including one trying to break them.
 
+## Primary use cases
+
+### 1. The five-minute pitch
+
+A presenter runs the demo from the dashboard for an audience with no web3 background. An institutional reviewer may be in the room, or inspects it afterwards.
+
+**The pitch.** This is a bank whose rules live in the ledger. Its staff jobs can be handed to AI agents, including a hostile one, and it still refuses what it should.
+
+The presenter leads with the bank and its refusals, not with the blockchain. The chain comes in as the answer to the two questions the audience asks.
+
+| Question | Answer | Where the dashboard shows it |
+|---|---|---|
+| Why can't the agent just do it anyway? | An agent's instructions are not the control. The contracts check every signature and role, and refuse what the role does not allow. | Refused lines in the story view, each naming the rule that stopped it |
+| Why not a database? | A balance and the bank's books change in one transaction, so they cannot disagree. Every change is signed by a named person or machine. The auditor and the regulator re-execute every block on their own nodes and sign checkpoints with keys the bank does not hold. | The invariant strip, and the ledger entry under the hood of each story line |
+
+**What the presenter needs**
+
+- **One preset for the whole pitch.** The [guided tour](scenarios.md#guided-tour) runs the beats in order and waits for the presenter between them.
+- **The same outcome every run.** The tour is scripted, so the same refusals fall in the same places.
+- **No setup beyond starting it locally.** The first four beats need no API key.
+- **Every claim on screen, not narrated.** The [invariant strip](architecture.md#dashboard), and the ledger entry behind each story line.
+
 ## Scope
 
 **Transactions**
@@ -42,7 +64,8 @@ A demo that a salesperson or a developer with no web3 background can start local
 - AI agents for the main roles, scripts for machines, outside parties and secondary roles.
 - A scenario clock that advances time and injects events.
 - Daily routines that run as the baseline, and adverse scenarios injected on top and scored. See [scenarios](scenarios.md).
-- A dashboard with a plain-language story view and an under-the-hood toggle.
+- A guided tour that runs both in a fixed order as one presentation.
+- A dashboard with a plain-language story view, an under-the-hood toggle and an invariant strip.
 - A control panel to instruct agents, trigger scenarios, control time, and stop or start nodes.
 
 ## Milestones
@@ -50,7 +73,7 @@ A demo that a salesperson or a developer with no web3 background can start local
 | # | Milestone | Outcome |
 |---|---|---|
 | 1 | Documents | This folder, plus the open questions below resolved |
-| 2 | Working demo | Deposit token with the general ledger, accounts, roles, cash and transfers by all three authorisation modes, payments in and out with the clearing simulator and its signature checked on chain, forced transfer and account recovery, second-person approval, scripted actors, story view, balance sheet, scenario triggers and time controls. Runs with no API key. |
+| 2 | Working demo | Deposit token with the general ledger, accounts, roles, cash and transfers by all three authorisation modes, payments in and out with the clearing simulator and its signature checked on chain, forced transfer and account recovery, second-person approval, scripted actors, story view, invariant strip, balance sheet, scenario triggers, the guided tour and time controls. Runs with no API key. |
 | 3 | Products | Loans with the lending guard and the loss allowance, savings account, standing orders, bank-set rates, pause and resume through governance, with an income statement on the dashboard |
 | 4 | Stablecoin | Conversion to and from deposits, mint guard, buffer, custodian simulator, reserve panel |
 | 5 | AI agents | Default set of six first, then the optional six, with plain-language instructions from the control panel. Needs an Anthropic API key. |
@@ -59,7 +82,7 @@ A demo that a salesperson or a developer with no web3 background can start local
 
 A milestone is done when its [daily routines](scenarios.md#daily-operation) run and its [adverse scenarios](scenarios.md#adverse-scenarios) pass.
 
-Milestone 2 is the first point at which the project is demonstrable on its own. Milestone 3 is the first at which it behaves like a bank and not a payment account, because lending is what creates money.
+Milestone 2 is the first point at which the project is demonstrable on its own: the [guided tour](scenarios.md#guided-tour) runs its first four beats. Milestone 3 is the first at which it behaves like a bank and not a payment account, because lending is what creates money.
 
 ## Out of scope
 

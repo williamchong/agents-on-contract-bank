@@ -12,9 +12,9 @@ Design stage. This repository currently holds documentation only; no code has be
 
 | Document | Contents |
 |---|---|
-| [Plan](docs/plan.md) | Scope, milestones, what is left out, open questions |
+| [Plan](docs/plan.md) | Primary use cases, scope, milestones, what is left out, open questions |
 | [Architecture](docs/architecture.md) | Layers, network, channels, account and money model, key flows, controls |
-| [Scenarios](docs/scenarios.md) | Daily routines, adverse scenarios, and which control each one shows |
+| [Scenarios](docs/scenarios.md) | Daily routines, adverse scenarios, the guided tour, and which control each one shows |
 | [Roles](docs/roles.md) | Tentative roles, agent and script split, draft permission matrix, separation of duties |
 | [Standards and contracts](docs/standards.md) | Which ERCs and OpenZeppelin contracts are used, what is written here, what was rejected |
 | [HKMA mapping](docs/hkma-mapping.md) | How each stablecoin and banking requirement is reflected, and what is deliberately not done |
