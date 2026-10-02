@@ -1,0 +1,149 @@
+# Plan
+
+## Goal
+
+A demo that a salesperson or a developer with no web3 background can start locally and understand, and that an institutional reviewer can inspect and find credible. It should show:
+
+- a bank whose account balances are tokens, with its books kept on the same ledger, so the two cannot disagree;
+- lending that creates money only within capital and liquidity limits the chain enforces;
+- a stablecoin beside the deposit that cannot be issued beyond its reserve;
+- customers paying and being paid by people at other banks;
+- every movement of money as a signed, attributable transaction;
+- access decided by a person's role and the channel they act through, not by who holds a key;
+- staff, devices and customers changing over time without accounts changing;
+- customers served both on their own devices and by tellers acting on their instruction, including on paper;
+- AI agents working inside those rules, including one trying to break them.
+
+## Scope
+
+**Transactions**
+- Cash deposit and withdrawal at a teller desk or ATM.
+- Transfer between customers.
+- Payments to and from any account at other banks through a simulated clearing system.
+- Standing orders under a signed mandate.
+
+**Products**
+- Savings account: an interest-bearing deposit, paying the bank's savings rate.
+- Simple loans: unsecured, fixed rate, fixed term, equal instalments.
+- Stablecoin: converted from and back to a deposit balance at par.
+
+**Money model**
+- Customer balances are deposit tokens: claims on the bank, created by cash paid in, payments received and lending.
+- The bank's books are a general ledger on chain. Lending is refused when it would breach the capital or liquidity ratio.
+- The stablecoin is a separate product, fully backed by reserve at a custodian plus a buffer, and pays no interest.
+- The bank sets its savings and loan rates and stands between depositors and borrowers.
+
+**Customer authorisation**
+- Own device, card and PIN, or a paper instruction at a counter.
+- Self-service is limited by amount. The branch has no cap; approvals escalate with the amount.
+- The bank can move money or replace an account's signers without the customer's signature only through named modules: paper instructions, support, dispute reversal, account recovery.
+
+**Simulation**
+- AI agents for the main roles, scripts for machines, outside parties and secondary roles.
+- A scenario clock that advances time and injects events.
+- A dashboard with a plain-language story view and an under-the-hood toggle.
+- A control panel to instruct agents, trigger scenarios, control time, and stop or start nodes.
+
+## Milestones
+
+| # | Milestone | Outcome |
+|---|---|---|
+| 1 | Documents | This folder, plus the open questions below resolved |
+| 2 | Working demo | Deposit token with the general ledger, accounts, roles, cash and transfers by all three authorisation modes, payments in and out with the clearing simulator and its signature checked on chain, forced transfer and account recovery, second-person approval, scripted actors, story view, balance sheet, scenario triggers and time controls. Runs with no API key. |
+| 3 | Products | Loans with the lending guard and the loss allowance, savings account, standing orders, bank-set rates, with an income statement on the dashboard |
+| 4 | Stablecoin | Conversion to and from deposits, mint guard, buffer, custodian simulator, reserve panel |
+| 5 | AI agents | Default set of six first, then the optional six, with plain-language instructions from the control panel. Needs an Anthropic API key. |
+| 6 | Institutional layer | Multi-node Besu network with node controls and failure scenarios, observer checkpoints, channel gateways on separate network zones, signer service with key inventory and logs, passkey devices, Blockscout |
+| 7 | Remaining documents | Single-key exposure inventory, expansion paper |
+
+Milestone 2 is the first point at which the project is demonstrable on its own. Milestone 3 is the first at which it behaves like a bank and not a payment account, because lending is what creates money.
+
+## Out of scope
+
+- More than one branch, currency or ATM in the default demo. The design supports more.
+- The token on a second chain, other banks, bonds, mortgages, investments and insurance. See [expansion](#expansion).
+- Card payments at merchants and cheques. Each needs another network (a card scheme, a cheque clearing house) that adds little the clearing simulator does not already show.
+- Cross-border wires. A correspondent bank would work as the clearing simulator does, more slowly.
+- Regional hub nodes. With one branch a hub is one more full node that does not validate; the branch is a client of the central RPC nodes.
+- Offline approvals at ATMs.
+- Limits by the device that signed. Limits follow the channel a request arrives through.
+- Court orders and other legal process. Dispute reversal already shows a forced transfer that takes frozen money under a second approval.
+- Collateral, credit scoring, variable-rate loans, early repayment fees.
+- Real capital and liquidity rules. The two ratios are simplified stand-ins, with no risk weights, capital tiers or stressed outflow assumptions.
+- Real loss provisioning. The allowance is a rate per loan status, not an expected credit loss model.
+- Accrual accounting. Loan interest is booked when an instalment is collected, not day by day.
+- Term notes. A second interest-bearing product would show nothing the savings account does not.
+- Direct debits. Loan instalments and standing orders already show collection under a signed mandate.
+- Insolvency, resolution and deposit protection payouts. The dashboard shows insolvency; what follows is legal.
+- A business calendar. Every day is a business day.
+- Regulatory returns, tax, foreign exchange.
+- A running cloud deployment. Reference manifests only.
+- Real compliance integrations. Screening and reporting are simulated.
+- ERC-4337 bundler flow and credential exchange protocols. See [standards](standards.md#considered-and-not-used).
+
+## Expansion
+
+The core is built so that new products plug in as modules without changing it. None of this is in scope; it is recorded so the core does not rule it out, and will be written up in milestone 7.
+
+### Cross-chain
+
+Ordinary payments stay with the clearing simulator, because that is what a payment is. Cross-chain is about the stablecoin itself leaving the bank's private chain. The deposit token stays home: it is a claim only the bank's own customers can hold.
+
+**Step 1: the bank's stablecoin on a shared chain**
+
+One issuer, one reserve, and a token contract on each chain.
+
+- **New tokens are issued only on the home chain**, where the reserve is checked.
+- **Moving between chains is burn on one, issue on the other.** The bank attests its own burns, so holders trust no one they did not already trust.
+- **Supply across chains stays within the one reserve.** A move does not change the total; the home chain counts what has moved out.
+- **Controls.** Attestation by several signers held as significant keys; a cap on how much can move per period in each direction; the same freeze, block-list and pause on every chain.
+- **Not atomic.** The burn comes first and the issue follows. If the message is delayed or the far side is paused, the funds wait and are not lost, because the burn is on record.
+- **It ends the closed perimeter on the shared side.** Non-customers can hold the token there. Tellers, ATMs, products and redemption for money stay on the home chain. See [HKMA mapping](hkma-mapping.md#if-the-token-leaves-the-perimeter).
+
+**Step 2: other banks on the shared chain**
+
+The shared chain acts as the hub. Each bank brings its own token there by its own burn-and-issue link, so each bank needs one link, not one per counterparty.
+
+- A customer of another bank can simply hold this bank's token.
+- Two banks' tokens can be swapped atomically in a single transaction, because both are on the same ledger.
+
+The production analogue is banks settling with each other on one shared ledger, in central bank money or in each other's tokens, as in Hong Kong's Project Ensemble.
+
+**Considered and set aside**
+
+| Approach | Why not |
+|---|---|
+| Each bank holding an account on every other bank's chain | Relationships grow with the square of the number of banks. Real banks avoid this through correspondents and hubs. |
+| Hash time-locked swaps between two banks' chains | Each side must be able to claim within its window, and a pause, a freeze or a chain halt on either side can prevent that. It also needs each bank to watch the other's chain. Unnecessary once both tokens are on one shared chain. |
+| Third-party bridges that lock the token and issue a wrapped copy | The wrapped copy is the bridge operator's liability, not the bank's. The HKMA guideline names wrapped versions of an issuer's token as a risk. |
+| Bridging one bank's token into another's | Each token is its own bank's liability with its own reserve, so one cannot be turned into the other without moving reserve assets. |
+
+### Products
+
+- **Bonds.** A second token with coupon payments and atomic settlement against the stablecoin.
+- **Mortgages and investments.** Depend on facts from outside the chain (property title, market prices), brought in as attestations by a role.
+- **Insurance.** Weak fit; the chain adds little beyond premium and payout movements.
+
+## Open questions
+
+1. **Besu compatibility** of the account and passkey contracts has not been tested. The token extension uses transient storage, so the network's genesis must enable the Cancun rules.
+2. **OpenZeppelin community library versioning.** It has no tagged release that could be found, so it would be pinned by commit.
+3. **Development toolchain.** Hardhat is the working assumption; Foundry is not installed on the development machine.
+4. **A stablecoin beside deposits.** Interest is paid on deposits under banking rules, not on the stablecoin. Whether the HKMA would accept both from one issuer is a legal question left open. See [HKMA mapping](hkma-mapping.md).
+5. **Anti-money-laundering guideline.** Not read. Needed only if the compliance agent's rules should be faithful.
+6. **Freezes on savings shares.** `ERC20uRWA` has been read and fits the two tokens. Whether it combines cleanly with `ERC4626` for the savings shares has not been checked. See [standards](standards.md#tokens).
+7. **Recovery hook on the account.** Whether the account contract can admit one outside module to change signers, and nothing else, without a custom fork.
+8. **General ledger shape.** A first [chart of accounts](architecture.md#chart-of-accounts) is drafted. Whether entries are stored or only emitted as events with running balances kept.
+9. **Ratio calibration.** Minimum capital and liquidity ratios that make the lending-stopped and run scenarios reachable in a short demo.
+10. **Banking rules.** The Banking Ordinance, its capital and liquidity rules and the HKMA's guidance on tokenised deposits have not been read. The banking side of the [HKMA mapping](hkma-mapping.md#banking-side) is from general knowledge.
+11. **Time.** The contracts written here read a business date the scheduler advances, but signature validity windows, time locks and rate limits in the standard contracts read block time. How the scenario's time controls map onto both has not been worked out.
+12. **Partner signatures.** Which key type the partners sign with and exactly which fields are signed. See [standards](standards.md#accounts-and-signatures).
+
+## Risks
+
+- **Scope.** The plan has grown well beyond a small proof of concept. The milestone order is the main control: each one must be demonstrable before the next starts.
+- **Dependency maturity.** Several OpenZeppelin pieces are drafts or community contracts. See [standards](standards.md#maturity).
+- **Agent cost and legibility.** Twelve AI agents are expensive to run and hard to follow, so six run by default.
+- **Bank-initiated movement.** Paper instructions, support, reversals and recovery act without the customer's own cryptographic consent. The controls around them need the most careful testing.
+- **Money creation.** A bug in the ledger or the lending guard creates money from nothing. Every path that creates deposit tokens needs a test that the books still balance.
+- **Two monies.** Carrying a stablecoin beside deposits doubles the token surface. It sits in its own milestone so the bank is demonstrable without it.
