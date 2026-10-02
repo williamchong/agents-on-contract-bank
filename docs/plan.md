@@ -70,17 +70,16 @@ The presenter leads with the bank and its refusals, not with the blockchain. The
 
 ## Milestones
 
-| # | Milestone | Outcome |
-|---|---|---|
-| 1 | Documents | This folder, plus the open questions below resolved |
-| 2 | Working demo | Deposit token with the general ledger, accounts, roles, cash and transfers by all three authorisation modes, payments in and out with the clearing simulator and its signature checked on chain, forced transfer and account recovery, second-person approval, scripted actors, story view, invariant strip, balance sheet, scenario triggers, the guided tour and time controls. Runs with no API key. |
-| 3 | Products | Loans with the lending guard and the loss allowance, savings account, standing orders, bank-set rates, pause and resume through governance, with an income statement on the dashboard |
-| 4 | Stablecoin | Conversion to and from deposits, mint guard, buffer, custodian simulator, reserve panel |
-| 5 | AI agents | Default set of six first, then the optional six, with plain-language instructions from the control panel. Needs an Anthropic API key. |
-| 6 | Institutional layer | Multi-node Besu network with node controls and failure scenarios, observer checkpoints, channel gateways on separate network zones, signer service with key inventory and logs, passkey devices, Blockscout |
-| 7 | Remaining documents | Single-key exposure inventory, expansion paper |
+| # | Milestone | Outcome | New on screen |
+|---|---|---|---|
+| 1 | Documents | This folder, plus the open questions below resolved | The documents; nothing runs yet |
+| 2 | Working demo | Deposit token with the general ledger, accounts, roles, cash and transfers by all three authorisation modes, payments in and out with the clearing simulator and its signature checked on chain, forced transfer and account recovery, second-person approval, scripted actors, story view, invariant strip, balance sheet, scenario triggers, the guided tour and time controls. Runs with no API key. | The dashboard's daily and adverse views, with the invariant strip showing that the books balance. Tour beats 1 to 4. |
+| 3 | Products | Loans with the lending guard and the loss allowance, savings account, standing orders, bank-set rates, pause and resume through governance, with an income statement on the dashboard | The income statement, loans on the balance sheet with the two ratios moving against their minimums, governance changes in the waiting strip. Tour beat 5. |
+| 4 | Stablecoin | Conversion to and from deposits, mint guard, buffer, custodian simulator, reserve panel | The reserve panel, and the reserve check on the invariant strip |
+| 5 | AI agents | Default set of six first, then the optional six, with plain-language instructions from the control panel. Needs an Anthropic API key. | The same routines and scenarios played by AI agents, the red team's own attempts in the story view, and an instruction typed by the operator carried out or refused. Tour beat 3 taken live. |
+| 6 | Institutional layer | Multi-node Besu network with node controls and failure scenarios, observer checkpoints, channel gateways on separate network zones, signer service with key inventory and logs, passkey devices, Blockscout. The single-key exposure inventory and the expansion paper are written alongside. | The network panel with node controls, the observers' checkpoints on the invariant strip, Blockscout links under the hood, taking over a role with a passkey. Tour beat 6. |
 
-A milestone is done when its [daily routines](scenarios.md#daily-operation) run and its [adverse scenarios](scenarios.md#adverse-scenarios) pass.
+A milestone is done when its [daily routines](scenarios.md#daily-operation) run and its [adverse scenarios](scenarios.md#adverse-scenarios) pass. Every milestone after the first ends with something new to see on the dashboard, named in the last column.
 
 Milestone 2 is the first point at which the project is demonstrable on its own: the [guided tour](scenarios.md#guided-tour) runs its first four beats. Milestone 3 is the first at which it behaves like a bank and not a payment account, because lending is what creates money.
 
@@ -109,7 +108,7 @@ Milestone 2 is the first point at which the project is demonstrable on its own: 
 
 ## Expansion
 
-The core is built so that new products plug in as modules without changing it. None of this is in scope; it is recorded so the core does not rule it out, and will be written up in milestone 7.
+The core is built so that new products plug in as modules without changing it. None of this is in scope; it is recorded so the core does not rule it out, and will be written up in milestone 6.
 
 ### Cross-chain
 
