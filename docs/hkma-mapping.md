@@ -135,24 +135,77 @@ Opening the stablecoin to holders who are not customers, on this chain or anothe
 
 ## Banking side
 
-The deposit token, savings account and loans are banking business. The rules for it have not been read for this project; this section is from general knowledge of how banks are regulated and names where a real design would have to look. No paragraph numbers are given because none were checked.
+The deposit token, savings account and loans are banking business, under the Banking Ordinance (Cap. 155), its rules and the HKMA's Supervisory Policy Manual (SPM). The texts below were read for this project in October 2026; section, rule and paragraph numbers are from them. Where a point rests on a consultation paper, or nothing could be found, the row says so.
 
-| What banking rules ask for | How it is reflected | What is not done |
+### Tokenised deposits
+
+There is no SPM module for tokenised deposits. What the HKMA expects is spread across a circular on distributed ledger technology (DLT), one on tokenised products, and the capital rules for cryptoassets.
+
+| What the HKMA expects | Source | How this design stands |
 |---|---|---|
-| Books that record every asset and liability | A double-entry general ledger on chain; deposit tokens exist only with a balanced entry | Assets held off chain are taken on signed attestation |
-| Capital in proportion to risk | Lending guard: equity over loans net of the loss allowance at or above a minimum | No risk weights, capital tiers or buffers |
-| Income and losses recognised as they arise | Interest booked when collected; a loss allowance by loan status | No daily accrual, no expected credit loss model |
-| Liquid assets to meet outflows | Lending guard: liquid assets over deposits at or above a minimum; payments queue when the settlement account is short | No stressed outflow assumptions, no central bank facility |
-| Limits on large exposures | Per-customer lending cap | No connected-party rules |
-| Deposit protection | Balances are labelled as deposits or not | No scheme, levy or payout |
-| Tokenised deposits to carry the same rights as ordinary deposits | One token is one dollar owed, redeemable in cash or by payment out at par | Terms and legal opinion |
-| Customer due diligence and transaction monitoring | Onboarding with a second check; screening on payments in and out | Simulated rules only |
-| Segregation of duties and audit trail | [Roles](roles.md#separation-of-duties); every action signed by a named person | |
-| Supervisory reporting | Balance sheet and ratios on the dashboard; the regulator reads the public chain directly | No returns in any real format |
-| Resolution and insolvency | The dashboard shows when equity is exhausted | Everything that follows is legal |
+| Taking deposits on a ledger is permitted under the Banking Ordinance | DLT circular, annex para 6 | The deposit token is a deposit taken on a ledger |
+| A tokenised claim on a bank gives the same legal rights as the deposit, with nothing that could stop full and timely payment, and no conversion needed to reach those rights | SPM CRP-1 paras 1.3.2, 2.2.2, 2.2.3 | One token is one dollar owed, redeemable at par in cash or by payment out, directly. Terms and legal opinion are not done. |
+| Pick the ledger to suit the application. Permissionless networks "need not be ruled out", but a higher-risk choice needs compensating controls, and the bank has little control over open, pseudonymous validators | DLT circular, annex paras 2, 5; CRP-1 para 2.6 | A public layer 2 run by others. The controls are on the token: allow-list, freeze, pause, and no single party able to carry out a high-risk operation. The chain's own consensus is outside the bank's control. This is the design's largest departure from practice: the tokenised deposits launched in Hong Kong went through the HKMA's Supervisory Incubator for DLT, and the HKMA's material on them assumes bank-run or permissioned platforms. |
+| Smart contracts fit for purpose: a person decides where judgement is needed; governance over introducing and upgrading contracts; audits before deployment | DLT circular, annex para 3; tokenised products circular, section A | Credit decisions stay with a credit officer and an approver, and the contracts only enforce limits. Upgrades go through governance and a time lock. No audit is performed. |
+| Legal risk: settlement finality on a ledger may be less clear-cut than in traditional systems | DLT circular, annex para 4; tokenised products circular, section B | Not addressed. No point of legal finality is defined. |
+| Interoperability: a token usable only inside one bank's network adds less value; prefer widely accepted standards | DLT circular, annex para 6 | Standard ERC interfaces. Payments to other banks go through the clearing simulator, not a shared ledger, as in Project Ensemble's first phase, which settles between banks through HKD RTGS. A shared ledger is an [expansion](plan.md#cross-chain). |
+| Cybersecurity, private keys, data privacy, including immutability and the transparency of some ledgers | DLT circular, annex paras 7 to 9 | Signer service with a key inventory; no personal data on chain. Balances are public by address; see [conduct](#conduct). |
+| Contingency plans for DLT: key loss, forks, congestion and fee spikes, and the ledger unavailable for a time or for good | DLT circular, annex para 10 | A customer's lost devices are the [all devices lost](scenarios.md#customer-mishap) scenario. When the chain is unreachable every channel stops and signed requests wait; see [failure scenarios](architecture.md#failure-scenarios). The indexer keeps balance snapshots. Forks and fees are not simulated, because running the chain is out of scope. |
+| Tell customers about DLT risks, whether contracts were audited, legal uncertainty and finality | Tokenised products circular, section B | Not done; there are no customer documents |
+| Discuss with the HKMA before launch | Tokenised products circular; strategic review circular | Not applicable to a simulation |
+
+### Prudential rules
+
+| Rule | Source | How it is reflected | What is not done |
+|---|---|---|---|
+| Capital: common equity tier 1 at least 4.5%, tier 1 6% and total capital 8% of risk-weighted assets, plus buffers that restrict dividends when breached: conservation 2.5% and countercyclical 0.5% for Hong Kong exposures since October 2024 | Cap. 155L ss. 3B, 3G, 3H, 3M, 3Q; HKMA countercyclical buffer announcement | Lending guard: equity over loans net of the loss allowance, at or above a minimum. An unsecured personal loan is weighted 75% if it qualifies as regulatory retail (up to HK$10 million per borrower, in a diversified portfolio) and 100% otherwise, so this ratio treats every loan as unqualified. | One tier of capital; buffers are not separate from the minimum; other assets carry no weight; defaulted loans are not raised to 150% (s. 67) |
+| Tokenised assets that meet the classification conditions take the treatment of the asset they represent, from January 2026 | Cap. 155L Part 12, ss. 361, 365; SPM CRP-1 | The bank holds no tokenised assets of others. Its own deposit token is a liability. | |
+| Leverage: tier 1 capital at least 3% of exposures | Cap. 155L s. 3Z | Not reflected | Equity over total assets is not checked |
+| Liquidity, for a smaller bank (category 2): liquefiable assets at least 25% of one-month liabilities, averaged over each month. Larger banks (category 1) hold high-quality liquid assets for 30 days of stressed outflows instead. | Cap. 155Q rules 4, 7; SPM LM-1 ss. 3.1, 3.2, 6 | Lending guard: settlement balance, cash and liquid securities over deposit tokens, at or above a minimum. The shape is closest to the category 2 ratio, treating every deposit as payable within a month. | Checked at each loan, not averaged; no list of eligible assets or haircuts |
+| Tokenised deposits never count as stable retail deposits for the 30-day ratio, and count as wholesale funding if the bank cannot identify every holder at all times | SPM LM-1 Annex 3 para 4 | Every holder is an allow-listed customer, so holders are always known | The 30-day ratio is not used |
+| Liquidity risk management: survival period under stress, severe but plausible stress tests, intraday liquidity, a tested contingency funding plan; since January 2026, faster runs through digital channels | SPM LM-2 ss. 2.2, 5.2, 10, 12; HKMA circular on liquidity risk, 7 January 2026 | The [run scenario](scenarios.md#financial-stress): payments queue when the settlement account is short, and treasury sells securities | No survival period, no contingency funding plan, no stress model |
+| Central bank liquidity: intraday repo and the discount window against Exchange Fund paper, and a discretionary contingent facility | HKMA liquidity facilities framework | Not modelled; treasury raises liquidity only by selling securities | |
+| Large exposures: at most 25% of tier 1 capital to one counterparty or linked group. Connected parties: at most 15% of tier 1 together, 5% for natural persons together, and the lower of HK$20 million or 5% for one natural person. | Cap. 155S rules 44, 87 | Per-customer lending cap, which governance can set as a share of equity | Staff hold accounts, so a loan to staff is to a connected party; no separate limit |
+| Loan losses: expected credit loss in three stages under HKFRS 9. Loan grades from pass to loss, at least substandard after three months overdue and doubtful after six. A regulatory reserve from retained earnings when provisions fall below a benchmark. | HKMA guideline on loan classification, para 3; HKMA consultation paper CP 17.02, paras 9 to 11 | A loss allowance by loan status, performing, in arrears or defaulted, which follows the three stages loosely | No expected credit loss model, no five grades, no regulatory reserve. The reserve's mechanism was read only in the consultation paper. |
+
+### Deposit protection and resolution
+
+| Rule | Source | How it is reflected | What is not done |
+|---|---|---|---|
+| Deposits protected up to HK$800,000 per depositor per bank since 1 October 2024; payout targeted within 7 days; structured deposits, time deposits over five years and virtual assets are not protected; members show the scheme's sign, including on electronic banking | Deposit Protection Scheme Ordinance (Cap. 581); Hong Kong Deposit Protection Board | Each balance is labelled as a deposit or not; the stablecoin is not | No scheme, levy or payout |
+| Whether tokenised deposits are protected | Not found. Neither the Deposit Protection Board nor the HKMA has said. | The design treats the deposit token as a deposit, and so as protected | This is an assumption, not an established position |
+| Recovery plans with triggers and credible options under capital and liquidity stress; resolution by the HKMA as resolution authority | SPM RE-1 s. 2.1; Financial Institutions (Resolution) Ordinance (Cap. 628) | The dashboard shows when equity is exhausted | No recovery plan; everything after insolvency is legal |
+
+### Not yet read
+
+| Topic | Why it matters |
+|---|---|
+| Anti-Money Laundering and Counter-Terrorist Financing Ordinance (Cap. 615) and the HKMA's guideline for authorized institutions | Customer due diligence and transaction monitoring are simulated rules, not drawn from these. See open question 5 in the [plan](plan.md#open-questions). |
+| The statute text of Cap. 581 and Cap. 628 | Their points above are from HKMA and Deposit Protection Board material, not the ordinances themselves |
+| Supervisory reporting returns | The dashboard shows a balance sheet and ratios, not returns in any real format |
 
 ## Sources
+
+### Stablecoin
 
 - [HKMA: Stablecoin issuers](https://www.hkma.gov.hk/eng/key-functions/international-financial-centre/stablecoin-issuers/)
 - [HKMA: Guideline on Supervision of Licensed Stablecoin Issuers (PDF)](https://www.hkma.gov.hk/media/eng/doc/key-functions/ifc/stablecoin-issuers/Guideline_on_supervision_of_licensed_stablecoin_issuers_eng.pdf)
 - [HKMA: Register of Licensees under the Stablecoins Ordinance](https://www.hkma.gov.hk/eng/regulatory-resources/registers/register-of-licensed-stablecoin-issuers/)
+
+### Banking
+
+- [Banking Ordinance (Cap. 155)](https://www.elegislation.gov.hk/hk/cap155), [Banking (Capital) Rules (Cap. 155L)](https://www.elegislation.gov.hk/hk/cap155L), [Banking (Exposure Limits) Rules (Cap. 155S)](https://www.elegislation.gov.hk/hk/cap155S)
+- [HKMA circular: Risk management considerations related to the use of DLT, 16 April 2024 (PDF)](https://brdr.hkma.gov.hk/eng/doc-ldg/docId/getPdf/20240416-2-EN/20240416-2-EN.pdf)
+- [HKMA circular: Sale and distribution of tokenised products, 20 February 2024 (PDF)](https://brdr.hkma.gov.hk/eng/doc-ldg/docId/getPdf/20240220-10-EN/20240220-10-EN.pdf)
+- [HKMA circular: Strategic review of business models amid digital transformation, 9 March 2026 (PDF)](https://brdr.hkma.gov.hk/eng/doc-ldg/docId/getPdf/20260309-1-EN/20260309-1-EN.pdf)
+- [HKMA SPM CRP-1: Classification of cryptoassets (PDF)](https://brdr.hkma.gov.hk/chi/doc-ldg/docId/getPdf/20251125-15-EN/CRP-1.pdf)
+- [HKMA SPM LM-1: Regulatory framework for supervision of liquidity risk (PDF)](https://brdr.hkma.gov.hk/eng/doc-ldg/docId/getPdf/20251217-7-EN/LM-1.pdf)
+- [HKMA SPM LM-2: Sound systems and controls for liquidity risk management (PDF)](https://brdr.hkma.gov.hk/eng/doc-ldg/docId/getPdf/20161125-2-EN/LM-2.pdf)
+- [HKMA circular on liquidity risk management, 7 January 2026 (PDF)](https://brdr.hkma.gov.hk/eng/doc-ldg/docId/getPdf/20260107-3-EN/20260107-3-EN.pdf)
+- [HKMA SPM RE-1: Recovery planning (PDF)](https://brdr.hkma.gov.hk/eng/doc-ldg/docId/getPdf/20200619-2-EN/20200619-2-EN.pdf)
+- [HKMA: Countercyclical capital buffer](https://www.hkma.gov.hk/eng/key-functions/banking/banking-legislation-policies-and-standards-implementation/countercyclical-capital-buffer-ccyb/)
+- [HKMA: Hong Kong dollar liquidity facilities framework](https://www.hkma.gov.hk/eng/key-functions/money/liquidity-facility-framework/hong-kong-dollar-liquidity-facility-framework/)
+- [HKMA: Guideline on loan classification system (PDF)](https://www.hkma.gov.hk/media/eng/doc/key-functions/banking-stability/banking-policy-and-supervision/regulatory-framework/ma(bs)2aci(app2)_e.pdf)
+- [HKMA consultation paper CP 17.02 on regulatory reserve and HKFRS 9 (PDF)](https://brdr.hkma.gov.hk/eng/doc-ldg/docId/getPdf/20170331-5-EN/20170331-5-EN.pdf)
+- [HKMA: Project Ensemble, EnsembleTX pilot, 13 November 2025](https://www.hkma.gov.hk/eng/news-and-media/press-releases/2025/11/20251113-3/)
+- [Hong Kong Deposit Protection Board: Coverage](https://www.dps.org.hk/en/coverage.html)
