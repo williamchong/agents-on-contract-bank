@@ -251,6 +251,8 @@ A customer who has lost every device and their card still owns the account. The 
 
 The bank's books are a double-entry general ledger kept on chain. Every operation that creates, destroys or reclassifies money posts a balanced entry in the same transaction as the token movement, so the tokens and the books cannot disagree.
 
+The chain keeps a running balance for each account in the [chart of accounts](#chart-of-accounts) and emits each entry as an event; it does not store the entries themselves. The contracts only ever read balances, and the timeline and the ledger entry under each story line are built from the events. The ledger is the only contract that may create or destroy deposit tokens, and it reads the Deposits balance from the token's supply, so there is no second figure to drift.
+
 ```mermaid
 flowchart LR
     subgraph Assets
@@ -493,7 +495,7 @@ Payments run through a simulated clearing system in which the bank holds a settl
 
 - **Signer service.** Holds every key and signs on request for the agent or device that owns it. It stands in for the secure hardware in each device and for a hardware security module or cloud key management service. It keeps a key inventory, logs every use and every failed attempt, shows the signer the meaning of what is being signed, and supports rotating a compromised key.
 - **Gateways and submission service.** See [channels](#channels). The submission service reports refused attempts to the indexer, because a refused transaction leaves nothing on chain.
-- **Indexer.** Builds a single timeline from contract events and refusals, using a standard indexing framework. It also takes periodic snapshots of balances in both tokens, so they could be restored or redeemed if the ledger failed beyond recovery.
+- **Indexer.** Builds a single timeline from contract events and refusals, using a standard indexing framework. The ledger's entries reach it only as events. It also takes periodic snapshots of balances in both tokens, so they could be restored or redeemed if the ledger failed beyond recovery.
 - **Scheduler and scenario clock.** Triggers recurring events (instalments due, standing orders, savings interest, end of day) and injects scenario events. A chain cannot trigger itself. The scheduler holds a trigger-only role: it says that due work should run, and the contracts work out what is due, to whom and how much from their own state, once per period. It also advances the business date the contracts read, forward only.
 - **Control service.** Takes operator commands from the dashboard: instructions to agents, scenario triggers, time controls, and stopping or starting channel gateways. It has no authority on chain. An instructed agent still acts through its own tools and the signer service, so an instruction to break a rule ends in a refusal. Operator commands appear in the timeline, marked apart from bank events. It listens on the local machine only.
 - **Clearing and custodian simulators.** Outside parties with their own books. The clearing system holds the bank's settlement account, carries payments to and from scripted other banks and issues statements; the custodian holds the bank's liquid securities and, apart from them, the stablecoin reserve, and reports yield. Both sign their messages.
