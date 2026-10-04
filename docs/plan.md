@@ -27,7 +27,7 @@ The presenter leads with the bank and its refusals, not with the blockchain. The
 | Question | Answer | Where the dashboard shows it |
 |---|---|---|
 | Why can't the agent just do it anyway? | An agent's instructions are not the control. The contracts check every signature and role, and refuse what the role does not allow. | Refused lines in the story view, each naming the rule that stopped it |
-| Why not a database? | A balance and the bank's books change in one transaction, so they cannot disagree. Every change is signed by a named person or machine. The auditor and the regulator re-execute every block on their own nodes and sign checkpoints with keys the bank does not hold. | The invariant strip, and the ledger entry under the hood of each story line |
+| Why not a database? | A balance and the bank's books change in one transaction, so they cannot disagree. Every change is signed by a named person or machine. The chain is public and not run by the bank, so the bank cannot rewrite it, and anyone, the auditor and the regulator included, can check every block without the bank's help. | The invariant strip, the ledger entry under the hood of each story line, and the same transaction on the public block explorer |
 
 **What the presenter needs**
 
@@ -66,7 +66,7 @@ The presenter leads with the bank and its refusals, not with the blockchain. The
 - Daily routines that run as the baseline, and adverse scenarios injected on top and scored. See [scenarios](scenarios.md).
 - A guided tour that runs both in a fixed order as one presentation.
 - A dashboard with a plain-language story view, an under-the-hood toggle and an invariant strip.
-- A control panel to instruct agents, trigger scenarios, control time, and stop or start nodes.
+- A control panel to instruct agents, trigger scenarios, control time, and stop or start channel gateways.
 
 ## Milestones
 
@@ -77,7 +77,7 @@ The presenter leads with the bank and its refusals, not with the blockchain. The
 | 3 | Products | Loans with the lending guard and the loss allowance, savings account, standing orders, bank-set rates, pause and resume through governance, with an income statement on the dashboard | The income statement, loans on the balance sheet with the two ratios moving against their minimums, governance changes in the waiting strip. Tour beat 5. |
 | 4 | Stablecoin | Conversion to and from deposits, mint guard, buffer, custodian simulator, reserve panel | The reserve panel, and the reserve check on the invariant strip |
 | 5 | AI agents | Default set of six first, then the optional six, with plain-language instructions from the control panel. Needs an Anthropic API key. | The same routines and scenarios played by AI agents, the red team's own attempts in the story view, and an instruction typed by the operator carried out or refused. Tour beat 3 taken live. |
-| 6 | Institutional layer | Multi-node Besu network with node controls and failure scenarios, observer checkpoints, channel gateways on separate network zones, signer service with key inventory and logs, passkey devices, Blockscout. The single-key exposure inventory and the expansion paper are written alongside. | The network panel with node controls, the observers' checkpoints on the invariant strip, Blockscout links under the hood, taking over a role with a passkey. Tour beat 6. |
+| 6 | Institutional layer | Deployment to Base Sepolia with a seeded run, channel gateways on separate network zones with channel failure controls, signer service with key inventory and logs, passkey devices. The single-key exposure inventory and the expansion paper are written alongside. | Block explorer links under the hood, channel controls on the control panel, taking over a role with a passkey. Tour beat 6. |
 
 A milestone is done when its [daily routines](scenarios.md#daily-operation) run and its [adverse scenarios](scenarios.md#adverse-scenarios) pass. Every milestone after the first ends with something new to see on the dashboard, named in the last column.
 
@@ -89,7 +89,8 @@ Milestone 2 is the first point at which the project is demonstrable on its own: 
 - The token on a second chain, other banks, bonds, mortgages, investments and insurance. See [expansion](#expansion).
 - Card payments at merchants and cheques. Each needs another network (a card scheme, a cheque clearing house) that adds little the clearing simulator does not already show.
 - Cross-border wires. A correspondent bank would work as the clearing simulator does, more slowly.
-- Regional hub nodes. With one branch a hub is one more full node that does not validate; the branch is a client of the central RPC nodes.
+- Running the chain. Nodes, validators and consensus belong to whoever runs it, so their failures are not simulated. See [network](architecture.md#network).
+- Mainnet. Real gas buys nothing a testnet does not show.
 - Offline approvals at ATMs.
 - Limits by the device that signed. Limits follow the channel a request arrives through.
 - Court orders and other legal process. Dispute reversal already shows a forced transfer that takes frozen money under a second approval.
@@ -102,7 +103,7 @@ Milestone 2 is the first point at which the project is demonstrable on its own: 
 - Insolvency, resolution and deposit protection payouts. The dashboard shows insolvency; what follows is legal.
 - A business calendar. Every day is a business day.
 - Regulatory returns, tax, foreign exchange.
-- A running cloud deployment. Reference manifests only.
+- A running cloud deployment of the services. The contracts are deployed to a public testnet; the services run locally, with reference manifests only.
 - Real compliance integrations. Screening and reporting are simulated.
 - ERC-4337 bundler flow and credential exchange protocols. See [standards](standards.md#considered-and-not-used).
 
@@ -112,7 +113,7 @@ The core is built so that new products plug in as modules without changing it. N
 
 ### Cross-chain
 
-Ordinary payments stay with the clearing simulator, because that is what a payment is. Cross-chain is about the stablecoin itself leaving the bank's private chain. The deposit token stays home: it is a claim only the bank's own customers can hold.
+Ordinary payments stay with the clearing simulator, because that is what a payment is. Cross-chain is about the stablecoin itself leaving the bank's home chain. The deposit token stays home: it is a claim only the bank's own customers can hold.
 
 **Step 1: the bank's stablecoin on a shared chain**
 
@@ -151,7 +152,7 @@ The production analogue is banks settling with each other on one shared ledger, 
 
 ## Open questions
 
-1. **Besu compatibility** of the account and passkey contracts has not been tested. The token extension uses transient storage, so the network's genesis must enable the Cancun rules.
+1. **Chain compatibility** of the account and passkey contracts has not been tested on the local chain or Base Sepolia. The token extension uses transient storage, so the chain must run the Cancun rules or later; both do.
 2. **OpenZeppelin community library versioning.** It has no tagged release that could be found, so it would be pinned by commit.
 3. **Development toolchain.** Hardhat is the working assumption; Foundry is not installed on the development machine.
 4. **A stablecoin beside deposits.** Interest is paid on deposits under banking rules, not on the stablecoin. Whether the HKMA would accept both from one issuer is a legal question left open. See [HKMA mapping](hkma-mapping.md).

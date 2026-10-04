@@ -32,14 +32,14 @@ Tentative. The role list and the permission matrix are the specification the con
 | **Finance** | Reconcile the general ledger against clearing and custodian statements and cash counts, prepare the balance sheet and the reserve statement | Script |
 | **IT security** | Enrol and retire ATMs and staff terminals, keep the key inventory, rotate compromised keys | Script |
 | **Transaction monitoring** | Flag patterns for compliance | Script |
-| **External auditor** | Attest the reserve periodically, including a random day; sign a daily checkpoint of the ledger | Script |
+| **External auditor** | Attest the reserve periodically, including a random day; check the ledger from the public chain | Script |
 | **ATM** | Take and dispense cash against a card authorisation, confirm or report each dispense | Script |
 | **Scheduler** | Trigger work that is due and advance the business date; cannot choose amounts or parties | Script |
 | **Partner adapter** | Relay partners' signed messages to the chain; holds no role | Script |
 | **Clearing system** | Hold the bank's settlement account, carry payments to and from other banks, issue statements | Script |
 | **Other banks and their customers** | Pay the bank's customers, receive payments from them | Script |
 | **Custodian** | Hold the bank's liquid securities and, apart from them, the stablecoin reserve; confirm holdings, report yield | Script |
-| **Regulator** | Receive statements and incident reports; sign a daily checkpoint of the ledger; read-only | Script |
+| **Regulator** | Receive statements and incident reports; check the ledger from the public chain; read-only | Script |
 | **Governance signers** | Chief executive, stablecoin manager, chief financial officer, chief risk officer; approve high-risk changes | Script |
 
 In the one-branch demo the supervisor and branch manager can be the same agent for small scenarios, but they are separate roles so the approval ladder works.

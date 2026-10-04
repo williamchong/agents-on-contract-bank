@@ -58,9 +58,8 @@ The red-team attempts are a fixed script until milestone 5, when the red-team ag
 |---|---|---|---|---|---|
 | **Ledger mismatch** | The clearing system's statement or a cash count differs from the ledger | Reconciliation by finance | The reconciliation line fails, the figure is marked on the balance sheet, an incident goes to the regulator | The incident is recorded and reported | 2 |
 | **Pause and resume** | Risk pauses during an incident, then tries to resume | Pause by risk; resume only by governance multi-signature and time lock | Every movement is refused as paused. The resume waits for its signatures, then its time lock. | Nothing moves while paused; risk cannot resume; the resume takes effect only after the wait | 3 |
-| **Network failures** | The operator stops nodes, splits the network or cuts a link | Consensus quorum and channel isolation. See [failure scenarios](architecture.md#failure-scenarios). | The network panel; transactions queue and then go through | Nothing is lost or forked | 6 |
 
-Pause and resume depends on how scenario time maps onto time locks, which is [open question 11](plan.md#open-questions). Network failures are driven by hand from the control panel and are not scored presets.
+Pause and resume depends on how scenario time maps onto time locks, which is [open question 11](plan.md#open-questions). Channel [failures](architecture.md#failure-scenarios) are driven by hand from the control panel and are not scored presets.
 
 ### Financial stress
 
@@ -83,11 +82,12 @@ The [five-minute pitch](plan.md#1-the-five-minute-pitch) as a preset. It runs th
 | 3 | **Try to break it** | Red team | One refusal after another, each with its reason | The chain decides; an agent's instructions are not the control | 2 |
 | 4 | **Fraud, with a way back** | Forged paper slip | The scenario card, the transfer waiting for an approver, the freeze, the reversal waiting for compliance, then the pass | No member of staff acts alone, and a wrong is reversed on the record | 2 |
 | 5 | **Money creation and stress** | Lending stopped by the capital ratio, then run on deposits | The capital ratio falling to its minimum and the refused drawdown; the payment queue growing, then draining as treasury sells securities | Lending creates money only within limits; a bank can be solvent and still run short | 3 |
-| 6 | **Who checks the bank** | No preset: any story line under the hood, then the network panel | The signer, role check and transaction; the checkpoints the auditor and the regulator signed | The bank cannot rewrite its history unnoticed | 6 |
+| 6 | **Anyone can check the bank** | No preset: any story line under the hood, then the same kind of transaction on the public deployment's block explorer | The signer, role check and transaction; the same checks on a public chain the bank does not run | The bank cannot rewrite its history, and anyone can check it without the bank's help | 6 |
 
 - **It grows with the milestones.** The tour runs the beats the current milestone has reached, so it is four beats long at milestone 2.
 - **Not scored as a whole.** The adverse scenarios inside it are scored as usual and their cards show pass or fail.
 - **Beat 3 from milestone 5.** The presenter can also type an instruction of their own to an agent, for example "approve your own operation", and watch it refused.
+- **Beat 6 is online.** The tour runs on the local chain; beat 6 opens the public deployment and needs a connection. The first five run offline.
 - **The stablecoin is left out.** Its scenarios are a follow-up for an audience that asks, not part of the five minutes.
 
 ## Coverage

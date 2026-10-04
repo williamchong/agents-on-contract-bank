@@ -7,7 +7,7 @@ The bank's everyday money is a tokenised deposit. Each current-account balance i
 Three things keep it a recognisable bank:
 
 - **Assisted service.** Customers can act for themselves from their own devices, but tellers and ATMs still take cash, act on customers' instructions, and handle anything large, unusual or needing identity checks.
-- **Open to the payment system, closed as a ledger.** Customers pay and are paid by account holders at other banks through a simulated clearing system. Only holding the tokens is closed: the chain is private and every holder is an onboarded customer. Taking the stablecoin onto a shared chain is a planned [expansion](plan.md#cross-chain), not part of this design.
+- **Open to the payment system, closed to holders.** Customers pay and are paid by account holders at other banks through a simulated clearing system. Only holding the tokens is closed: the chain is public, but each token's allow-list admits only onboarded customers. Taking the stablecoin onto a shared chain is a planned [expansion](plan.md#cross-chain), not part of this design.
 - **Two forms of money, each for what it suits.** The deposit token is for everyday banking: a claim on the bank that funds lending and earns interest in a savings account, the form Hong Kong banks are piloting in Project Ensemble. Its backing is the bank's balance sheet, which is kept on chain as a general ledger. The stablecoin is for holders who want a claim backed by a segregated reserve and not by the bank's balance sheet, and it is the token that could later leave the perimeter.
 
 ## Layers
@@ -40,12 +40,12 @@ flowchart TB
         modules[Modules: operations, payments, savings, lending]
     end
     subgraph L1[Network]
-        nodes[Permissioned chain: validators, RPC nodes, observer nodes]
+        chain[EVM chain: local, or a public testnet]
     end
     control --> ctl
     ctl -- instructions --> L4
     ctl -- scenarios, time --> clock
-    ctl -- stop and start --> L1
+    ctl -- stop and start --> gw
     L4 --> signer
     clock --> signer
     signer --> gw
@@ -60,7 +60,7 @@ flowchart TB
 
 | Layer | Responsibility |
 |---|---|
-| **Network** | A permissioned EVM chain (Hyperledger Besu) with validators at independent sites, RPC nodes for applications, and read-only nodes for the auditor and regulator. A single-process chain is used for development and tests. See [network](#network). |
+| **Network** | Any EVM chain. A single-process local chain for development, tests and the live demo, and a public testnet for a standing deployment anyone can inspect. See [network](#network). |
 | **Contracts** | The rules. Nothing above this layer is trusted to enforce anything. |
 | **Services** | Hold keys, carry requests to the chain, turn chain events into a timeline, drive time, simulate outside parties, and keep personal data off the chain. |
 | **Agents** | Decide what to attempt. They never hold keys and cannot bypass the contracts. |
@@ -68,43 +68,37 @@ flowchart TB
 
 ## Network
 
-The local network runs the same node software, consensus and configuration as a real deployment, one container per node.
+The contracts run on any EVM chain with the Cancun rules or later. Nothing in them depends on who runs the chain.
 
-| Node type | Count | Purpose |
+| Profile | Chain | Used for |
 |---|---|---|
-| **Validator** | 4 | Produce blocks. Named by site: two primary data centres, a disaster recovery site, a cloud region. |
-| **RPC node** | 2 | Serve applications behind a load balancer. Validators are never exposed to clients. |
-| **Observer** | 2 | Read-only full nodes for the auditor and the regulator. |
+| **Local** | A single-process chain on the presenter's machine | Development, tests and the live demo. Offline, free, and the same every run. |
+| **Public** | Base Sepolia, the public testnet of an Ethereum layer 2 | A standing deployment that anyone can inspect from a link, through the chain's block explorer |
 
-All of these are full nodes holding the whole ledger; only validators take part in consensus. Besu has no light-client mode that we know of, so a site that should not hold the ledger is a plain client of another node.
+Mainnet is not used. Real gas would buy nothing a testnet does not show.
 
-- **Why four validators.** The consensus (QBFT) needs more than two thirds of validators online. Four tolerate one failure; seven would tolerate two.
-- **What the validators do and do not prove.** All four belong to the bank, so agreement among them protects against a site failing, not against the bank itself. The independent check comes from the observers. The auditor's and the regulator's nodes re-execute every block, and each signs a checkpoint of the latest block at end of day with a key the bank does not hold. A rewritten history would not match those checkpoints. Independent validators arrive only with a shared chain, which is an [expansion](plan.md#cross-chain).
-- **Branches hold no ledger.** A branch is a client of the central RPC nodes, as a branch today is a client of the core banking system. Retail premises are the weakest sites for power, network and physical security, and a full node holds every customer's balances.
-- **Ledger privacy.** Every full node holds balances and transfers by address, with no names. Node disks are encrypted, node interfaces are reachable only by gateways and the indexer, and the link from address to person lives in the personal data store. The auditor and regulator see every movement as it happens, without names, and obtain identities through the personal data store under their role. That is more than a regulator sees today; it is a choice of this design, not current practice.
-- **No offline writes.** Nothing confirms without a quorum of validators, and a branch or ATM cut off from the RPC nodes stops. Real ATM networks allow limited offline approvals; this design does not.
-- **Two profiles.** A single-process chain for everyday development, and the full network for demonstrations.
+- **Why not the bank's own chain.** A production bank might run a permissioned chain with validators at its own sites, mainly for ledger privacy. Nobody will deploy this demo on one, and a reviewer can check a public deployment from a link without running anything. See [standards](standards.md#considered-and-not-used).
+- **Who checks the bank.** Every node that follows the public chain re-executes every block, and the layer 2 posts its data to Ethereum. The bank cannot rewrite its history there, and anyone, the auditor and the regulator included, can check it without the bank's help. On the local chain the bank runs the only node, so that profile shows the rules, not the history.
+- **Closed to holders, open to view.** Only onboarded customers can hold either token. The allow-list on each token enforces it, not the chain.
+- **Ledger privacy.** Every balance and transfer is public by address, with no names. The link from address to person lives in the personal data store. Anyone who ties one address to a person can follow that customer's money, which a real bank could not accept; it would need its own chain or a privacy layer. Every customer here is simulated.
+- **Gas.** The submission service pays it from a key the bank funds. It is free on the local chain and comes from a faucet on the testnet.
+- **No offline writes.** Nothing confirms without the chain, and a branch or ATM cut off from it stops. Real ATM networks allow limited offline approvals; this design does not.
 
-What differs from production: all nodes share one machine, keys are held by the signer service and not a hardware module, and network zones are Docker networks, not real firewalls.
+What differs from production: keys are held by the signer service and not a hardware module, and network zones are Docker networks, not real firewalls.
 
 ### Failure scenarios
 
 | Scenario | Behaviour |
 |---|---|
-| One validator stopped | The chain continues on three; blocks may pause briefly when the missing node's turn comes up |
-| Two validators stopped | The chain halts. Nothing confirms, but nothing is lost or forked. Transactions queue. |
-| Validators restarted | They catch up, the chain resumes and queued transactions go through |
-| One RPC node stopped | The load balancer routes to the other |
-| Network split | The side with fewer than three validators stops |
-| Validator permanently lost | The remaining validators vote it out and a replacement in |
 | A channel gateway stopped | That channel stops; other channels continue |
 | Branch link cut | That branch stops; its customers use the app, an ATM or another branch |
+| Chain unreachable | Every channel stops. Signed requests wait in the submission service and go through when the chain returns, unless their validity window has passed. |
 
-Halting when quorum is lost is deliberate: the consensus prefers stopping to risking two versions of the ledger.
+Consensus, validator and node failures belong to whoever runs the chain and are not simulated.
 
 ## Channels
 
-No client talks to a validator. Every party reaches the chain through a gateway for its channel, which forwards to the RPC nodes.
+No bank client writes to the chain directly. Every party reaches it through a gateway for its channel, which forwards to the submission service.
 
 ```mermaid
 flowchart LR
@@ -117,9 +111,8 @@ flowchart LR
     gov[Governance signers] -- admin channel --> gwg[Admin gateway]
     gwc & gwa & gwp & gwg --> sub[Submission service]
     gws --> sub
-    sub --> rpc[RPC nodes]
-    rpc --> val[Validators]
-    aud[Auditor, regulator] --> obs[Observer nodes]
+    sub --> chain[Chain]
+    aud[Auditor, regulator] -- their own node --> chain
     gwc & gws --> read[Indexer and personal data store]
 ```
 
@@ -132,20 +125,20 @@ flowchart LR
 | **Head office** | Back office, compliance, treasury, finance, risk, IT security | Internal network | Staff device | |
 | **Partner** | Clearing system, custodian | Dedicated partner link | Partner signs its own messages | An adapter relays ISO 20022 payment messages and signed statements to the chain. The contracts check the partner's signature against its registered key, so the adapter holds no role that can create money. Partners hold no chain accounts. |
 | **Admin** | Governance signers | Separate admin channel | Hardware keys | Used only for multi-signature approvals |
-| **Assurance** | Auditor, regulator | Their own observer nodes | Checkpoints only, kept off chain | Read-only on the ledger |
+| **Assurance** | Auditor, regulator | Their own node on the public chain | None | Read-only on the ledger |
 
 **What each part does**
 
 - **Gateway.** One per channel. Establishes a session, limits request rates, logs, and exposes only the functions that channel needs. It never holds signing keys.
-- **Submission service.** Simulates each signed request before sending it, sends it to the chain, and reports the outcome, including refusals, to the indexer. Gas is free, so it pays nothing on anyone's behalf.
-- **Reads.** Applications read through the indexer and personal data store, which apply the caller's role. They do not query nodes.
+- **Submission service.** Simulates each signed request before sending it, sends it to the chain, and reports the outcome, including refusals, to the indexer. It pays the gas; a request's authority comes from the signatures inside it, never from who sent it.
+- **Reads.** Applications read through the indexer and personal data store, which apply the caller's role. The chain itself is public by address; what the services gate is the link to names.
 
 **Trust**
 
 - A gateway is not trusted to authorise anything. The chain checks every signature and role itself, so a compromised gateway cannot move money. It can only delay or drop requests. That holds for the partner adapter too: a payment in or a statement is accepted only with the partner's own signature.
 - A partner is trusted for what it signs. A stolen partner key could create money against a credit that never arrived, so partner keys are significant keys, registered and replaced only through governance, and finance reconciles against the partner's own records.
 - A channel failing affects that channel only. If the ATM gateway is down, branches and the app continue.
-- Zones (internet-facing, branch and ATM, internal, partner, chain) are separate networks, so a client in one zone cannot reach the nodes or another zone's gateway.
+- Zones (internet-facing, branch and ATM, internal, partner, submission) are separate networks, so a client in one zone cannot reach the submission service or another zone's gateway.
 
 **In the simulation**
 
@@ -157,7 +150,7 @@ flowchart LR
 1. **The chain decides, agents propose.** An agent's prompt is never the control. If an agent attempts something outside its role, the contract refuses it.
 2. **Authority comes from role and device, not from a key.** People and devices come and go; accounts and balances do not move.
 3. **No personal data on chain.** The chain holds addresses, identifiers and hashes. Names, ID details, payment details and scanned instructions live in an ordinary database, so they can be corrected or deleted.
-4. **Reads are gated like writes.** Staff and agents read through services that apply the same roles, not by querying nodes directly.
+4. **Names are gated like writes.** Staff and agents read through services that apply the same roles. The chain shows addresses to anyone; who an address belongs to is released only by role.
 5. **Each money keeps its own rule.** Deposit tokens are created or destroyed only with a balanced ledger entry, and by lending only within the capital and liquidity ratios. The stablecoin is always fully backed.
 6. **Products are modules.** Each product is built on the tokens through standard interfaces and can be added or removed without changing the core.
 7. **Use audited standard components where they fit.** Write only the bank-specific logic. See [standards](standards.md).
@@ -501,7 +494,8 @@ Payments run through a simulated clearing system in which the bank holds a settl
 - **Signer service.** Holds every key and signs on request for the agent or device that owns it. It stands in for the secure hardware in each device and for a hardware security module or cloud key management service. It keeps a key inventory, logs every use and every failed attempt, shows the signer the meaning of what is being signed, and supports rotating a compromised key.
 - **Gateways and submission service.** See [channels](#channels). The submission service reports refused attempts to the indexer, because a refused transaction leaves nothing on chain.
 - **Indexer.** Builds a single timeline from contract events and refusals, using a standard indexing framework. It also takes periodic snapshots of balances in both tokens, so they could be restored or redeemed if the ledger failed beyond recovery.
-- **Scheduler and scenario clock.** Triggers recurring events (instalments due, standing orders, savings interest, end of day) and injects scenario events. A chain cannot trigger itself. The scheduler holds a trigger-only role: it says that due work should run, and the contracts work out what is due, to whom and how much from their own state, once per period. It also advances the business date the contracts read, forward only.- **Control service.** Takes operator commands from the dashboard: instructions to agents, scenario triggers, time controls, and stopping or starting nodes. It has no authority on chain. An instructed agent still acts through its own tools and the signer service, so an instruction to break a rule ends in a refusal. Operator commands appear in the timeline, marked apart from bank events. It listens on the local machine only.
+- **Scheduler and scenario clock.** Triggers recurring events (instalments due, standing orders, savings interest, end of day) and injects scenario events. A chain cannot trigger itself. The scheduler holds a trigger-only role: it says that due work should run, and the contracts work out what is due, to whom and how much from their own state, once per period. It also advances the business date the contracts read, forward only.
+- **Control service.** Takes operator commands from the dashboard: instructions to agents, scenario triggers, time controls, and stopping or starting channel gateways. It has no authority on chain. An instructed agent still acts through its own tools and the signer service, so an instruction to break a rule ends in a refusal. Operator commands appear in the timeline, marked apart from bank events. It listens on the local machine only.
 - **Clearing and custodian simulators.** Outside parties with their own books. The clearing system holds the bank's settlement account, carries payments to and from scripted other banks and issues statements; the custodian holds the bank's liquid securities and, apart from them, the stablecoin reserve, and reports yield. Both sign their messages.
 - **Personal data store.** Maps on-chain identifiers to names and details, and holds scanned instructions. Access follows the same roles.
 
@@ -514,16 +508,15 @@ The dashboard has two views, matching the two kinds of [scenario](scenarios.md).
 | **Daily** | By default | Invariant strip, story view with its waiting strip, bank map, balance sheet, income statement, and the reserve panel once the stablecoin is in |
 | **Adverse** | While an adverse scenario runs | The same, with a scenario card pinned above the story view, the refusals and incidents it causes highlighted, and the panel it concerns brought forward |
 
-- **Invariant strip.** Across the top of both views, the design's headline claims as of the latest block: the books balance; stablecoin outstanding is within the confirmed reserve; the last day the auditor and the regulator each checkpointed. Each check appears with the milestone that brings it.
+- **Invariant strip.** Across the top of both views, the design's headline claims as of the latest block: the books balance; stablecoin outstanding is within the confirmed reserve. Each check appears with the milestone that brings it.
 - **Story view.** One plain sentence per event, including refusals and the reason. See [story lines](#story-lines).
-- **Under-the-hood toggle.** Signer, role check, transaction reference and the ledger entry posted for each line, linking to Blockscout. Selecting a line highlights the balance sheet rows its entry moved.
+- **Under-the-hood toggle.** Signer, role check, transaction reference and the ledger entry posted for each line, linking to the block explorer on the public deployment. Selecting a line highlights the balance sheet rows its entry moved.
 - **Waiting strip.** Beside the story view, everything started and not yet finished: operations awaiting an approver, with who must approve next; ATM holds; payments queued or awaiting clearance; frozen credits and other named holds; funds in suspense; held redemptions; governance changes in their waiting period. An item leaves the strip with a story line when it completes, is refused or is reversed.
 - **Scenario card.** What is being attempted, which control should fire and the expected outcome, then pass or fail once the scenario ends.
 - **Bank map.** Branch, staff, devices and cash positions.
 - **Balance sheet.** Assets against deposits and equity, the capital and liquidity ratios against their minimums, and the age of each attested figure.
 - **Reserve panel.** Stablecoin outstanding against confirmed reserve, the buffer, funds in transit and funds due back to the bank, time since the custodian's last confirmation, held redemptions, governance changes in their waiting period.
 - **Income statement.** Loan interest as it is collected, securities and reserve yield and fees against savings interest and loan loss charges.
-- **Network panel.** Status of each node, whether the chain has quorum, and the observers' latest checkpoints.
 
 ### Story lines
 
@@ -547,7 +540,7 @@ The operator can drive the simulation from the dashboard.
 | **Inject an adverse scenario** | Start a preset from one of four groups: customer mishap, fraud and attack, operational incident, financial stress. See [adverse scenarios](scenarios.md#adverse-scenarios). |
 | **Run the guided tour** | Start the [guided tour](scenarios.md#guided-tour), or move it on to its next beat. |
 | **Control time** | Pause, resume, change speed, jump to end of day or to a chosen date. |
-| **Control the network** | Stop or start a node or a channel gateway, split the network, cut a branch link, restore it. |
+| **Control channels** | Stop or start a channel gateway, cut a branch link, restore it. |
 | **Take over a role** | Act directly as a customer or staff member, signing with a real passkey. |
 | **Switch agent mode** | Run agents autonomously in the background, or keep them idle until instructed. |
 
@@ -562,6 +555,6 @@ services/    signer, gateways, submission, indexer, scheduler, control,
              simulators, personal data store
 agents/      personas, tool definitions, scripted actors
 dashboard/   web app
-network/     multi-node Docker setup
+deploy/      local chain and testnet deployment
 docs/        this folder
 ```

@@ -68,8 +68,8 @@ Accounts built on `Account` are compatible with ERC-4337, though the bundler flo
 
 | Need | Standard or tool |
 |---|---|
-| Chain | Hyperledger Besu, permissioned, QBFT consensus |
-| Explorer | Blockscout |
+| Chain | Any EVM chain with the Cancun rules: a local single-process chain, and Base Sepolia for the public deployment. See [network](architecture.md#network). |
+| Explorer | The public chain's own block explorer |
 | Indexing | A standard indexing framework, to be chosen |
 | Payment messages and statements | ISO 20022 message shapes and field names |
 
@@ -96,7 +96,8 @@ Accounts built on `Account` are compatible with ERC-4337, though the bundler flo
 | **A tokenised deposit with the balance sheet kept off chain** | A bank record on a chain, backed by books the chain cannot see. The general ledger is put on chain instead, with only the assets held outside it taken on attestation. |
 | **Algorithmic interest rates and floating-yield vaults** | The bank sets its savings and loan rates as business decisions and stands between depositors and borrowers. |
 | **ERC-7540 notice period on savings withdrawals** | The savings vault holds the deposit tokens themselves, so a withdrawal never waits on the vault. Liquidity is managed for the bank as a whole, at the settlement account. |
-| **ERC-4337 bundler flow** | Solves paying gas for others and adding smart accounts to public chains. A permissioned chain with free gas needs neither, and the relay makes "who signed" and "why refused" harder to show. Can be added later without changing accounts. |
+| **ERC-4337 bundler flow** | Solves paying gas for others through an open market of relayers. The submission service already relays every signed request and pays its gas, and a second relay makes "who signed" and "why refused" harder to show. Can be added later without changing accounts. |
+| **Hyperledger Besu, permissioned, with QBFT consensus** | The usual choice for a bank's own chain, with balances private to the bank and validators at its own sites. A production bank would likely choose it, mainly for ledger privacy. Nobody would deploy this demo on one, and a public deployment lets a reviewer check it from a link without running anything. |
 | **Verifiable credentials and credential exchange (OpenID4VC)** | Not yet widely used in bank production systems. Adds an issuer service and a second source of truth for roles. |
 | **DID documents, methods and resolvers** | Interoperability with outside wallets is never exercised in a closed simulation. |
 | **Safe smart accounts** | More widely deployed for institutional custody, and a sound production alternative. Not used so that accounts, token and access share one base. |

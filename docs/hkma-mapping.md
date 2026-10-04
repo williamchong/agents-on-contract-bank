@@ -20,7 +20,7 @@ This is a design mapping, not a compliance assessment. The separate HKMA guideli
 
 ## How this design differs from the regime's assumptions
 
-- **Closed perimeter.** The guideline assumes a token that circulates on open ledgers among holders who may not be customers. Here the chain is private and every holder is an onboarded customer.
+- **Closed perimeter.** The guideline assumes a token that circulates on open ledgers among holders who may not be customers. Here the token sits on a public chain, but its allow-list admits only onboarded customers, so every holder is one.
 - **The issuer is a bank.** For a licensee that is an authorised institution, the capital, liquidity and other-business rules give way to the Banking Ordinance (4.1.3, 5.1.3, 5.2.2). Deposits and lending are that other business, and here they are the main business.
 - **Issued only against a deposit.** The guideline pictures funds arriving from outside. Here a customer converts their own deposit balance, and the bank moves the matching funds into the reserve.
 - **A stablecoin beside deposits.** The stablecoin pays no interest. Interest is paid on deposits, which are a different product under banking rules. Whether a regulator would accept both from the same issuer, or see the deposit as an "interest-like incentive" (2.6.1) for holding the stablecoin, is a legal question this project does not answer.
@@ -72,8 +72,8 @@ This is a design mapping, not a compliance assessment. The separate HKMA guideli
 | An authorisation level for every token lifecycle operation; no single party for high-risk ones | 6.5.3 | Permission matrix covers deploy, upgrade, mint, burn, pause, resume, freeze, block-list, allow-list; high-risk ones need multi-signature |
 | Velocity limits, minting only to allow-listed addresses, time locks, simulation before broadcast | 6.5.3 | Rate limiter, allow-list, time lock, submission service simulation |
 | Duties split between staff; immediate revocation; no one in full control of role management | 6.5.4 | Granting needs a second party; revoking is immediate |
-| Assess the ledger's consensus, fault tolerance and finality | 6.5.5 | [Network](architecture.md#network) |
-| Monitor the ledger's availability and report failures | 6.5.6 | Network panel |
+| Assess the ledger's consensus, fault tolerance and finality | 6.5.5 | [Network](architecture.md#network): a public layer 2 run by others, which posts its data to Ethereum |
+| Monitor the ledger's availability and report failures | 6.5.6 | When the chain is unreachable, every channel stops and signed requests wait; the dashboard says so |
 | Key management across the full lifecycle; elevated standards for significant keys | 6.5.7 | Signer service with inventory, usage and failure logs, rotation; significant keys, including partners' signing keys, behind governance |
 | Signers can interpret what they approve | 6.5.7(vii) | Typed signatures shown in readable form |
 | Funds and tokens only to and from pre-registered accounts in the customer's name | 6.5.9 | Funds for issue and redemption move only from and to the customer's own deposit account at the bank; token only to allow-listed customer accounts. Ordinary payments on the deposit side are open to any payer and payee, as banking is. |
@@ -81,15 +81,15 @@ This is a design mapping, not a compliance assessment. The separate HKMA guideli
 | Limit the number of bound devices | 6.5.10 | Device cap per account |
 | All customer transactions logged; customers can review them | 6.5.11 | The ledger and the customer's history view |
 | Monitoring for fraud; customers can set their own limits | 6.5.12 | Transaction monitoring script; customer-set limits |
-| Network segmented into zones, single points of failure minimised | 6.5.18 | Channel zones; four validators and two RPC nodes |
+| Network segmented into zones, single points of failure minimised | 6.5.18 | Channel zones. The chain's own redundancy rests with its operators. |
 
 ### Incidents and continuity
 
 | Requirement | Para | How it is reflected |
 |---|---|---|
 | Incident classification, detection and response | 6.8.2 to 6.8.4 | Risk can pause at once; resuming needs governance; the pause and resume [scenario](scenarios.md#operational-incident) exercises it |
-| Back-up records to allow redemption if the ledger fails irrecoverably | 6.8.7 | Periodic off-chain balance snapshots; the auditor's and regulator's nodes hold their own copies and signed checkpoints |
-| Continuity of critical functions; alternate sites | 6.8.9, 6.8.15 | Validators at independent sites; node loss and recovery can be exercised |
+| Back-up records to allow redemption if the ledger fails irrecoverably | 6.8.7 | Periodic off-chain balance snapshots; every node following the public chain holds a full copy |
+| Continuity of critical functions; alternate sites | 6.8.9, 6.8.15 | Channels fail independently and can be stopped and restored; the chain's continuity rests with its operators |
 | Regular testing and simulation exercises | 6.8.19 | Replayable, scored [adverse scenarios](scenarios.md#adverse-scenarios) |
 
 ### Conduct
@@ -97,7 +97,7 @@ This is a design mapping, not a compliance assessment. The separate HKMA guideli
 | Requirement | Para | How it is reflected |
 |---|---|---|
 | Records of on-chain and off-chain activity with audit trails | 8.1.1 | Indexer timeline including refusals and operator actions |
-| Personal data protection | 8.3.1 | No personal data on chain; role-gated reads |
+| Personal data protection | 8.3.1 | No personal data on chain; names released only by role. Balances are public by address, which a real bank would avoid with its own chain or a privacy layer. |
 | Complaints handled by staff not involved, within set times | 8.4.2, 8.4.3 | Support logs and follows complaints; disputed operations can be frozen and reversed |
 
 ## Not done
@@ -120,7 +120,7 @@ This is a design mapping, not a compliance assessment. The separate HKMA guideli
 
 ## If the token leaves the perimeter
 
-Putting the stablecoin on a shared chain is a planned [expansion](plan.md#cross-chain), not part of this design. It would bring these requirements into play:
+Opening the stablecoin to holders who are not customers, on this chain or another, is a planned [expansion](plan.md#cross-chain), not part of this design. It would bring these requirements into play:
 
 | Requirement | Para | What it would need |
 |---|---|---|
@@ -148,7 +148,7 @@ The deposit token, savings account and loans are banking business. The rules for
 | Tokenised deposits to carry the same rights as ordinary deposits | One token is one dollar owed, redeemable in cash or by payment out at par | Terms and legal opinion |
 | Customer due diligence and transaction monitoring | Onboarding with a second check; screening on payments in and out | Simulated rules only |
 | Segregation of duties and audit trail | [Roles](roles.md#separation-of-duties); every action signed by a named person | |
-| Supervisory reporting | Balance sheet and ratios on the dashboard; the regulator's observer node | No returns in any real format |
+| Supervisory reporting | Balance sheet and ratios on the dashboard; the regulator reads the public chain directly | No returns in any real format |
 | Resolution and insolvency | The dashboard shows when equity is exhausted | Everything that follows is legal |
 
 ## Sources
