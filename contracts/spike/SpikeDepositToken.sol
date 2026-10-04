@@ -9,12 +9,17 @@ import {ERC20uRWA} from "@openzeppelin/community-contracts/contracts/token/ERC20
 
 /// @dev Toolchain spike: the deposit token's base, with freezes, an allow-list and forced transfers
 /// from ERC-7943, customer-signed transfers from EIP-3009, and every privileged call decided by an
-/// access manager. Minting here stands in for the general ledger, which is not written yet.
+/// access manager. Minting and burning are meant for the ledger alone (see SpikeLedger), which
+/// posts the matching entry in the same call.
 contract SpikeDepositToken is ERC20, EIP712, ERC20TransferAuthorization, ERC20uRWA, AccessManaged {
     constructor(address manager) ERC20("Spike Deposit", "SDEP") EIP712("Spike Deposit", "1") AccessManaged(manager) {}
 
     function mint(address to, uint256 amount) external restricted {
         _mint(to, amount);
+    }
+
+    function burn(address from, uint256 amount) external restricted {
+        _burn(from, amount);
     }
 
     function allowUser(address account) external restricted {
