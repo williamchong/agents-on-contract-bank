@@ -123,7 +123,7 @@ flowchart LR
 | **Branch** | Tellers, supervisors, branch manager, account opening, vault custodian | Branch network | On the staff member's device or hardware token | The customer authorises by card, by device, or on paper |
 | **Support** | Support desk | Internal network or VPN | Staff device | Protective and servicing functions only; no paying out to others. See [customer authorisation](#customer-authorisation). Customer details come from the personal data store, gated by role. |
 | **Head office** | Back office, compliance, treasury, finance, risk, IT security | Internal network | Staff device | |
-| **Partner** | Clearing system, custodian | Dedicated partner link | Partner signs its own messages | An adapter relays ISO 20022 payment messages and signed statements to the chain. The contracts check the partner's signature against its registered key, so the adapter holds no role that can create money. Partners hold no chain accounts. |
+| **Partner** | Clearing system, custodian | Dedicated partner link | Partner signs its own messages | An adapter relays ISO 20022 payment messages and signed statements to the chain. The contracts check the partner's signature over the fields they act on and the hash of the full message against its registered key, so the adapter holds no role that can create money. Partners hold no chain accounts. |
 | **Admin** | Governance signers | Separate admin channel | Hardware keys | Used only for multi-signature approvals |
 | **Assurance** | Auditor, regulator | Their own node on the public chain | None | Read-only on the ledger |
 
@@ -458,7 +458,7 @@ Payments run through a simulated clearing system in which the bank holds a settl
 | **Payment out** | Customer authorises → payee's name checked with the receiving bank → funds held → branch approvals if sent through a teller → screened; compliance clears any that are flagged → released: tokens destroyed, settlement account debited, message sent → receiving bank confirms or rejects |
 | **Payment out rejected** | The clearing system's signed rejection is relayed and checked → the funds return to the settlement account → tokens re-created for the customer |
 | **Payment out, settlement account short** | The payment queues → treasury funds the account → released |
-| **Payment in** | Clearing system credits the settlement account and sends a signed credit advice → adapter relays it → the payments module checks the clearing system's signature and that the reference is new → beneficiary matched → screened → tokens created. The payer can be anyone; no registration is needed. |
+| **Payment in** | Clearing system credits the settlement account and sends a signed credit advice → adapter relays it → the payments module checks the clearing system's signature over the reference, amount, currency, creditor account, settlement time and the message's hash, and that the reference is new → beneficiary matched → screened → tokens created. The payer can be anyone; no registration is needed. |
 | **Payment in, flagged** | Credited and frozen until compliance clears it or returns it |
 | **Payment in, unknown beneficiary** | Funds go to a suspense account → returned to sender |
 | **End of day** | Clearing system sends its statement → finance reconciles it against the ledger |

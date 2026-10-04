@@ -131,6 +131,7 @@ The scheduler says when; the contracts decide what, to whom and how much. A trig
 | Enrol or retire ATM and terminals | IT security | Supervisor | |
 | Rotate a compromised key | IT security | Risk | |
 | Register or replace a partner's signing key | IT security | Governance | |
+| Revoke a compromised partner key | IT security | None; takes effect at once | Messages are refused until a new key is registered |
 | Pause | Risk | None | |
 | Resume | Governance | Multi-signature and time lock | |
 | Revoke a staff member's roles | Role admin for that branch, risk | None; takes effect at once | |

@@ -59,7 +59,7 @@ Withdrawals and outgoing payments use the same signed authorisation as transfers
 |---|---|---|---|
 | Account with several devices | `Account`, `MultiSignerERC7913` | Main | Mixed signer types with a threshold; covers corporate signing mandates. Signer changes are open to the account itself and to the recovery module. |
 | Passkey devices and chip cards | WebAuthn and P-256: `SignerWebAuthn`, `WebAuthn`, `P256` | Main | Includes a contract verifier, so no chain-level support is required |
-| Signature checks for smart accounts | ERC-1271, ERC-7913: `SignatureChecker` | Main | Also checks partners' signatures on payment messages and statements. The ERC-7913 verifiers for their key types are not yet read. |
+| Signature checks for smart accounts | ERC-1271, ERC-7913: `SignatureChecker` | Main | Also checks partners' signatures on payment messages and statements, through `ERC7913P256Verifier` by default or `ERC7913RSAVerifier` |
 | Bank-owned accounts controlled by a role | `RoleAccount`, `SignerAccessManaged` | Community | Control follows role membership live; each signature names the individual |
 
 Accounts built on `Account` are compatible with ERC-4337, though the bundler flow is not used here.
@@ -71,7 +71,7 @@ Accounts built on `Account` are compatible with ERC-4337, though the bundler flo
 | Chain | Any EVM chain with the Cancun rules: a local single-process chain, and Base Sepolia for the public deployment. See [network](architecture.md#network). |
 | Explorer | The public chain's own block explorer |
 | Indexing | A standard indexing framework, to be chosen |
-| Payment messages and statements | ISO 20022 message shapes and field names |
+| Payment messages and statements | ISO 20022 message shapes and field names. On chain, partners sign an EIP-712 struct of the fields the contracts act on, with the hash of the full message. |
 
 ## Written here
 
