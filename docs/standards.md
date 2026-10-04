@@ -86,7 +86,7 @@ Accounts built on `Account` are compatible with ERC-4337, though the bundler flo
 9. **Lending.** Loans that create deposit tokens through the ledger, instalments, arrears and the loan status the allowance follows, write-off.
 10. **Stablecoin conversion and reserve bookkeeping.** Conversion at par both ways, confirmed reserve at the custodian, buffer, funds in transit, funds due back after redemptions, the bank's surplus, excess-only withdrawal, and the function that reports the reserve to the mint guard.
 11. **Partner keys.** The register of partners' signing keys that the payments module and the ledger check against.
-12. **Scheduled work.** Trigger-only entry points that run what is due once per period, and the business date the contracts read.
+12. **Scheduled work.** Trigger-only entry points that run what is due once per period, catching up any periods missed, and the business day the contracts read, worked out from block time.
 
 ## Considered and not used
 

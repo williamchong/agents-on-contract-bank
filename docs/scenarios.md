@@ -59,7 +59,7 @@ The red-team attempts are a fixed script until milestone 5, when the red-team ag
 | **Ledger mismatch** | The clearing system's statement or a cash count differs from the ledger | Reconciliation by finance | The reconciliation line fails, the figure is marked on the balance sheet, an incident goes to the regulator | The incident is recorded and reported | 2 |
 | **Pause and resume** | Risk pauses during an incident, then tries to resume | Pause by risk; resume only by governance multi-signature and time lock | Every movement is refused as paused. The resume waits for its signatures, then its time lock. | Nothing moves while paused; risk cannot resume; the resume takes effect only after the wait | 3 |
 
-Pause and resume depends on how scenario time maps onto time locks, which is [open question 11](plan.md#open-questions). Channel [failures](architecture.md#failure-scenarios) are driven by hand from the control panel and are not scored presets.
+Jumping time moves block time, so the resume's time lock opens with it; see [open question 11](plan.md#open-questions). Channel [failures](architecture.md#failure-scenarios) are driven by hand from the control panel and are not scored presets.
 
 ### Financial stress
 

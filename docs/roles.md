@@ -34,7 +34,7 @@ Tentative. The role list and the permission matrix are the specification the con
 | **Transaction monitoring** | Flag patterns for compliance | Script |
 | **External auditor** | Attest the reserve periodically, including a random day; check the ledger from the public chain | Script |
 | **ATM** | Take and dispense cash against a card authorisation, confirm or report each dispense | Script |
-| **Scheduler** | Trigger work that is due and advance the business date; cannot choose amounts or parties | Script |
+| **Scheduler** | Trigger work that is due, and on the local chain move time forward; cannot choose amounts, parties or the business day | Script |
 | **Partner adapter** | Relay partners' signed messages to the chain; holds no role | Script |
 | **Clearing system** | Hold the bank's settlement account, carry payments to and from other banks, issue statements | Script |
 | **Other banks and their customers** | Pay the bank's customers, receive payments from them | Script |
@@ -114,7 +114,7 @@ The scheduler says when; the contracts decide what, to whom and how much. A trig
 | Pay savings interest | Scheduler | The amount, from the savings rate and the vault's balance | Once per day |
 | Collect a loan instalment | Scheduler | Amount and date, from the loan, under the borrower's mandate; a failed collection sets the loan's status and loss allowance | Once per instalment |
 | Pay a standing order | Scheduler | Payee, amount and date, from the mandate | Once per due date |
-| Close the day | Scheduler | The next business date | Forward only, one day at a time |
+| Close the day | Scheduler | The business day, from block time | Once per day; a jump of several days closes each in turn |
 
 ### Reserve, cash and infrastructure
 
