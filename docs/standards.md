@@ -2,7 +2,7 @@
 
 The rule: adopt a standard where it is widely used and replaces code that would otherwise be written here. Write only bank-specific logic.
 
-OpenZeppelin Contracts is the single base (v5.7.0 at the time of writing, MIT licence), with a few pieces from the OpenZeppelin community library. The contracts named below were read in source to confirm what they do, except where marked "not yet read".
+OpenZeppelin Contracts is the single base (pinned at v5.7.0, MIT licence), with a few pieces from the OpenZeppelin community library (pinned at commit `2add94e`, which builds against v5.7.0). The contracts named below were read in source to confirm what they do, except where marked "not yet read".
 
 ## Used
 
@@ -125,7 +125,7 @@ Not in scope; recorded so the core does not rule it out. The design and the appr
 |---|---|
 | `AccessManager`, `TimelockController`, `ERC20` and its main extensions, `ERC4626`, `EIP712`, `SignatureChecker`, `Pausable` | Main library, long established |
 | `Account`, `MultiSignerERC7913`, `SignerWebAuthn`, `ERC20TransferAuthorization`, `RateLimiter` | Main library, recent additions |
-| `ERC20Collateral`, `ERC20uRWA` with `ERC20Freezable` and `ERC20Restricted`, `RoleAccount`, `SignerAccessManaged` | Community library: less reviewed, may change, to be pinned by commit |
+| `ERC20Collateral`, `ERC20uRWA` with `ERC20Freezable` and `ERC20Restricted`, `RoleAccount`, `SignerAccessManaged` | Community library: less reviewed, may change; pinned by commit, with [compatibility tests](../test/compat/Spike.t.sol) to rerun on any bump |
 
 `ERC20Collateral` compares supply with the reported figure at exactly 100% and takes its freshness window at deployment. The buffer is handled by what the reporting function returns; making the window a governance setting needs a small override.
 

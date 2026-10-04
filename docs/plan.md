@@ -152,13 +152,13 @@ The production analogue is banks settling with each other on one shared ledger, 
 
 ## Open questions
 
-1. **Chain compatibility** of the account and passkey contracts has not been tested on the local chain or Base Sepolia. The token extension uses transient storage, so the chain must run the Cancun rules or later; both do.
-2. **OpenZeppelin community library versioning.** It has no tagged release that could be found, so it would be pinned by commit.
-3. **Development toolchain.** Hardhat is the working assumption; Foundry is not installed on the development machine.
+1. **Chain compatibility.** Tested on the local chain: the deposit token's base, the multi-signer customer account, the role-controlled bank account and the recovery module build for the Cancun rules and pass the [compatibility tests](../test/compat/Spike.t.sol). Cancun is the floor: OpenZeppelin itself uses the `mcopy` instruction, beside the token extension's transient storage, and a Shanghai build fails. Still open: passkey signers, and the same tests against Base Sepolia.
+2. **OpenZeppelin community library versioning.** Resolved. Pinned to commit `2add94e` as a git dependency. That commit builds against OpenZeppelin Contracts v5.7.0 exactly, which is pinned beside it. v5.7.0 is published under npm's `dev` tag, not `latest`, so it has to be asked for by version.
+3. **Development toolchain.** Resolved. Hardhat 3 with pnpm. Contract tests are written in Solidity with forge-std, which Hardhat 3 runs itself, so Foundry is not needed. TypeScript tests remain available for the services.
 4. **A stablecoin beside deposits.** Interest is paid on deposits under banking rules, not on the stablecoin. Whether the HKMA would accept both from one issuer is a legal question left open. See [HKMA mapping](hkma-mapping.md).
 5. **Anti-money-laundering guideline.** Not read. Needed only if the compliance agent's rules should be faithful.
 6. **Freezes on savings shares.** `ERC20uRWA` has been read and fits the two tokens. Whether it combines cleanly with `ERC4626` for the savings shares has not been checked. See [standards](standards.md#tokens).
-7. **Recovery hook on the account.** Whether the account contract can admit one outside module to change signers, and nothing else, without a custom fork.
+7. **Recovery hook on the account.** Resolved without a fork. `MultiSignerERC7913` leaves the public signer functions to the account built on it, so the account opens them to itself and to one recovery module fixed at deployment. The module has no other way in: it cannot execute calls through the account or move its tokens. Covered by the compatibility tests.
 8. **General ledger shape.** A first [chart of accounts](architecture.md#chart-of-accounts) is drafted. Whether entries are stored or only emitted as events with running balances kept.
 9. **Ratio calibration.** Minimum capital and liquidity ratios that make the lending-stopped and run scenarios reachable in a short demo.
 10. **Banking rules.** The capital, liquidity and exposure rules and the HKMA's guidance on tokenised deposits have been read, and the banking side of the [HKMA mapping](hkma-mapping.md#banking-side) cites them. Still open: whether deposit protection covers tokenised deposits, on which neither the HKMA nor the Deposit Protection Board has said anything, and whether a deposit token on a public chain would be accepted at all, since the HKMA's guidance allows it only with compensating controls and its material on Hong Kong's live tokenised deposits assumes bank-run or permissioned platforms.
