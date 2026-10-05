@@ -11,7 +11,7 @@ OpenZeppelin Contracts is the single base (pinned at v5.7.0, MIT licence), with 
 | Need | Standard or contract | Library | Notes |
 |---|---|---|---|
 | Role required per function | `AccessManager`, `AccessManaged` | Main | Roles are numbers scoped per contract function, each with its own admin and optional delays |
-| Branch scoping | `AccessManager` roles | Main | "Teller at branch 1" is its own role; a branch's role admin grants only within the branch |
+| Branch scoping | `AccessManager` roles | Main | "Teller at branch 1" is its own role; a branch manager grants only their own branch's roles, through the staff roles module. See [roles](roles.md#access-manager-roles). |
 | Time lock on high-risk changes | `TimelockController` | Main | Sits behind the officers' multi-signer account |
 | Immediate stop | `Pausable`, `ERC20Pausable` | Main | |
 

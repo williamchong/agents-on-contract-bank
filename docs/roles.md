@@ -30,7 +30,7 @@ Tentative. The role list and the permission matrix are the specification the con
 | **Vault custodian** | Issue cash to teller drawers and the ATM, count it, bank surplus cash to the settlement account, under dual control | Script |
 | **Account opening officer** | Onboard customers, enrol their first device and card, recover accounts, with a second check | Script |
 | **Finance** | Reconcile the general ledger against clearing and custodian statements and cash counts, prepare the balance sheet and the reserve statement | Script |
-| **IT security** | Enrol and retire ATMs and staff terminals, keep the key inventory, rotate compromised keys | Script |
+| **IT security** | Enrol and retire ATMs and staff terminals, keep the key inventory, rotate compromised keys, approve grants of branch roles | Script |
 | **Transaction monitoring** | Flag patterns for compliance | Script |
 | **External auditor** | Attest the reserve periodically, including a random day; check the ledger from the public chain | Script |
 | **ATM** | Take and dispense cash against a card authorisation, confirm or report each dispense | Script |
@@ -49,6 +49,43 @@ A second branch exists in the contracts as a role scope only, with no premises, 
 Six AI agents run by default: retail customer, teller, supervisor, back office, compliance, red team. Six more are switchable. Every role exists in the contracts whichever way it is played.
 
 The stablecoin manager is the named officer a bank must appoint when it holds a stablecoin licence.
+
+## Access manager roles
+
+Each role the contracts check is a number in the access manager. Contracts, tests and agent tools take the numbers from this table, so a role means the same everywhere.
+
+| ID | Role | Held by | Granted by |
+|---|---|---|---|
+| 0 | Access manager admin | Governance time lock | At deployment |
+| 1 | Governance | Governance time lock | At deployment |
+| 2 | Risk | Staff | Governance |
+| 3 | Treasury | Staff | Governance |
+| 4 | Finance | Staff | Governance |
+| 5 | Compliance | Staff | Governance |
+| 6 | Back office | Staff | Governance |
+| 7 | Support | Staff | Governance |
+| 8 | Credit officer | Staff | Governance |
+| 9 | IT security | Staff | Governance |
+| 10 | Internal audit | Staff | Governance |
+| 20 | ATM | Machine | IT security, with a supervisor's approval |
+| 21 | Scheduler | Machine | Governance |
+| 30 | Ledger: create and destroy deposit tokens | General ledger | Governance, at deployment or upgrade |
+| 31 | Bookkeeper: post entries | Operations, payments, savings and lending modules, and the lending guard | Governance, at deployment or upgrade |
+| 32 | Enforcer: force a transfer | Assisted operations, own-account transfer and dispute reversal modules | Governance, at deployment or upgrade |
+| 33 | Freezer: set frozen amounts | Hold register | Governance, at deployment or upgrade |
+| 34 | Issuer: create and destroy stablecoin | Conversion module | Governance, at deployment or upgrade |
+| 100 × branch + 1 | Teller | Staff | Branch manager of that branch, with IT security's approval |
+| 100 × branch + 2 | Supervisor | Staff | Branch manager of that branch, with IT security's approval |
+| 100 × branch + 3 | Branch manager | Staff | Governance |
+| 100 × branch + 4 | Vault custodian | Staff | Branch manager of that branch, with IT security's approval |
+| 100 × branch + 5 | Account opening officer | Staff | Branch manager of that branch, with IT security's approval |
+
+- **Branch scoping is in the number.** The teller at branch 1 is role 101 and at branch 2 is role 201, so an operation checks the role of the customer's branch. The red team holds role 201.
+- **The staff roles module is the admin of every staff and machine role.** It grants only as the last column says and revokes at once when the branch manager, risk or governance asks; revoking needs no second party and no wait. It refuses a grant to the grantor themselves, to a governance signer, or that would give one account both roles of a conflicting pair under [separation of duties](#separation-of-duties).
+- **Governance holds the admin role** to wire contracts to roles and to upgrade them. It grants staff roles through the staff roles module like anyone else, so the module's checks apply to it.
+- **No delays on roles.** Staff roles take effect when granted and end when revoked. Governance's wait is its own time lock.
+- **Internal audit's role opens no function.** Internal audit only reads; the role exists so the conflict check can see who holds it.
+- **No role.** Customers act by their own account's signature and are admitted by the allow-list. The recovery module is fixed in each customer account at deployment and checks the account opening officer's role itself. Partners act by a signature checked against their registered key, so the partner adapter, the clearing system and the custodian hold no role. The external auditor and the regulator only read.
 
 ## Limits
 
@@ -80,38 +117,48 @@ Cash opens split as 250,000 in the vault, 50,000 in the teller's drawer and 200,
 
 "Customer authorisation" is one of the three modes in the [architecture](architecture.md#customer-authorisation): own device, card and PIN, or paper. Limits are named as in [limits](#limits).
 
+"Enforced by" names what refuses the action on chain:
+
+- **Role**: the access manager checks the caller holds the [role](#access-manager-roles), at the customer's branch where the role is a branch role.
+- **Approval**: the module holds the operation until the approvers it needs have approved; each holds the approving role and differs from the maker and from each other.
+- **Ladder**: approval, with the number of approvers set by the [branch approval ladder](#branch-approval-ladder).
+- **Account signature**: the customer's account checks the signature of one of its devices or its card.
+- **Rate limiter**: the limit is counted per account and channel over a rolling day.
+- **Forced transfer path**: the module holds the enforcer role and moves only the customer's unfrozen balance, except dispute reversal, which takes what is frozen.
+- **Governance**: the multi-signature of governance signers, then the time lock.
+
 ### Customers and devices
 
-| Action | Initiated by | Customer authorisation | Second approval | Limit |
-|---|---|---|---|---|
-| Onboard customer, enrol first device and card | Account opening officer | In person | Supervisor | |
-| Add own device | Customer | Existing device | None | Device cap |
-| Recover an account whose devices and card are all lost | Account opening officer | In person | Supervisor | Signer list only; cannot move money |
-| Revoke device or card | Customer, support | | None | |
-| Lower own limits, restrict assisted service | Customer, support | Own device, or verified call | None | |
-| Raise own limits | Teller | In person | Supervisor | Highest app limit |
-| Freeze account, stop a pending payment | Support, compliance, supervisor | | None | |
-| Unfreeze account | Supervisor, compliance | | None | |
-| Block-list or remove from block-list | Compliance | | Governance to remove | |
+| Action | Initiated by | Customer authorisation | Second approval | Limit | Enforced by |
+|---|---|---|---|---|---|
+| Onboard customer, enrol first device and card | Account opening officer | In person | Supervisor | | Role, approval |
+| Add own device | Customer | Existing device | None | Device cap | Account signature; device cap in the account |
+| Recover an account whose devices and card are all lost | Account opening officer | In person | Supervisor | Signer list only; cannot move money | Recovery module: role, approval |
+| Revoke device or card | Customer, support | | None | | Account signature, or the support role through the recovery module, removal only |
+| Lower own limits, restrict assisted service | Customer, support | Own device, or verified call | None | | Account signature, or role |
+| Raise own limits | Teller | In person | Supervisor | Highest app limit | Role, approval |
+| Freeze account, stop a pending payment | Support, compliance, supervisor | | None | | Role; hold register |
+| Unfreeze account | Supervisor, compliance | | None | | Role; hold register |
+| Block-list or remove from block-list | Compliance | | Governance to remove | | Role; removal by governance |
 
 ### Money movement
 
-| Action | Initiated by | Customer authorisation | Second approval | Limit |
-|---|---|---|---|---|
-| Cash deposit | Teller, ATM | None | Compliance told above the cash report threshold | Drawer limit |
-| Cash withdrawal at ATM | ATM | Card and PIN | None | ATM limit |
-| Cash withdrawal at counter | Teller | Device, card or paper | Branch approval ladder | Drawer limit, then vault |
-| Transfer from own device | Customer | Own device | None | App limit, or lower if the customer set it |
-| Transfer via teller | Teller | Device, card or paper | Branch approval ladder | None |
-| Transfer between a customer's own accounts and products | Support | Verified call | None | Same customer on both sides |
-| Register payee | Customer, teller | Device, card or paper | Supervisor if on paper | From a device, takes effect after the payee waiting period |
-| Payment out from own device | Customer | Own device | Compliance clearance if flagged | App limit to a registered payee; unregistered payee limit to anyone else; settlement account must cover it |
-| Payment out via teller | Teller | Device, card or paper | Branch approval ladder, then compliance clearance if flagged | Settlement account must cover it |
-| Payment in | Clearing system, by a signed credit advice the adapter relays | None | Compliance clearance if flagged; frozen until then | Any payer; each reference once |
-| Set up or cancel a standing order | Customer, teller | Device, card or paper | Supervisor if on paper | Each payment within the mandate |
-| Convert deposit to stablecoin | Customer, teller | Device, card or paper | Supervisor if on paper | Mint guard; buffer must cover funds in transit; daily issuance cap |
-| Redeem stablecoin to deposit | Customer, teller | Device, card or paper | Supervisor if on paper | None |
-| Reverse a disputed operation | Back office | | Compliance | What is still in the recipient's account, including their savings |
+| Action | Initiated by | Customer authorisation | Second approval | Limit | Enforced by |
+|---|---|---|---|---|---|
+| Cash deposit | Teller, ATM | None | Compliance told above the cash report threshold | Drawer limit | Role; drawer limit in operations |
+| Cash withdrawal at ATM | ATM | Card and PIN | None | ATM limit | ATM role, card signature, one-use number, rate limiter |
+| Cash withdrawal at counter | Teller | Device, card or paper | Branch approval ladder | Drawer limit, then vault | Role, ladder |
+| Transfer from own device | Customer | Own device | None | App limit, or lower if the customer set it | Account signature, rate limiter |
+| Transfer via teller | Teller | Device, card or paper | Branch approval ladder | None | Role, ladder, forced transfer path |
+| Transfer between a customer's own accounts and products | Support | Verified call | None | Same customer on both sides | Role, same-customer check, forced transfer path |
+| Register payee | Customer, teller | Device, card or paper | Supervisor if on paper | From a device, takes effect after the payee waiting period | Account signature or role, approval; waiting period in the payee register |
+| Payment out from own device | Customer | Own device | Compliance clearance if flagged | App limit to a registered payee; unregistered payee limit to anyone else; settlement account must cover it | Account signature, rate limiter, payee register, compliance hold |
+| Payment out via teller | Teller | Device, card or paper | Branch approval ladder, then compliance clearance if flagged | Settlement account must cover it | Role, ladder, compliance hold |
+| Payment in | Clearing system, by a signed credit advice the adapter relays | None | Compliance clearance if flagged; frozen until then | Any payer; each reference once | Partner signature, unique reference; no role |
+| Set up or cancel a standing order | Customer, teller | Device, card or paper | Supervisor if on paper | Each payment within the mandate | Account signature or role, approval |
+| Convert deposit to stablecoin | Customer, teller | Device, card or paper | Supervisor if on paper | Mint guard; buffer must cover funds in transit; daily issuance cap | Account signature or role, approval; mint guard, rate limiter |
+| Redeem stablecoin to deposit | Customer, teller | Device, card or paper | Supervisor if on paper | None | Account signature or role, approval |
+| Reverse a disputed operation | Back office | | Compliance | What is still in the recipient's account, including their savings | Role, approval, forced transfer path |
 
 ### Branch approval ladder
 
@@ -125,17 +172,17 @@ There is no amount cap at a branch; the number of approvers grows with the amoun
 
 ### Products
 
-| Action | Initiated by | Customer authorisation | Second approval | Limit |
-|---|---|---|---|---|
-| Pay into or withdraw from a savings account | Customer, teller | Device, card or paper | Supervisor if on paper | |
-| Propose loan | Credit officer | Customer accepts | Supervisor | Per-customer and total lending caps, capital and liquidity minimums |
-| Loan write-off | Governance | | Multi-signature and time lock | Against the loss allowance; any shortfall charged to equity |
-| Propose savings and loan rates | Treasury | | Governance | |
-| Propose loss allowance rates | Risk | | Governance | |
+| Action | Initiated by | Customer authorisation | Second approval | Limit | Enforced by |
+|---|---|---|---|---|---|
+| Pay into or withdraw from a savings account | Customer, teller | Device, card or paper | Supervisor if on paper | | Account signature or role, approval |
+| Propose loan | Credit officer | Customer accepts | Supervisor | Per-customer and total lending caps, capital and liquidity minimums | Role, approval, lending guard |
+| Loan write-off | Governance | | Multi-signature and time lock | Against the loss allowance; any shortfall charged to equity | Governance |
+| Propose savings and loan rates | Treasury | | Governance | | Role, governance |
+| Propose loss allowance rates | Risk | | Governance | | Role, governance |
 
 ### Scheduled work
 
-The scheduler says when; the contracts decide what, to whom and how much. A trigger that arrives late catches up, and one that arrives twice does nothing.
+The scheduler says when; the contracts decide what, to whom and how much. A trigger that arrives late catches up, and one that arrives twice does nothing. Every trigger needs the scheduler role and carries no amount, party or date.
 
 | Action | Triggered by | Decided by the contracts | Runs |
 |---|---|---|---|
@@ -146,26 +193,27 @@ The scheduler says when; the contracts decide what, to whom and how much. A trig
 
 ### Reserve, cash and infrastructure
 
-| Action | Initiated by | Second approval | Limit |
-|---|---|---|---|
-| Issue cash to drawer or ATM | Vault custodian | Supervisor | |
-| Count cash and record the count | Vault custodian | Supervisor | |
-| Bank surplus cash to the settlement account | Vault custodian | Supervisor | |
-| Move funds between the settlement account and liquid securities | Treasury | Finance | Liquidity ratio |
-| Top up the reserve buffer | Treasury | Finance | |
-| Return reserve released by redemptions | Custodian, under a standing instruction | None | Up to the amount burned |
-| Withdraw excess reserve | Treasury | Governance | Above target only |
-| Reconcile, prepare the balance sheet and reserve statement | Finance | None | |
-| Enrol or retire ATM and terminals | IT security | Supervisor | |
-| Rotate a compromised key | IT security | Risk | |
-| Register or replace a partner's signing key | IT security | Governance | |
-| Revoke a compromised partner key | IT security | None; takes effect at once | Messages are refused until a new key is registered |
-| Pause | Risk | None | |
-| Resume | Governance | Multi-signature and time lock | |
-| Revoke a staff member's roles | Role admin for that branch, risk | None; takes effect at once | |
-| Grant staff roles | Role admin for that branch | Governance for control and assurance roles | |
-| Change limits, thresholds and the capital and liquidity ratios | Governance | Multi-signature and time lock | |
-| Deploy or upgrade contracts | Governance | Multi-signature and time lock | |
+| Action | Initiated by | Second approval | Limit | Enforced by |
+|---|---|---|---|---|
+| Issue cash to drawer or ATM | Vault custodian | Supervisor | | Role, approval |
+| Count cash and record the count | Vault custodian | Supervisor | | Role, approval |
+| Bank surplus cash to the settlement account | Vault custodian | Supervisor | | Role, approval |
+| Move funds between the settlement account and liquid securities | Treasury | Finance | Liquidity ratio | Role, approval |
+| Top up the reserve buffer | Treasury | Finance | | Role, approval |
+| Return reserve released by redemptions | Custodian, under a standing instruction | None | Up to the amount burned | Partner signature; no role |
+| Withdraw excess reserve | Treasury | Governance | Above target only | Role, governance |
+| Reconcile, prepare the balance sheet and reserve statement | Finance | None | | Role; partner signatures |
+| Enrol or retire ATM and terminals | IT security | Supervisor | | Staff roles module: role, approval |
+| Rotate a compromised key | IT security | Risk | | Role, approval |
+| Register or replace a partner's signing key | IT security | Governance | | Governance |
+| Revoke a compromised partner key | IT security | None; takes effect at once | Messages are refused until a new key is registered | Role |
+| Pause | Risk | None | | Role |
+| Resume | Governance | Multi-signature and time lock | | Governance |
+| Revoke a staff member's roles | Branch manager for their branch's roles; risk or governance for any staff role | None; takes effect at once | | Staff roles module |
+| Grant branch roles | Branch manager of that branch | IT security | Not to themselves; no conflicting pair | Staff roles module: role, approval, conflict check |
+| Grant control and assurance roles, and the branch manager role | Governance | Multi-signature and time lock | No conflicting pair | Governance; staff roles module conflict check |
+| Change limits, thresholds and the capital and liquidity ratios | Governance | Multi-signature and time lock | | Governance |
+| Deploy or upgrade contracts | Governance | Multi-signature and time lock | | Governance |
 
 ## Separation of duties
 
