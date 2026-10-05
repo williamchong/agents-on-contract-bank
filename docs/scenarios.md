@@ -90,6 +90,30 @@ The [five-minute pitch](plan.md#1-the-five-minute-pitch) as a preset. It runs th
 - **Beat 6 is online.** The tour runs on the local chain; beat 6 opens the public deployment and needs a connection. The first five run offline.
 - **The stablecoin is left out.** Its scenarios are a follow-up for an audience that asks, not part of the five minutes.
 
+## Opening balance sheet
+
+The seed every run starts from, in Hong Kong dollars. It is tuned so that the [financial stress](#financial-stress) scenarios reach their limits within a few actions while daily operation stays clear of them.
+
+| Assets | | Liabilities and equity | |
+|---|---|---|---|
+| Settlement account | 1,000,000 | Deposits | 12,300,000 |
+| Cash | 500,000 | Equity | 907,000 |
+| Liquid securities | 2,500,000 | | |
+| Loans | 9,300,000 | | |
+| Loan loss allowance | −93,000 | | |
+
+It opens at a capital ratio of 9.85% against a minimum of 8%, and a liquidity ratio of 32.5% against 25%. Tour beat 5 then runs:
+
+| Step | Capital | Liquidity | Outcome |
+|---|---|---|---|
+| Loans of 500,000, one by one | 9.29%, 8.79%, 8.34% | 31.3%, 30.1%, 29.0% | All three drawn |
+| A fourth loan of 500,000 | Would be 7.92% | | Refused, naming capital |
+| A loan of 300,000 | 8.08% | 28.4% | Drawn |
+| Ten customers pay out 150,000 each | Unchanged | 23.5% after six are paid | Four queue; lending is refused naming liquidity |
+| Treasury sells 600,000 of securities | Unchanged | Unchanged | The queue drains; liquidity ends at 19.8% |
+
+Lending stays stopped after the run until payments in or repayments lift liquidity back over its minimum.
+
 ## Coverage
 
 Every row of the [controls table](architecture.md#controls), and where it is shown.
