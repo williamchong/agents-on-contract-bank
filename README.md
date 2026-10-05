@@ -6,7 +6,7 @@ It is a portfolio project showing institutional web3 architecture: contracts tha
 
 ## Status
 
-Design stage. The repository holds the documentation and a toolchain spike: the pinned OpenZeppelin libraries, a few spike contracts, and tests that check the pieces the first working demo rests on. Run them with `pnpm install` and `pnpm check`.
+The documents milestone is done, and the working demo is next. The repository holds the documentation and a toolchain spike: the pinned OpenZeppelin libraries, a few spike contracts, and tests that check the pieces the first working demo rests on. Run them with `pnpm install` and `pnpm check`, and against Base Sepolia with `pnpm check:base-sepolia`.
 
 ## Documents
 
