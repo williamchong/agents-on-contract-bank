@@ -198,7 +198,7 @@ How a customer consents depends on the channel. Self-service is limited by amoun
 
 The branch is the highest-trust channel. Identity is checked in person and more than one member of staff is involved, so a customer at a counter can do anything, including what their own devices cannot.
 
-- **No cap, escalating approval.** A teller alone handles small amounts. Above a threshold a supervisor approves, above a higher one the branch manager as well, and compliance for the largest. A larger amount never means a refusal, only more people.
+- **No cap, escalating approval.** A teller alone handles small amounts. Above a threshold a supervisor approves, above a higher one the branch manager as well, and compliance for the largest. A larger amount never means a refusal, only more people. The steps are in the [branch approval ladder](roles.md#branch-approval-ladder).
 - **More than self-service.** The branch can recover an account with no devices left, raise the customer's own limits, register a payee on the spot, unfreeze and close.
 - **On by default.** Assisted service needs no opt-in. A customer may restrict it for their own account.
 - **Collectively, not individually.** No single member of staff is all-powerful; the branch as a whole is.
@@ -473,7 +473,7 @@ Payments run through a simulated clearing system in which the bank holds a settl
 
 | Control | Where enforced |
 |---|---|
-| Role required for each function | Access manager |
+| Role required for each function | Access manager, with the role numbers in [roles](roles.md#access-manager-roles) |
 | Branch scoping | Roles defined per branch; operations check the caller's branch |
 | The books balance | General ledger: deposit tokens are created and destroyed only with a balanced entry |
 | Lending within the capital and liquidity ratios | Lending guard in the general ledger |
@@ -489,7 +489,8 @@ Payments run through a simulated clearing system in which the bank holds a settl
 | Freezes and block-listing | Token, on the two monies and savings shares; a register of named holds sets each frozen amount |
 | Stablecoin redemption at par, at once | Conversion module; a held redemption is shown with its reason |
 | Immediate stop | Risk role can pause; resuming needs governance |
-| Immediate removal of a staff member's authority | A revoke-only path that needs no waiting period |
+| Immediate removal of a staff member's authority | The staff roles module revokes at once for the branch manager, risk or governance, with no waiting period |
+| Conflicting roles | The staff roles module refuses a grant that would give one account both roles of a [conflicting pair](roles.md#separation-of-duties), or any staff role to a governance signer |
 | High-risk changes: granting control roles, limits, ratios, loss allowance rates, partner keys, upgrades, withdrawal of excess reserve | Multi-signature of named officers, then a time lock |
 | Request checked before sending | Submission service simulates each signed request |
 

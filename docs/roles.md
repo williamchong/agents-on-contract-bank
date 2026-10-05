@@ -1,6 +1,6 @@
 # Roles
 
-Tentative. The role list and the permission matrix are the specification the contracts, agent tools and dashboard explanations are derived from, so they should be settled before code is written.
+The role list, the access manager's roles, the limits and the permission matrix are the specification the contracts, agent tools and dashboard explanations are derived from. A change to any of them is made here first.
 
 ## Three lines of defence
 
@@ -113,7 +113,7 @@ A rolling day is the rate limiter's window, keyed by account and channel. A cust
 
 Cash opens split as 250,000 in the vault, 50,000 in the teller's drawer and 200,000 in the ATM.
 
-## Draft permission matrix
+## Permission matrix
 
 "Customer authorisation" is one of the three modes in the [architecture](architecture.md#customer-authorisation): own device, card and PIN, or paper. Limits are named as in [limits](#limits).
 
@@ -217,26 +217,32 @@ The scheduler says when; the contracts decide what, to whom and how much. A trig
 
 ## Separation of duties
 
-No one person should be able to complete both sides of any of these pairs.
+No one person should be able to complete both sides of any of these pairs. Most are checked on chain: per operation, by the module that holds the operation, or at grant, by the staff roles module refusing to give one account both roles of a conflicting pair. Only what happens away from the chain is left to the bank's own procedures and to internal audit.
 
-| Conflict | Reason |
-|---|---|
-| Maker and approver of the same operation | Basic second-person control |
-| Taking a paper instruction and approving it | The customer gives no cryptographic consent, so at least two staff must agree, and more as the amount grows |
-| Onboarding a customer and transacting for them | Prevents fictitious accounts |
-| Recovering an account and transacting for it | A new signer enrolled by staff must not be used by the same staff |
-| Relaying a partner's message (adapter) and authorising it (the partner) | A relay must not be able to create money |
-| Triggering scheduled work and deciding its amounts | The scheduler's key says when, never how much or to whom |
-| Proposing a loan and approving it | Prevents self-approved lending, which here would create money |
-| Proposing rates (treasury) and approving them (governance) | Pricing is a business decision with a second look |
-| Managing liquid assets and the reserve (treasury) and reconciling them (finance) | The checker of the books must not control the assets |
-| Holding cash (vault custodian) and recording its count alone | Cash is an asset the chain cannot see |
-| Pausing (risk) and resuming (governance) | An incident stop should not be undone by the same hand |
-| Setting limits and operating under them | Limits must bind the people they apply to |
-| Enrolling a device (IT security) and using it to transact | Prevents rogue terminals |
-| Granting roles and holding them | No one person controls role management |
-| Handling a complaint and being its subject | Complaints go to staff not involved in the matter |
-| Any business role and internal audit | Assurance must be independent |
+| Conflict | Reason | Enforced by |
+|---|---|---|
+| Maker and approver of the same operation | Basic second-person control | On chain, per operation: approvers differ from the maker and from each other |
+| Taking a paper instruction and approving it | The customer gives no cryptographic consent, so at least two staff must agree, and more as the amount grows | On chain, per operation: every debit on paper needs an approver besides the teller |
+| Onboarding a customer and transacting for them | Prevents fictitious accounts | On chain, per operation: the officer who onboarded a customer is refused as maker or approver on their account |
+| Recovering an account and transacting for it | A new signer enrolled by staff must not be used by the same staff | On chain, per operation: the officer and approver of a recovery are refused as maker or approver on that account |
+| Relaying a partner's message (adapter) and authorising it (the partner) | A relay must not be able to create money | On chain: the adapter holds no role, and the partner's signature is checked |
+| Triggering scheduled work and deciding its amounts | The scheduler's key says when, never how much or to whom | On chain: a trigger carries no amount, party or date |
+| Proposing a loan and approving it | Prevents self-approved lending, which here would create money | On chain, per operation |
+| Proposing rates (treasury) and approving them (governance) | Pricing is a business decision with a second look | On chain: treasury proposes, and only governance applies |
+| Managing liquid assets and the reserve (treasury) and reconciling them (finance) | The checker of the books must not control the assets | On chain, at grant, and per operation: finance approves treasury's movements |
+| Holding cash (vault custodian) and recording its count alone | Cash is an asset the chain cannot see | Partly: a supervisor approves each count on chain; whether the cash is there is seen only by the two who count it |
+| Pausing (risk) and resuming (governance) | An incident stop should not be undone by the same hand | On chain: risk can pause, and only governance resumes |
+| Setting limits and operating under them | Limits must bind the people they apply to | On chain, at grant: no staff role goes to a governance signer |
+| Enrolling a device (IT security) and using it to transact | Prevents rogue terminals | On chain, at grant |
+| Granting roles and holding them | No one person controls role management | On chain, at grant: no one grants a role to themselves, and branch grants need IT security |
+| Handling a complaint and being its subject | Complaints go to staff not involved in the matter | Off chain: complaints are logged in the services and assigned away from the staff involved; internal audit samples them |
+| Any business role and internal audit | Assurance must be independent | On chain, at grant |
+
+The conflicting pairs the staff roles module refuses:
+
+- Treasury and finance.
+- IT security and any branch role, back office or support.
+- Internal audit and any other staff role.
 
 ## Agent design notes
 

@@ -139,5 +139,6 @@ Every row of the [controls table](architecture.md#controls), and where it is sho
 | Stablecoin redemption at par, at once | Stablecoin day; redemption surge |
 | Immediate stop | Pause and resume |
 | Immediate removal of a staff member's authority | Staff and device changes |
+| Conflicting roles | Left to tests |
 | High-risk changes | Pause and resume |
 | Request checked before sending | Every refusal in the story view is reported by the submission service |
