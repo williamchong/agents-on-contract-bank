@@ -6,7 +6,8 @@
   "scripts": {
     "build": "hardhat build",
     "test": "hardhat test",
-    "check": "hardhat test"
+    "check": "hardhat test",
+    "check:base-sepolia": "export BASE_SEPOLIA_RPC_URL=${BASE_SEPOLIA_RPC_URL:-https://sepolia.base.org} && hardhat test solidity --test-profile baseSepolia --chain-type op --grep-exclude invariant_ && hardhat run scripts/probe-chain.ts --network baseSepolia"
   },
   "devDependencies": {
     "forge-std": "github:foundry-rs/forge-std#v1.11.0",

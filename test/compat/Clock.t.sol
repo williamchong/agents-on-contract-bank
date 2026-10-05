@@ -102,7 +102,9 @@ contract ClockTest is Test {
 
     function test_Jump_ExpiresAuthorisation() public {
         SpikeDepositToken token = new SpikeDepositToken(address(manager));
-        (address alice, uint256 aliceKey) = makeAddrAndKey("alice");
+        // Not "alice": that well-known test key carries an EIP-7702 delegation on Base Sepolia, so
+        // its signature would be checked by the delegate's code, not as a plain key.
+        (address alice, uint256 aliceKey) = makeAddrAndKey("clock-alice");
         token.allowUser(alice);
         token.allowUser(bob);
         token.mint(alice, 100);
