@@ -35,7 +35,9 @@ contract SpikeDepositToken is ERC20, EIP712, ERC20TransferAuthorization, ERC20uR
         return super.setFrozenTokens(account, amount);
     }
 
+    /// @dev A forced transfer from the zero address would create money outside the ledger.
     function forcedTransfer(address from, address to, uint256 amount) public override restricted returns (bool) {
+        if (from == address(0)) revert ERC20InvalidSender(address(0));
         return super.forcedTransfer(from, to, amount);
     }
 

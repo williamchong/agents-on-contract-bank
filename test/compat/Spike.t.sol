@@ -145,6 +145,13 @@ contract SpikeTest is Test {
         token.forcedTransfer(address(customer), carol, 10);
     }
 
+    function test_ForcedTransfer_FromNothingRefused() public {
+        vm.prank(enforcer);
+        vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InvalidSender.selector, address(0)));
+        token.forcedTransfer(address(0), bob, 10);
+        assertEq(token.totalSupply(), 100);
+    }
+
     function test_ForcedTransfer_OnlyEnforcer() public {
         vm.prank(bob);
         vm.expectRevert(abi.encodeWithSelector(IAccessManaged.AccessManagedUnauthorized.selector, bob));
