@@ -142,7 +142,7 @@ flowchart LR
 
 **In the simulation**
 
-- The signer service stands in for every device's secure hardware: phones, cards, staff tokens and ATM modules. When the operator takes over a role, a real passkey in the browser signs instead.
+- The signer service stands in for every device's secure hardware: phones, cards, staff tokens and ATM modules. For a phone it returns a WebAuthn assertion in the same form a browser does, so when the operator takes over a role and a real passkey in the browser signs instead, nothing changes on chain.
 - The gateways run as one service with a route set per channel, on separate Docker networks per zone.
 
 ## Design rules
@@ -183,6 +183,8 @@ Staff always transact from their own account, never through a shared one. This k
 | Machine | ATM | Bank-managed hardware key |
 
 A multi-signer account treats its signers as equal, so limits do not depend on which device signed. They are set by channel. The contracts see who submitted the request (the account itself from the app, an ATM, or a teller) and apply a rate limit keyed by account and channel. A card signs only at a bank-controlled terminal, so the ATM and branch channels cover it.
+
+A customer account accepts only two kinds of device key: a passkey, checked as a WebAuthn assertion that shows the customer was present and verified, and a card's P-256 key. Neither the customer nor a recovery officer can register any other kind, so no one can slip in a key that accepts every signature.
 
 ### Customer authorisation
 

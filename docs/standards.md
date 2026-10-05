@@ -58,7 +58,7 @@ Withdrawals and outgoing payments use the same signed authorisation as transfers
 | Need | Standard or contract | Library | Notes |
 |---|---|---|---|
 | Account with several devices | `Account`, `MultiSignerERC7913` | Main | Mixed signer types with a threshold; covers corporate signing mandates. Signer changes are open to the account itself and to the recovery module. |
-| Passkey devices and chip cards | WebAuthn and P-256: `SignerWebAuthn`, `WebAuthn`, `P256` | Main | Includes a contract verifier, so no chain-level support is required |
+| Passkey devices and chip cards | WebAuthn and P-256: `ERC7913WebAuthnVerifier`, `ERC7913P256Verifier`, `WebAuthn`, `P256` | Main | Registered on the multi-signer account through the two verifiers, the only ones it accepts. User verification is required; synced passkeys are accepted; the requesting site is not checked. Uses the P-256 precompile where the chain has one, and a Solidity fallback otherwise. |
 | Signature checks for smart accounts | ERC-1271, ERC-7913: `SignatureChecker` | Main | Also checks partners' signatures on payment messages and statements, through `ERC7913P256Verifier` by default or `ERC7913RSAVerifier` |
 | Bank-owned accounts controlled by a role | `RoleAccount`, `SignerAccessManaged` | Community | Control follows role membership live; each signature names the individual |
 
@@ -124,7 +124,7 @@ Not in scope; recorded so the core does not rule it out. The design and the appr
 | Piece | Status |
 |---|---|
 | `AccessManager`, `TimelockController`, `ERC20` and its main extensions, `ERC4626`, `EIP712`, `SignatureChecker`, `Pausable` | Main library, long established |
-| `Account`, `MultiSignerERC7913`, `SignerWebAuthn`, `ERC20TransferAuthorization`, `RateLimiter` | Main library, recent additions |
+| `Account`, `MultiSignerERC7913`, `ERC7913WebAuthnVerifier`, `ERC20TransferAuthorization`, `RateLimiter` | Main library, recent additions |
 | `ERC20Collateral`, `ERC20uRWA` with `ERC20Freezable` and `ERC20Restricted`, `RoleAccount`, `SignerAccessManaged` | Community library: less reviewed, may change; pinned by commit, with [compatibility tests](../test/compat/Spike.t.sol) to rerun on any bump |
 
 `ERC20Collateral` compares supply with the reported figure at exactly 100% and takes its freshness window at deployment. The buffer is handled by what the reporting function returns; making the window a governance setting needs a small override.
