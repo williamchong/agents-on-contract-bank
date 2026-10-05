@@ -50,20 +50,46 @@ Six AI agents run by default: retail customer, teller, supervisor, back office, 
 
 The stablecoin manager is the named officer a bank must appoint when it holds a stablecoin licence.
 
+## Limits
+
+Every amount and waiting period the matrix below refers to, in Hong Kong dollars. Most are demo values sized against the [opening balance sheet](scenarios.md#opening-balance-sheet), so that the scenarios meet them within a few actions and daily operation stays clear of them. Governance changes any of them through its multi-signature and time lock.
+
+| Limit | Value | Applies to | Basis |
+|---|---|---|---|
+| App limit | 10,000 per rolling day | Transfers and payments out from the customer's own device, counted together per account | Demo value |
+| Unregistered payee limit | 2,000 per rolling day | Payments out from the customer's own device to anyone not on their payee list, within the app limit | Demo value |
+| Highest app limit | 200,000 per rolling day | The most a branch can raise a customer's app limit to | Demo value; self-service stays bounded while the branch does not |
+| ATM limit | 5,000 per rolling day | Cash withdrawals at ATMs per account | Demo value |
+| Device cap | 5 | Devices and cards on one customer account together | Demo value |
+| Payee waiting period | 24 hours locally, 10 minutes on Base Sepolia | A payee registered from a device; one registered at a branch applies at once | Demo value |
+| Branch approval ladder | Steps at 50,000 and 500,000 | Debits through a teller; see [the ladder](#branch-approval-ladder) | Demo value |
+| Drawer limit | 100,000 | Cash in one teller's drawer; above it the vault custodian moves cash to the vault | Demo value |
+| Cash report threshold | 100,000 in one deposit | Cash paid in at a counter; above it compliance is told | Demo value; the anti-money-laundering guideline is not read, see [open question 5](plan.md#open-questions) |
+| Per-customer lending cap | 600,000 | Loans outstanding to one customer | Demo value, well above the 25% of capital the large exposure rule allows, so that [tour beat 5](scenarios.md#guided-tour) is stopped by the capital ratio. See [HKMA mapping](hkma-mapping.md#prudential-rules). |
+| Total lending cap | 12,000,000 | Loans outstanding in all | Demo value, above the 11,100,000 tour beat 5 reaches, so the capital ratio is what stops it |
+| Capital and liquidity minimums | 8% and 25% | Every loan drawdown | Real Hong Kong figures on simplified ratios; see [open question 9](plan.md#open-questions) |
+| Daily issuance cap | 1,000,000 per rolling day | Stablecoin issued in all | Demo value |
+| Governance signatures | 3 of the 4 governance signers | Every governance decision | Demo value |
+| Governance time lock | 2 days locally, 10 minutes on Base Sepolia | Every governance decision, after its signatures | Demo value; Base Sepolia's clock cannot be moved, see [open question 11](plan.md#open-questions) |
+
+A rolling day is the rate limiter's window, keyed by account and channel. A customer can set any of their own limits lower from their device; only a branch can raise them again.
+
+Cash opens split as 250,000 in the vault, 50,000 in the teller's drawer and 200,000 in the ATM.
+
 ## Draft permission matrix
 
-Amounts are placeholders in HKD to show the shape, not proposed values. "Customer authorisation" is one of the three modes in the [architecture](architecture.md#customer-authorisation): own device, card and PIN, or paper.
+"Customer authorisation" is one of the three modes in the [architecture](architecture.md#customer-authorisation): own device, card and PIN, or paper. Limits are named as in [limits](#limits).
 
 ### Customers and devices
 
 | Action | Initiated by | Customer authorisation | Second approval | Limit |
 |---|---|---|---|---|
 | Onboard customer, enrol first device and card | Account opening officer | In person | Supervisor | |
-| Add own device | Customer | Existing device | None | Device cap per account |
+| Add own device | Customer | Existing device | None | Device cap |
 | Recover an account whose devices and card are all lost | Account opening officer | In person | Supervisor | Signer list only; cannot move money |
 | Revoke device or card | Customer, support | | None | |
 | Lower own limits, restrict assisted service | Customer, support | Own device, or verified call | None | |
-| Raise own limits | Teller | In person | Supervisor | |
+| Raise own limits | Teller | In person | Supervisor | Highest app limit |
 | Freeze account, stop a pending payment | Support, compliance, supervisor | | None | |
 | Unfreeze account | Supervisor, compliance | | None | |
 | Block-list or remove from block-list | Compliance | | Governance to remove | |
@@ -72,14 +98,14 @@ Amounts are placeholders in HKD to show the shape, not proposed values. "Custome
 
 | Action | Initiated by | Customer authorisation | Second approval | Limit |
 |---|---|---|---|---|
-| Cash deposit | Teller, ATM | None | Compliance report above a cash threshold | Drawer limit |
-| Cash withdrawal at ATM | ATM | Card and PIN | None | 5,000 per day |
+| Cash deposit | Teller, ATM | None | Compliance told above the cash report threshold | Drawer limit |
+| Cash withdrawal at ATM | ATM | Card and PIN | None | ATM limit |
 | Cash withdrawal at counter | Teller | Device, card or paper | Branch approval ladder | Drawer limit, then vault |
-| Transfer from own device | Customer | Own device | None | 10,000 per day, or lower if the customer set it |
+| Transfer from own device | Customer | Own device | None | App limit, or lower if the customer set it |
 | Transfer via teller | Teller | Device, card or paper | Branch approval ladder | None |
 | Transfer between a customer's own accounts and products | Support | Verified call | None | Same customer on both sides |
-| Register payee | Customer, teller | Device, card or paper | Supervisor if on paper | From a device, takes effect after a waiting period |
-| Payment out from own device | Customer | Own device | Compliance clearance if flagged | App limit to a registered payee; a small limit to anyone else; settlement account must cover it |
+| Register payee | Customer, teller | Device, card or paper | Supervisor if on paper | From a device, takes effect after the payee waiting period |
+| Payment out from own device | Customer | Own device | Compliance clearance if flagged | App limit to a registered payee; unregistered payee limit to anyone else; settlement account must cover it |
 | Payment out via teller | Teller | Device, card or paper | Branch approval ladder, then compliance clearance if flagged | Settlement account must cover it |
 | Payment in | Clearing system, by a signed credit advice the adapter relays | None | Compliance clearance if flagged; frozen until then | Any payer; each reference once |
 | Set up or cancel a standing order | Customer, teller | Device, card or paper | Supervisor if on paper | Each payment within the mandate |
@@ -87,7 +113,9 @@ Amounts are placeholders in HKD to show the shape, not proposed values. "Custome
 | Redeem stablecoin to deposit | Customer, teller | Device, card or paper | Supervisor if on paper | None |
 | Reverse a disputed operation | Back office | | Compliance | What is still in the recipient's account, including their savings |
 
-**Branch approval ladder.** There is no amount cap at a branch; the number of approvers grows with the amount.
+### Branch approval ladder
+
+There is no amount cap at a branch; the number of approvers grows with the amount.
 
 | Amount | Device or card | Paper |
 |---|---|---|
@@ -100,7 +128,7 @@ Amounts are placeholders in HKD to show the shape, not proposed values. "Custome
 | Action | Initiated by | Customer authorisation | Second approval | Limit |
 |---|---|---|---|---|
 | Pay into or withdraw from a savings account | Customer, teller | Device, card or paper | Supervisor if on paper | |
-| Propose loan | Credit officer | Customer accepts | Supervisor | Per-customer cap, total lending cap, capital and liquidity ratios |
+| Propose loan | Credit officer | Customer accepts | Supervisor | Per-customer and total lending caps, capital and liquidity minimums |
 | Loan write-off | Governance | | Multi-signature and time lock | Against the loss allowance; any shortfall charged to equity |
 | Propose savings and loan rates | Treasury | | Governance | |
 | Propose loss allowance rates | Risk | | Governance | |

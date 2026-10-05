@@ -109,10 +109,12 @@ It opens at a capital ratio of 9.85% against a minimum of 8%, and a liquidity ra
 | Loans of 500,000, one by one | 9.29%, 8.79%, 8.34% | 31.3%, 30.1%, 29.0% | All three drawn |
 | A fourth loan of 500,000 | Would be 7.92% | | Refused, naming capital |
 | A loan of 300,000 | 8.08% | 28.4% | Drawn |
-| Ten customers pay out 150,000 each | Unchanged | 23.5% after six are paid | Four queue; lending is refused naming liquidity |
+| Ten customers pay out 150,000 each at the counter | Unchanged | 23.5% after six are paid | Four queue; lending is refused naming liquidity |
 | Treasury sells 600,000 of securities | Unchanged | Unchanged | The queue drains; liquidity ends at 19.8% |
 
 Lending stays stopped after the run until payments in or repayments lift liquidity back over its minimum.
+
+The run's payments go through a teller on each customer's own device, each approved by the supervisor as the [branch approval ladder](roles.md#branch-approval-ladder) requires at 150,000, because the app limit would refuse them first. Each loan is to a different borrower, within the 600,000 per-customer cap, and the total lending cap of 12,000,000 is above the 11,100,000 the beat reaches, so in both cases the ratio, not a [limit](roles.md#limits), is what stops the bank.
 
 ## Coverage
 
