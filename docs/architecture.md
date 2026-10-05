@@ -232,7 +232,7 @@ A forced transfer cuts through a freeze, by design of the standard. Dispute reve
 
 A freeze and an operational hold are different things. A freeze is placed by compliance, support or a dispute and stays in the customer's account; each is a named hold, and the frozen amount is their sum. An ATM withdrawal or a payment awaiting release instead moves the amount to a bank-owned pending account, under the customer's own authorisation.
 
-Freezes and forced transfers reach savings shares as well as the two tokens, so money cannot be put beyond a hold by moving it into the savings account.
+Freezes and forced transfers reach savings shares as well as the two tokens, so money cannot be put beyond a hold by moving it into the savings account. A hold freezes the current account first and savings for the rest, counting the shares that withdrawing the remainder would take; interest only adds to their value. Money is taken from savings by forcing the shares to a bank-owned account and withdrawing them there.
 
 Fees, loan instalments and standing orders are not forced. They are collected under a mandate the customer signed.
 
@@ -363,7 +363,7 @@ A separate, optional product. A customer converts part of their deposit balance 
 
 Interest is paid on deposits under banking rules, never on the stablecoin. Whether a regulator would accept both from the same issuer is a legal question this project does not answer; see the [HKMA mapping](hkma-mapping.md#how-this-design-differs-from-the-regimes-assumptions).
 
-The savings share is a savings instrument, not a second payment money. Its value rises as interest accrues, so it is not used to pay people; a customer withdraws to deposit tokens to pay.
+The savings share is a savings instrument, not a second payment money. Its value rises as interest accrues, so it is not used to pay people; a customer withdraws to deposit tokens to pay. Shares cannot be transferred between holders at all, only paid in, withdrawn or moved by a forced transfer.
 
 ## Key flows
 

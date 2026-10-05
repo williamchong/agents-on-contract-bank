@@ -35,9 +35,10 @@ What reading `ERC20uRWA` settled:
 - **The recipient is still checked.** A forced transfer to an account that is not allow-listed fails.
 - **One frozen amount per account, overwritten on each call.** It cannot tell a compliance hold from a dispute hold, and two staff setting it at once would race. A small register of named holds, written here, sets the token's figure to their sum.
 - **Operational holds are not freezes.** An ATM withdrawal or a pending payment moves the amount to a bank-owned pending account under the customer's own authorisation, and returns it on failure.
+- **A forced transfer from the zero address creates tokens**, because it takes the mint path. Both tokens and the savings shares refuse it, so only the ledger creates money.
 - **Mint and burn are not provided** and must apply the same checks. Burning from a frozen or blocked account goes through a forced transfer to a bank-owned account first.
 - **It needs transient storage**, so the chain must run the Cancun rules or later and Solidity 0.8.26 or later.
-- **Savings shares need the same treatment**, or a freeze or dispute reversal could not reach money a customer has moved into the savings account. The savings vault's share token takes the same extension.
+- **Savings shares need the same treatment**, or a freeze or dispute reversal could not reach money a customer has moved into the savings account. The savings vault's share token takes the same extension, with the deposit token's allow-list. A hold in money freezes the shares that withdrawing it would take, and the vault's withdrawal limits count only unfrozen shares.
 
 | Token | What may create it | Standard or contract | Library | Notes |
 |---|---|---|---|---|
@@ -50,7 +51,7 @@ Withdrawals and outgoing payments use the same signed authorisation as transfers
 
 | Need | Standard or contract | Library | Notes |
 |---|---|---|---|
-| Savings account | ERC-4626: `ERC4626` | Main | A vault of deposit tokens; shares grow in value as the bank pays interest in |
+| Savings account | ERC-4626: `ERC4626` | Main | A vault of deposit tokens; shares grow in value as the bank pays interest in. Shares are not transferable between holders. A share offset of six decimals guards against a first saver inflating the share price. |
 | Standing orders | A mandate signed with EIP-712, checked on each payment | Written here | No widely used standard fits a recurring payment under a mandate |
 
 ### Accounts and signatures

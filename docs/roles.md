@@ -85,7 +85,7 @@ Amounts are placeholders in HKD to show the shape, not proposed values. "Custome
 | Set up or cancel a standing order | Customer, teller | Device, card or paper | Supervisor if on paper | Each payment within the mandate |
 | Convert deposit to stablecoin | Customer, teller | Device, card or paper | Supervisor if on paper | Mint guard; buffer must cover funds in transit; daily issuance cap |
 | Redeem stablecoin to deposit | Customer, teller | Device, card or paper | Supervisor if on paper | None |
-| Reverse a disputed operation | Back office | | Compliance | What is still in the recipient's account |
+| Reverse a disputed operation | Back office | | Compliance | What is still in the recipient's account, including their savings |
 
 **Branch approval ladder.** There is no amount cap at a branch; the number of approvers grows with the amount.
 
