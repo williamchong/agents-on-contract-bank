@@ -83,6 +83,8 @@ A milestone is done when its [daily routines](scenarios.md#daily-operation) run 
 
 Milestone 2 is the first point at which the project is demonstrable on its own: the [guided tour](scenarios.md#guided-tour) runs its first four beats. Milestone 3 is the first at which it behaves like a bank and not a payment account, because lending is what creates money.
 
+Milestone 2 is built in this order, each piece on the ones before it: the core of role numbers, deposit token and general ledger; the staff roles module and the hold register; partner keys, payments and attested figures; cash operations with the ATM hold; assisted operations and second-person approval; account recovery and dispute reversal; scheduled work. The core is done: the deposit token counts in cents, the contracts are not upgradeable proxies, and the opening balance sheet is the ledger's first entry, posted by governance.
+
 ## Out of scope
 
 - More than one branch, currency or ATM in the default demo. The design supports more.

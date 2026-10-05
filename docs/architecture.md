@@ -554,8 +554,8 @@ Presets are scripted sequences of the same commands, so a run can be replayed id
 ## Repository layout (planned)
 
 ```
-contracts/   core, modules, governance
-test/        one file per module
+contracts/   core, modules, governance; spike holds the contracts the open questions were tested on
+test/        one file per module; compat holds the open questions' tests
 services/    signer, gateways, submission, indexer, scheduler, control,
              simulators, personal data store
 agents/      personas, tool definitions, scripted actors
