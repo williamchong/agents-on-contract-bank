@@ -7,10 +7,20 @@ import {IAccessManaged} from "@openzeppelin/contracts/access/manager/IAccessMana
 import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {ERC20Freezable} from "@openzeppelin/community-contracts/contracts/token/ERC20/extensions/ERC20Freezable.sol";
+import {ERC20Restricted} from "@openzeppelin/community-contracts/contracts/token/ERC20/extensions/ERC20Restricted.sol";
 import {IERC7943Fungible} from "@openzeppelin/community-contracts/contracts/interfaces/IERC7943.sol";
 import {SpikeDepositToken} from "../../contracts/spike/SpikeDepositToken.sol";
 import {SpikeLedger, SpikeLedgerEvents} from "../../contracts/spike/SpikeLedger.sol";
 import {SpikeSavings} from "../../contracts/spike/SpikeSavings.sol";
+
+/// @dev The deposit token with a way to block a customer, which the spike token does not expose.
+contract BlockableDepositToken is SpikeDepositToken {
+    constructor(address manager) SpikeDepositToken(manager) {}
+
+    function blockUser(address account) external {
+        _blockUser(account);
+    }
+}
 
 /// @dev Checks that freezes and forced transfers reach money a customer has moved into the savings
 /// account, that interest paid in through the ledger keeps the books balanced, and that the vault
@@ -21,7 +31,7 @@ contract SavingsTest is Test {
     uint64 constant ENFORCER = 3;
 
     AccessManager manager;
-    SpikeDepositToken token;
+    BlockableDepositToken token;
     SpikeLedgerEvents ledger;
     SpikeSavings savings;
 
@@ -33,7 +43,7 @@ contract SavingsTest is Test {
 
     function setUp() public {
         manager = new AccessManager(address(this));
-        token = new SpikeDepositToken(address(manager));
+        token = new BlockableDepositToken(address(manager));
         ledger = new SpikeLedgerEvents(address(manager), token);
         savings = new SpikeSavings(address(manager), token);
 
@@ -187,6 +197,24 @@ contract SavingsTest is Test {
         vm.prank(alice);
         savings.deposit(100, carol);
         assertGt(savings.balanceOf(carol), 0);
+    }
+
+    function test_Blocked_CannotPayInOrWithdraw() public {
+        uint256 shares = _payIn(alice, 400);
+        token.blockUser(alice);
+        assertEq(savings.maxRedeem(alice), 0);
+        assertEq(savings.maxWithdraw(alice), 0);
+        assertEq(savings.maxDeposit(alice), 0);
+
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(ERC4626.ERC4626ExceededMaxRedeem.selector, alice, shares, 0));
+        savings.redeem(shares, alice, alice);
+
+        vm.startPrank(alice);
+        token.approve(address(savings), 100);
+        vm.expectRevert(abi.encodeWithSelector(ERC20Restricted.ERC20UserRestricted.selector, alice));
+        savings.deposit(100, bob);
+        vm.stopPrank();
     }
 
     function test_Vault_CannotHoldItsOwnShares() public {
