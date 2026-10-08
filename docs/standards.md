@@ -62,6 +62,7 @@ Withdrawals and outgoing payments use the same signed authorisation as transfers
 | Passkey devices and chip cards | WebAuthn and P-256: `ERC7913WebAuthnVerifier`, `ERC7913P256Verifier`, `WebAuthn`, `P256` | Main | Registered on the multi-signer account through the two verifiers, the only ones it accepts. User verification is required; synced passkeys are accepted; the requesting site is not checked. Uses the P-256 precompile where the chain has one, and a Solidity fallback otherwise. |
 | Signature checks for smart accounts | ERC-1271, ERC-7913: `SignatureChecker` | Main | Also checks partners' signatures on payment messages and statements, through `ERC7913P256Verifier` by default or `ERC7913RSAVerifier` |
 | Bank-owned accounts controlled by a role | `RoleAccount`, `SignerAccessManaged` | Community | Control follows role membership live; each signature names the individual |
+| An account's own calls, relayed | ERC-7821 batch, signed with EIP-712 | Written here | The library's `ERC7821` has no field for a signature, so the multi-signer account takes a batch with its signers' signature over the batch and a one-use number, and the submission service relays it. Staff and the governance officers act this way. |
 
 Accounts built on `Account` are compatible with ERC-4337, though the bundler flow is not used here.
 

@@ -74,6 +74,7 @@ Each role the contracts check is a number in the access manager. Contracts, test
 | 32 | Enforcer: force a transfer | Assisted operations, own-account transfer and dispute reversal modules | Governance, at deployment or upgrade |
 | 33 | Freezer: set frozen amounts | Hold register | Governance, at deployment or upgrade |
 | 34 | Issuer: create and destroy stablecoin | Conversion module | Governance, at deployment or upgrade |
+| 35 | Staff admin: grant and revoke staff and machine roles | Staff roles module | Governance, at deployment or upgrade |
 | 100 × branch + 1 | Teller | Staff | Branch manager of that branch, with IT security's approval |
 | 100 × branch + 2 | Supervisor | Staff | Branch manager of that branch, with IT security's approval |
 | 100 × branch + 3 | Branch manager | Staff | Governance |
@@ -82,7 +83,11 @@ Each role the contracts check is a number in the access manager. Contracts, test
 
 - **Branch scoping is in the number.** The teller at branch 1 is role 101 and at branch 2 is role 201, so an operation checks the role of the customer's branch. The red team holds role 201.
 - **The staff roles module is the admin of every staff and machine role.** It grants only as the last column says and revokes at once when the branch manager, risk or governance asks; revoking needs no second party and no wait. It refuses a grant to the grantor themselves, to a governance signer, or that would give one account both roles of a conflicting pair under [separation of duties](#separation-of-duties).
-- **Governance holds the admin role** to wire contracts to roles and to upgrade them. It grants staff roles through the staff roles module like anyone else, so the module's checks apply to it.
+  - **Who grants.** Governance grants its roles at once. A branch manager proposes a grant of their own branch's roles and IT security approves it. IT security proposes enrolling or retiring an ATM and a supervisor approves it, naming the branch whose supervisor role they hold. The approver must differ from the maker, and the maker can cancel a proposal.
+  - **Who revokes.** A branch manager revokes their own branch's roles other than branch manager; risk and governance revoke any role the module administers, an ATM included, so a compromised machine is cut off without waiting for a supervisor.
+  - **Checked when the grant takes effect.** A proposal does not expire. Every check, the maker's own role included, runs again when it is approved, so a proposal cannot outlast a rule or a role that changed in the meantime.
+  - **A governance signer is a key.** Officers sign as keys on the governance account, and a staff member acts from their own multi-signer account, so the module refuses a staff role to an account that shares a signer key with the governance account. It cannot see one officer using a different key for their staff account, or a key added to either account after the grant; both are left to the bank's procedures and to internal audit.
+- **Governance holds the admin role** to wire contracts to roles and to upgrade them. Governance is a time lock whose only proposer is the officers' multi-signer account: three of the four governance signers' P-256 hardware keys sign a decision, the time lock holds it for its delay, and anyone may then carry it out. It grants staff roles through the staff roles module like anyone else, so the module's checks apply to it.
 - **No delays on roles.** Staff roles take effect when granted and end when revoked. Governance's wait is its own time lock.
 - **Internal audit's role opens no function.** Internal audit only reads; the role exists so the conflict check can see who holds it.
 - **No role.** Customers act by their own account's signature and are admitted by the allow-list. The recovery module is fixed in each customer account at deployment and checks the account opening officer's role itself. Partners act by a signature checked against their registered key, so the partner adapter, the clearing system and the custodian hold no role. The external auditor and the regulator only read.
@@ -232,7 +237,7 @@ No one person should be able to complete both sides of any of these pairs. Most 
 | Managing liquid assets and the reserve (treasury) and reconciling them (finance) | The checker of the books must not control the assets | On chain, at grant, and per operation: finance approves treasury's movements |
 | Holding cash (vault custodian) and recording its count alone | Cash is an asset the chain cannot see | Partly: a supervisor approves each count on chain; whether the cash is there is seen only by the two who count it |
 | Pausing (risk) and resuming (governance) | An incident stop should not be undone by the same hand | On chain: risk can pause, and only governance resumes |
-| Setting limits and operating under them | Limits must bind the people they apply to | On chain, at grant: no staff role goes to a governance signer |
+| Setting limits and operating under them | Limits must bind the people they apply to | On chain, at grant: no staff role goes to an account that shares a signer key with the governance account. The same officer under another key, or a key added after the grant, is left to internal audit |
 | Enrolling a device (IT security) and using it to transact | Prevents rogue terminals | On chain, at grant |
 | Granting roles and holding them | No one person controls role management | On chain, at grant: no one grants a role to themselves, and branch grants need IT security |
 | Handling a complaint and being its subject | Complaints go to staff not involved in the matter | Off chain: complaints are logged in the services and assigned away from the staff involved; internal audit samples them |
