@@ -2,6 +2,7 @@
 pragma solidity ^0.8.27;
 
 import {IAccessManaged} from "@openzeppelin/contracts/access/manager/IAccessManaged.sol";
+import {IAccessManager} from "@openzeppelin/contracts/access/manager/IAccessManager.sol";
 import {Roles} from "../../contracts/core/Roles.sol";
 import {DepositToken} from "../../contracts/core/DepositToken.sol";
 import {GeneralLedger} from "../../contracts/core/GeneralLedger.sol";
@@ -9,7 +10,8 @@ import {BankFixture} from "./BankFixture.sol";
 
 /// @dev Checks every restricted function is wired to the role docs/roles.md gives it, and that
 /// anyone without that role is refused. The expected roles are written out here, apart from the
-/// fixture's wiring, so a change to either that the other does not share fails.
+/// fixture's wiring, so a change to either that the other does not share fails. Also checks who
+/// administers each role: the staff roles module every staff and machine role, governance the rest.
 contract RolesTest is BankFixture {
     struct Wire {
         address target;
@@ -45,6 +47,36 @@ contract RolesTest is BankFixture {
         assertTrue(isLedger);
         (bool isGovernance, ) = manager.hasRole(Roles.LEDGER, address(this));
         assertFalse(isGovernance);
+    }
+
+    function test_StaffAndMachineRoles_AdministeredByTheModule() public view {
+        uint64[21] memory staff = [
+            uint64(2), 3, 4, 5, 6, 7, 8, 9, 10, 20, 21,
+            101, 102, 103, 104, 105, 201, 202, 203, 204, 205
+        ];
+        for (uint256 i = 0; i < staff.length; ++i) {
+            assertEq(manager.getRoleAdmin(staff[i]), Roles.STAFF_ADMIN, vm.toString(staff[i]));
+        }
+        (bool isModule, ) = manager.hasRole(Roles.STAFF_ADMIN, address(staffRoles));
+        (bool isGovernance, ) = manager.hasRole(Roles.STAFF_ADMIN, governance);
+        assertTrue(isModule);
+        assertFalse(isGovernance);
+    }
+
+    function test_GovernanceAndContractRoles_AdministeredByGovernance() public view {
+        uint64[7] memory governed = [uint64(1), 30, 31, 32, 33, 34, 35];
+        for (uint256 i = 0; i < governed.length; ++i) {
+            assertEq(manager.getRoleAdmin(governed[i]), Roles.ADMIN, vm.toString(governed[i]));
+        }
+    }
+
+    function test_GovernanceGrantsStaffOnlyThroughTheModule() public {
+        address teller = makeAddr("teller");
+        vm.prank(governance);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessManager.AccessManagerUnauthorizedAccount.selector, governance, Roles.STAFF_ADMIN)
+        );
+        manager.grantRole(Roles.atBranch(1, Roles.TELLER), teller, 0);
     }
 
     function test_BranchRoles_ScopedInTheNumber() public pure {
