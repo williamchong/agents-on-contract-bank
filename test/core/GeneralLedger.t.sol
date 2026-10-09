@@ -31,10 +31,11 @@ contract GeneralLedgerTest is BankFixture {
 
     function setUp() public override {
         super.setUp();
-        manager.grantRole(Roles.BOOKKEEPER, address(this), 0);
-
         handler = new LedgerHandler(ledger, alice, bob);
+        vm.startPrank(governance);
+        manager.grantRole(Roles.BOOKKEEPER, address(this), 0);
         manager.grantRole(Roles.BOOKKEEPER, address(handler), 0);
+        vm.stopPrank();
         targetContract(address(handler));
     }
 
@@ -58,6 +59,7 @@ contract GeneralLedgerTest is BankFixture {
     }
 
     function test_Opening_OnlyOnce() public {
+        vm.prank(governance);
         vm.expectRevert(GeneralLedger.OpeningNotFirst.selector);
         ledger.postOpening(new address[](0), new uint256[](0), new GeneralLedger.Line[](0), "again");
     }
@@ -69,6 +71,7 @@ contract GeneralLedgerTest is BankFixture {
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = 100;
 
+        vm.prank(governance);
         vm.expectRevert(abi.encodeWithSelector(GeneralLedger.UnbalancedEntry.selector, int256(-1)));
         fresh.postOpening(holders, amounts, _lines(GeneralLedger.Account.Cash, 99), "short");
         assertEq(fresh.entryCount(), 0);
@@ -81,12 +84,14 @@ contract GeneralLedgerTest is BankFixture {
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = 100;
 
+        vm.prank(governance);
         vm.expectRevert(abi.encodeWithSelector(ERC20Restricted.ERC20UserRestricted.selector, bob));
         fresh.postOpening(holders, amounts, _lines(GeneralLedger.Account.Cash, 100), "not admitted");
     }
 
     function test_Opening_HoldersMatchAmounts() public {
         GeneralLedger fresh = _freshLedger();
+        vm.prank(governance);
         vm.expectRevert(abi.encodeWithSelector(GeneralLedger.HoldersMismatch.selector, 1, 0));
         fresh.postOpening(new address[](1), new uint256[](0), new GeneralLedger.Line[](0), "mismatch");
     }
@@ -200,13 +205,15 @@ contract GeneralLedgerTest is BankFixture {
         return ledger.postWithMint(alice, amount, _lines(GeneralLedger.Account.Cash, int128(int256(amount))), "cash in");
     }
 
-    /// @dev A ledger not yet opened, on a token of its own, wired as the fixture wires the bank's.
+    /// @dev A ledger not yet opened, on a token of its own, wired by governance as the fixture wires the bank's.
     function _freshLedger() private returns (GeneralLedger fresh) {
         DepositToken freshToken = new DepositToken(address(manager));
         fresh = new GeneralLedger(address(manager), freshToken);
+        vm.startPrank(governance);
         _wire(address(freshToken), freshToken.mint.selector, Roles.LEDGER);
         manager.grantRole(Roles.LEDGER, address(fresh), 0);
         freshToken.allowUser(alice);
+        vm.stopPrank();
     }
 }
 

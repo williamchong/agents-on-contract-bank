@@ -22,14 +22,17 @@ contract DepositTokenTest is BankFixture {
 
     address enforcer = makeAddr("enforcer");
     address freezer = makeAddr("freezer");
-    address compliance = makeAddr("compliance");
+    address compliance;
     address carol = makeAddr("carol");
 
     function setUp() public override {
         super.setUp();
+        vm.startPrank(governance);
         manager.grantRole(Roles.ENFORCER, enforcer, 0);
         manager.grantRole(Roles.FREEZER, freezer, 0);
-        manager.grantRole(Roles.COMPLIANCE, compliance, 0);
+        vm.stopPrank();
+        compliance = _staff("compliance");
+        _grantStaff(compliance, Roles.COMPLIANCE);
     }
 
     function test_CountsInCents() public view {
@@ -68,6 +71,7 @@ contract DepositTokenTest is BankFixture {
     function test_BlockList_LiftedReadmits() public {
         vm.prank(compliance);
         token.blockUser(alice);
+        vm.prank(governance);
         token.unblockUser(alice);
 
         vm.prank(alice);
@@ -82,10 +86,12 @@ contract DepositTokenTest is BankFixture {
     }
 
     function test_BlockList_LiftingNeverAdmits() public {
+        vm.startPrank(governance);
         vm.expectRevert(abi.encodeWithSelector(DepositToken.NotBlocked.selector, carol));
         token.unblockUser(carol);
         vm.expectRevert(abi.encodeWithSelector(DepositToken.NotBlocked.selector, alice));
         token.unblockUser(alice);
+        vm.stopPrank();
     }
 
     // Freezes and forced transfers
@@ -147,6 +153,7 @@ contract DepositTokenTest is BankFixture {
     /// @dev An admitted holder with a plain key of its own, funded from alice.
     function _fundedSigner() private returns (address signer, uint256 key) {
         (signer, key) = makeAddrAndKey("dave");
+        vm.prank(governance);
         token.allowUser(signer);
         vm.prank(alice);
         token.transfer(signer, 100);
