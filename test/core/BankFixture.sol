@@ -14,12 +14,13 @@ import {DepositToken} from "../../contracts/core/DepositToken.sol";
 import {GeneralLedger} from "../../contracts/core/GeneralLedger.sol";
 import {MultiSignerAccount} from "../../contracts/core/MultiSignerAccount.sol";
 import {StaffRoles} from "../../contracts/core/StaffRoles.sol";
+import {HoldRegister} from "../../contracts/core/HoldRegister.sol";
 
 /// @dev Deploys the bank as docs/roles.md describes it: governance is a time lock behind the
-/// officers' multi-signer account, holding the admin and governance roles, and the staff roles
-/// module administers every staff and machine role. The test contract deploys and wires the
-/// contracts, hands the admin role to governance and gives up its own, and governance then posts
-/// the opening balance sheet in docs/scenarios.md.
+/// officers' multi-signer account, holding the admin and governance roles, the staff roles module
+/// administers every staff and machine role, and the hold register sets every frozen amount. The
+/// test contract deploys and wires the contracts, hands the admin role to governance and gives up
+/// its own, and governance then posts the opening balance sheet in docs/scenarios.md.
 abstract contract BankFixture is Test {
     /// @dev One Hong Kong dollar, in the token's cents.
     uint256 constant HKD = 100;
@@ -31,6 +32,7 @@ abstract contract BankFixture is Test {
     DepositToken token;
     GeneralLedger ledger;
     StaffRoles staffRoles;
+    HoldRegister holds;
     ERC7913P256Verifier p256;
     MultiSignerAccount officers;
     TimelockController timelock;
@@ -60,6 +62,7 @@ abstract contract BankFixture is Test {
         token = new DepositToken(address(manager));
         ledger = new GeneralLedger(address(manager), token);
         staffRoles = new StaffRoles(manager, officers);
+        holds = new HoldRegister(manager, token);
 
         _wire(address(token), token.mint.selector, Roles.LEDGER);
         _wire(address(token), token.burn.selector, Roles.LEDGER);
@@ -74,6 +77,7 @@ abstract contract BankFixture is Test {
 
         manager.grantRole(Roles.LEDGER, address(ledger), 0);
         manager.grantRole(Roles.STAFF_ADMIN, address(staffRoles), 0);
+        manager.grantRole(Roles.FREEZER, address(holds), 0);
         uint64[] memory staff = _staffAdministered();
         for (uint256 i = 0; i < staff.length; ++i) manager.setRoleAdmin(staff[i], Roles.STAFF_ADMIN);
 
