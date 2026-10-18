@@ -6,6 +6,7 @@ import {IAccessManager} from "@openzeppelin/contracts/access/manager/IAccessMana
 import {Roles} from "../../contracts/core/Roles.sol";
 import {DepositToken} from "../../contracts/core/DepositToken.sol";
 import {GeneralLedger} from "../../contracts/core/GeneralLedger.sol";
+import {PartnerKeys} from "../../contracts/core/PartnerKeys.sol";
 import {BankFixture} from "./BankFixture.sol";
 
 /// @dev Checks every restricted function is wired to the role docs/roles.md gives it, and that
@@ -104,7 +105,7 @@ contract RolesTest is BankFixture {
     /// to the allow-list stays with the admin until the onboarding module is wired to it.
     function _expected() private view returns (Wire[] memory w) {
         GeneralLedger.Line[] memory none = new GeneralLedger.Line[](0);
-        w = new Wire[](11);
+        w = new Wire[](13);
         w[0] = Wire(address(token), abi.encodeCall(DepositToken.mint, (alice, 1)), Roles.LEDGER);
         w[1] = Wire(address(token), abi.encodeCall(DepositToken.burn, (alice, 1)), Roles.LEDGER);
         w[2] = Wire(address(token), abi.encodeCall(DepositToken.forcedTransfer, (alice, bob, 1)), Roles.ENFORCER);
@@ -120,5 +121,7 @@ contract RolesTest is BankFixture {
             abi.encodeCall(GeneralLedger.postOpening, (new address[](0), new uint256[](0), none, "")),
             Roles.GOVERNANCE
         );
+        w[11] = Wire(address(partnerKeys), abi.encodeCall(PartnerKeys.setKey, (bytes32(0), "")), Roles.GOVERNANCE);
+        w[12] = Wire(address(partnerKeys), abi.encodeCall(PartnerKeys.revokeKey, (bytes32(0))), Roles.IT_SECURITY);
     }
 }
