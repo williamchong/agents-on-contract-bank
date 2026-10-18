@@ -48,7 +48,7 @@ Each one is aimed at a control in the [controls table](architecture.md#controls)
 | **Forged paper slip** | A teller submits a transfer on a slip the customer never signed. The customer is notified and disputes it. | Second-person approval, then freeze and dispute reversal by forced transfer | The transfer waits for an approver. After the dispute the recipient's funds are frozen and the reversal waits for compliance. | The teller alone cannot complete the transfer; the reversal returns the money; the teller, approver and slip hash are on record | 2 |
 | **Red team** | A run of attempts: approve its own operation, call the forced transfer directly, exceed the app limit, replay a used authorisation, send to an account that is not onboarded, pay an unregistered payee above the small limit, act at this branch with a teller role for another | Access manager, branch scoping, approval logic, rate limiter, one-use numbers, allow-list, payee register | One refusal after another, each with its reason | Every attempt is refused and no balance changes | 2 |
 | **Forged credit advice** | The partner adapter relays a credit advice not signed by the clearing system's registered key, then replays a genuine one | Signature check and unique reference in the payments module | Two refusals naming the partner key and the repeated reference | Neither message creates deposit tokens | 2 |
-| **Flagged payment in** | An incoming payment trips screening. Run twice: compliance clears one and returns the other. | Screening, a named compliance hold, compliance clearance | The payment is credited and frozen, and waits for compliance | The customer cannot spend the amount until it is cleared; the returned one leaves the settlement account | 2 |
+| **Flagged payment in** | An incoming payment at or above the screening threshold arrives. Run twice: compliance clears one and returns the other. | Screening in the payments module, compliance clearance | The settlement account rises at once; the payment waits in the payments module for compliance, not on the customer's balance | The customer cannot spend the amount until it is cleared; the cleared one reaches the customer; the returned one leaves the settlement account and no customer is credited | 2 |
 
 The red-team attempts are a fixed script until milestone 5, when the red-team agent adds its own.
 
@@ -135,7 +135,8 @@ Every row of the [controls table](architecture.md#controls), and where it is sho
 | Payments out above a small limit only to registered payees | Payments day; red team |
 | Movement without the customer's signature | Counter and ATM day; forged paper slip; red team |
 | Signer changes without the customer's signature | All devices lost |
-| Freezes and block-listing | Flagged payment in; forged paper slip. Block-listing is left to tests. |
+| Screening of payments | Flagged payment in |
+| Freezes and block-listing | Forged paper slip. Block-listing is left to tests. |
 | Stablecoin redemption at par, at once | Stablecoin day; redemption surge |
 | Immediate stop | Pause and resume |
 | Immediate removal of a staff member's authority | Staff and device changes |

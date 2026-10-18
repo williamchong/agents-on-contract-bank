@@ -457,16 +457,18 @@ Payments run through a simulated clearing system in which the bank holds a settl
 
 | Flow | Steps |
 |---|---|
-| **Payment out** | Customer authorises → payee's name checked with the receiving bank → funds held → branch approvals if sent through a teller → screened; compliance clears any that are flagged → released: tokens destroyed, settlement account debited, message sent → receiving bank confirms or rejects |
+| **Payment out** | Customer authorises → payee's name checked with the receiving bank → funds moved to the payments module → branch approvals if sent through a teller → screened; compliance clears any at or above the threshold → released: tokens destroyed from the module, settlement account debited, message sent → receiving bank confirms or rejects |
 | **Payment out rejected** | The clearing system's signed rejection is relayed and checked → the funds return to the settlement account → tokens re-created for the customer |
-| **Payment out, settlement account short** | The payment queues → treasury funds the account → released |
+| **Payment out, settlement account short** | The payment queues in the module, in order → treasury funds the account → anyone triggers the release, which takes the queue's head and chooses nothing |
 | **Payment in** | Clearing system credits the settlement account and sends a signed credit advice → adapter relays it → the payments module checks the clearing system's signature over the reference, amount, currency, creditor account, settlement time and the message's hash, and that the reference is new → beneficiary matched → screened → tokens created. The payer can be anyone; no registration is needed. |
-| **Payment in, flagged** | Credited and frozen until compliance clears it or returns it |
-| **Payment in, unknown beneficiary** | Funds go to a suspense account → returned to sender |
+| **Payment in, flagged** | At or above the screening threshold: the settlement account is credited, and the tokens are created for the payments module → compliance clears it to the customer or returns it to the sender |
+| **Payment in, unknown beneficiary** | For an address the token has not admitted, or in a currency other than Hong Kong dollars: the tokens are created for the payments module as suspense → returned to sender |
 | **End of day** | Clearing system sends its statement → finance reconciles it against the ledger |
 
 - **Payees.** From their own device a customer pays a registered payee up to the app limit, and anyone else only up to a small limit. Registering a payee from a device takes effect after a waiting period; at a branch it is immediate.
 - **Each payment carries a unique reference**, so a repeated message is rejected.
+- **Money in waiting is the payments module's.** Screened payments, suspense and payments out not yet released are deposit tokens held by the module, a bank-owned account, each against its reference. The settlement account moves when the clearing system moves it, and the deposit tokens move with it, so the books balance at every step. A real bank books such money in suspense and in-transit accounts of its own, not under deposits; the demo keeps it in deposits so that Deposits stays the token supply. See [open question 14](plan.md#open-questions).
+- **Account numbers are addresses.** A credit advice names the creditor account as the customer's address, so no register of account numbers is needed.
 - **Not modelled.** Card payments at merchants, cheques and cross-border wires. See the [plan](plan.md#out-of-scope).
 
 ## Controls
