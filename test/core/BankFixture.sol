@@ -15,12 +15,14 @@ import {GeneralLedger} from "../../contracts/core/GeneralLedger.sol";
 import {MultiSignerAccount} from "../../contracts/core/MultiSignerAccount.sol";
 import {StaffRoles} from "../../contracts/core/StaffRoles.sol";
 import {HoldRegister} from "../../contracts/core/HoldRegister.sol";
+import {PartnerKeys} from "../../contracts/core/PartnerKeys.sol";
 
 /// @dev Deploys the bank as docs/roles.md describes it: governance is a time lock behind the
 /// officers' multi-signer account, holding the admin and governance roles, the staff roles module
-/// administers every staff and machine role, and the hold register sets every frozen amount. The
-/// test contract deploys and wires the contracts, hands the admin role to governance and gives up
-/// its own, and governance then posts the opening balance sheet in docs/scenarios.md.
+/// administers every staff and machine role, the hold register sets every frozen amount, and the
+/// partner key register holds the keys partners sign with. The test contract deploys and wires the
+/// contracts, hands the admin role to governance and gives up its own, and governance then posts
+/// the opening balance sheet in docs/scenarios.md.
 abstract contract BankFixture is Test {
     /// @dev One Hong Kong dollar, in the token's cents.
     uint256 constant HKD = 100;
@@ -33,6 +35,7 @@ abstract contract BankFixture is Test {
     GeneralLedger ledger;
     StaffRoles staffRoles;
     HoldRegister holds;
+    PartnerKeys partnerKeys;
     ERC7913P256Verifier p256;
     MultiSignerAccount officers;
     TimelockController timelock;
@@ -63,6 +66,7 @@ abstract contract BankFixture is Test {
         ledger = new GeneralLedger(address(manager), token);
         staffRoles = new StaffRoles(manager, officers);
         holds = new HoldRegister(manager, token);
+        partnerKeys = new PartnerKeys(address(manager));
 
         _wire(address(token), token.mint.selector, Roles.LEDGER);
         _wire(address(token), token.burn.selector, Roles.LEDGER);
@@ -74,6 +78,8 @@ abstract contract BankFixture is Test {
         _wire(address(ledger), ledger.postWithMint.selector, Roles.BOOKKEEPER);
         _wire(address(ledger), ledger.postWithBurn.selector, Roles.BOOKKEEPER);
         _wire(address(ledger), ledger.postOpening.selector, Roles.GOVERNANCE);
+        _wire(address(partnerKeys), partnerKeys.setKey.selector, Roles.GOVERNANCE);
+        _wire(address(partnerKeys), partnerKeys.revokeKey.selector, Roles.IT_SECURITY);
 
         manager.grantRole(Roles.LEDGER, address(ledger), 0);
         manager.grantRole(Roles.STAFF_ADMIN, address(staffRoles), 0);
@@ -98,7 +104,11 @@ abstract contract BankFixture is Test {
     /// @dev A decision taken as governance takes it: three officers sign, the time lock holds it
     /// for its delay, and it is then carried out.
     function _govern(address target, bytes memory data) internal {
-        bytes32 salt = _schedule(target, data, _quorum());
+        _execute(target, data, _schedule(target, data, _quorum()));
+    }
+
+    /// @dev Waits out the time lock's delay and carries out a scheduled decision.
+    function _execute(address target, bytes memory data, bytes32 salt) internal {
         vm.warp(block.timestamp + GOVERNANCE_DELAY);
         timelock.execute(target, 0, data, bytes32(0), salt);
     }
@@ -166,13 +176,15 @@ abstract contract BankFixture is Test {
         );
         bytes32 digest = MessageHashUtils.toTypedDataHash(_separator(account), structHash);
         bytes[] memory sigs = new bytes[](keys.length);
-        for (uint256 i = 0; i < keys.length; ++i) {
-            (bytes32 r, bytes32 s) = vm.signP256(keys[i], digest);
-            // P-256 signatures are accepted only in their low-s form.
-            if (uint256(s) > P256.N / 2) s = bytes32(P256.N - uint256(s));
-            sigs[i] = abi.encodePacked(r, s);
-        }
+        for (uint256 i = 0; i < keys.length; ++i) sigs[i] = _signP256(keys[i], digest);
         return abi.encode(_signers(keys), sigs);
+    }
+
+    /// @dev P-256 signatures are accepted only in their low-s form, so the high form is folded down.
+    function _signP256(uint256 key, bytes32 digest) internal pure returns (bytes memory) {
+        (bytes32 r, bytes32 s) = vm.signP256(key, digest);
+        if (uint256(s) > P256.N / 2) s = bytes32(P256.N - uint256(s));
+        return abi.encodePacked(r, s);
     }
 
     function _separator(MultiSignerAccount account) private view returns (bytes32) {
