@@ -6,7 +6,7 @@ It is a portfolio project showing institutional web3 architecture: contracts tha
 
 ## Status
 
-The documents milestone is done, and the working demo is under way. The repository holds the documentation, the core contracts (the role numbers, the deposit token, the general ledger, the multi-signer account that staff and governance act from, the staff roles module and the hold register) and a toolchain spike: the pinned OpenZeppelin libraries, a few spike contracts, and tests that check the pieces the first working demo rests on. Run them with `pnpm install` and `pnpm check`, and against Base Sepolia with `pnpm check:base-sepolia`.
+The documents milestone is done, and the working demo is under way. The repository holds the documentation, the core contracts (the role numbers, the deposit token, the general ledger, the multi-signer account that staff and governance act from, the staff roles module, the hold register and the partner key register) and a toolchain spike: the pinned OpenZeppelin libraries, a few spike contracts, and tests that check the pieces the first working demo rests on. Run them with `pnpm install` and `pnpm check`, and against Base Sepolia with `pnpm check:base-sepolia`.
 
 ## Documents
 
