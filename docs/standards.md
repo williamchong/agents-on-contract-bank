@@ -25,7 +25,7 @@ The deposit token and the stablecoin share one base, so accounts, limits, freeze
 | Customer-signed movement submitted by a teller or ATM | EIP-3009: `ERC20TransferAuthorization` | Main | One-use number and validity window. Accepts signatures from smart accounts. |
 | Typed, readable signatures | EIP-712: `EIP712` | Main | Lets a signer see the meaning of what is signed |
 | Freezes, allow-list, block-list and movement without the holder's signature | ERC-7943: `ERC20uRWA` | Community | One contract for all three, built on `ERC20Freezable` and `ERC20Restricted`. The standard is final. See the notes below. |
-| Channel and customer-set limits | `RateLimiter` | Main | Rolling-window cap with an independent counter per key; the key is the account and the channel |
+| Channel and customer-set limits | A daily counter | Written here | One counter per key, reset at midnight Hong Kong time as a bank's daily limits are; the key is the account and the channel. See [daily limits](#written-here). |
 
 What reading `ERC20uRWA` settled:
 
@@ -43,7 +43,7 @@ What reading `ERC20uRWA` settled:
 | Token | What may create it | Standard or contract | Library | Notes |
 |---|---|---|---|---|
 | Deposit token | A balanced entry in the general ledger | Written here | | Creation and destruction are open only to the ledger contract |
-| Stablecoin | Conversion from a deposit, within the reserve | `ERC20Collateral`, with `RateLimiter` for the daily issuance cap | Community, main | Refuses issuance above a reported collateral figure, and when that figure is stale |
+| Stablecoin | Conversion from a deposit, within the reserve | `ERC20Collateral`, with the daily counter for the daily issuance cap | Community, main | Refuses issuance above a reported collateral figure, and when that figure is stale |
 
 Withdrawals and outgoing payments use the same signed authorisation as transfers: the customer authorises a transfer to a bank-owned account, and the ledger destroys the tokens from there.
 
@@ -79,7 +79,7 @@ Accounts built on `Account` are compatible with ERC-4337, though the bundler flo
 ## Written here
 
 1. **General ledger.** Double-entry accounts for assets, liabilities and equity; the only contract that may create or destroy deposit tokens; the history of the balances held off chain; the loss allowance; the capital and liquidity ratios and the lending guard.
-2. **Operations.** Cash deposit and withdrawal with the ATM hold and confirmation, cash counts.
+2. **Operations.** Cash deposit and withdrawal with the ATM hold and confirmation, cash moved between the vault, drawers and the ATM, and cash counts, each move and count under the vault custodian and a supervisor.
 3. **Payments.** Payments in and out through the clearing system, the check of its signature on each credit and rejection, registered payees, the queue when the settlement account is short, suspense, mandates for standing orders.
 4. **Assisted operations.** Acting on a paper instruction at a branch, with the approval ladder and the slip hash recorded.
 5. **Other bank-initiated movement.** Support moves between a customer's own accounts and dispute reversal, each wired to the forced transfer. Also the register of named holds behind the token's single frozen amount.
@@ -90,7 +90,8 @@ Accounts built on `Account` are compatible with ERC-4337, though the bundler flo
 10. **Stablecoin conversion and reserve bookkeeping.** Conversion at par both ways, confirmed reserve at the custodian, buffer, funds in transit, funds due back after redemptions, the bank's surplus, excess-only withdrawal, and the function that reports the reserve to the mint guard.
 11. **Partner keys.** The register of partners' signing keys that the payments module and the attested figures contract check against.
 12. **Attested figures.** Partners' signed statements of the assets held off chain, each compared with the ledger's balance at its date, and whether each figure is current.
-13. **Scheduled work.** Trigger-only entry points that run what is due once per period, catching up any periods missed, and the business day the contracts read, worked out from block time.
+13. **Daily limits.** A counter per account and channel that resets at midnight Hong Kong time, worked out from block time, behind every daily limit and the daily issuance cap.
+14. **Scheduled work.** Trigger-only entry points that run what is due once per period, catching up any periods missed, and the business day the contracts read, worked out from block time.
 
 ## Considered and not used
 
@@ -108,6 +109,7 @@ Accounts built on `Account` are compatible with ERC-4337, though the bundler flo
 | **ERC-3643 permissioned token** | Bundles identity checks, freezing and forced transfers, but is large and built around securities. A candidate for a bond expansion. |
 | **`AccessManager` scheduling as the approval engine** | It provides "wait, and a guardian may cancel", not "a second person must approve", and cannot vary by amount. Used for governance delays only. |
 | **Limits keyed by the device that signed** | A multi-signer account treats its signers as equal, so the contracts would need glue to learn which one signed. The channel that submitted the request is already known on chain, and limits are keyed by it. |
+| **`RateLimiter` for daily limits** | It offers a rolling window and a refilling bucket, and a bank's daily limits reset at midnight. A sliding window keyed by the day would give the same cap, but appends a checkpoint on every use. |
 | **`MultiSignerERC7913Weighted` for device tiers** | Weights count towards the signing threshold only and say nothing about amounts. |
 | **`ERC20Custodian`** | Marked deprecated in favour of `ERC20Freezable`. |
 
@@ -119,7 +121,7 @@ Not in scope; recorded so the core does not rule it out. The design and the appr
 |---|---|---|
 | The bank's own token issued and burned on a second chain | ERC-7802 bridgeable token: `ERC20Bridgeable`, `ERC20Crosschain` | In OpenZeppelin's main library; not yet read |
 | Carrying the bank's burn attestations between chains | ERC-7786 gateway interface | In OpenZeppelin; not yet read. Its adapters target public networks, so a local relayer with several attesters would sit behind the same interface. |
-| Cap on movement per period in each direction | `RateLimiter` | Already used for other limits |
+| Cap on movement per period in each direction | `RateLimiter` | A rolling window suits a bridge's cap, which follows no business day |
 | Swapping two banks' tokens on a shared chain | A single-transaction swap | No standard needed; both tokens are ERC-20 on one ledger |
 | Besu interoperability in production | Hyperledger Cacti | Named, not used |
 
@@ -128,7 +130,7 @@ Not in scope; recorded so the core does not rule it out. The design and the appr
 | Piece | Status |
 |---|---|
 | `AccessManager`, `TimelockController`, `ERC20` and its main extensions, `ERC4626`, `EIP712`, `SignatureChecker`, `Pausable` | Main library, long established |
-| `Account`, `MultiSignerERC7913`, `ERC7913WebAuthnVerifier`, `ERC20TransferAuthorization`, `RateLimiter` | Main library, recent additions |
+| `Account`, `MultiSignerERC7913`, `ERC7913WebAuthnVerifier`, `ERC20TransferAuthorization` | Main library, recent additions |
 | `ERC20Collateral`, `ERC20uRWA` with `ERC20Freezable` and `ERC20Restricted`, `RoleAccount`, `SignerAccessManaged` | Community library: less reviewed, may change; pinned by commit, with [compatibility tests](../test/compat/Spike.t.sol) to rerun on any bump |
 
 `ERC20Collateral` compares supply with the reported figure at exactly 100% and takes its freshness window at deployment. The buffer is handled by what the reporting function returns; making the window a governance setting needs a small override.

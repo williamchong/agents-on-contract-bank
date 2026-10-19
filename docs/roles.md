@@ -104,10 +104,11 @@ Every amount and waiting period the matrix below refers to, in Hong Kong dollars
 
 | Limit | Value | Applies to | Basis |
 |---|---|---|---|
-| App limit | 10,000 per rolling day | Transfers and payments out from the customer's own device, counted together per account | Demo value |
-| Unregistered payee limit | 2,000 per rolling day | Payments out from the customer's own device to anyone not on their payee list, within the app limit | Demo value |
-| Highest app limit | 200,000 per rolling day | The most a branch can raise a customer's app limit to | Demo value; self-service stays bounded while the branch does not |
-| ATM limit | 5,000 per rolling day | Cash withdrawals at ATMs per account | Demo value |
+| App limit | 10,000 per day | Transfers and payments out from the customer's own device, counted together per account | Demo value |
+| Unregistered payee limit | 2,000 per day | Payments out from the customer's own device to anyone not on their payee list, within the app limit | Demo value |
+| Highest app limit | 200,000 per day | The most a branch can raise a customer's app limit to | Demo value; self-service stays bounded while the branch does not |
+| ATM limit | 5,000 per day | Cash withdrawals at ATMs per account | Demo value |
+| Dispense timeout | 2 minutes | An ATM withdrawal with neither a confirmation nor a reported failure; after it the withdrawal is flagged and waits for the next count of that machine | Demo value |
 | Device cap | 5 | Devices and cards on one customer account together | Demo value |
 | Payee waiting period | 24 hours locally, 10 minutes on Base Sepolia | A payee registered from a device; one registered at a branch applies at once | Demo value |
 | Branch approval ladder | Steps at 50,000 and 500,000 | Debits through a teller; see [the ladder](#branch-approval-ladder) | Demo value |
@@ -118,11 +119,11 @@ Every amount and waiting period the matrix below refers to, in Hong Kong dollars
 | Per-customer lending cap | 600,000 | Loans outstanding to one customer | Demo value, well above the 25% of capital the large exposure rule allows, so that [tour beat 5](scenarios.md#guided-tour) is stopped by the capital ratio. See [HKMA mapping](hkma-mapping.md#prudential-rules). |
 | Total lending cap | 12,000,000 | Loans outstanding in all | Demo value, above the 11,100,000 tour beat 5 reaches, so the capital ratio is what stops it |
 | Capital and liquidity minimums | 8% and 25% | Every loan drawdown | Real Hong Kong figures on simplified ratios; see [open question 9](plan.md#open-questions) |
-| Daily issuance cap | 1,000,000 per rolling day | Stablecoin issued in all | Demo value |
+| Daily issuance cap | 1,000,000 per day | Stablecoin issued in all | Demo value |
 | Governance signatures | 3 of the 4 governance signers | Every governance decision | Demo value |
 | Governance time lock | 2 days locally, 10 minutes on Base Sepolia | Every governance decision, after its signatures | Demo value; Base Sepolia's clock cannot be moved, see [open question 11](plan.md#open-questions) |
 
-A rolling day is the rate limiter's window, keyed by account and channel. A customer can set any of their own limits lower from their device; only a branch can raise them again.
+A day is the Hong Kong calendar day, worked out from block time, and every daily limit resets at midnight Hong Kong time, as a bank's daily card and app limits do. Each is counted per account and channel. A customer can set any of their own limits lower from their device; only a branch can raise them again.
 
 Cash opens split as 250,000 in the vault, 50,000 in the teller's drawer and 200,000 in the ATM.
 
@@ -136,7 +137,7 @@ Cash opens split as 250,000 in the vault, 50,000 in the teller's drawer and 200,
 - **Approval**: the module holds the operation until the approvers it needs have approved; each holds the approving role and differs from the maker and from each other.
 - **Ladder**: approval, with the number of approvers set by the [branch approval ladder](#branch-approval-ladder).
 - **Account signature**: the customer's account checks the signature of one of its devices or its card.
-- **Rate limiter**: the limit is counted per account and channel over a rolling day.
+- **Rate limiter**: the limit is counted per account and channel over the day, and resets at midnight Hong Kong time.
 - **Forced transfer path**: the module holds the enforcer role and moves only the customer's unfrozen balance, except dispute reversal, which takes what is frozen.
 - **Governance**: the multi-signature of governance signers, then the time lock.
 
