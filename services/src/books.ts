@@ -6,6 +6,13 @@ import { zeroAddress, type Address } from 'viem'
 // One Hong Kong dollar, in the token's cents.
 export const HKD = 100n
 
+// An amount in cents as a story line says it, such as HK$2,000 or HK$12.50.
+export function hkd(cents: bigint): string {
+  const dollars = (cents / HKD).toLocaleString('en-HK')
+  const rest = cents % HKD
+  return `HK$${dollars}${rest === 0n ? '' : `.${rest.toString().padStart(2, '0')}`}`
+}
+
 // GeneralLedger.Account, in its order.
 export const Ledger = {
   Settlement: 0,

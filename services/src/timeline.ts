@@ -30,6 +30,7 @@ export interface Line {
 export class Timeline {
   readonly lines: Line[] = []
   private readonly file: string | undefined
+  private readonly listeners = new Set<(line: Line) => void>()
 
   // With a file, each line is also written to it as one line of JSON, so a reader can follow the run.
   constructor(file?: string) {
@@ -41,7 +42,20 @@ export class Timeline {
     const full = { seq: this.lines.length + 1, ...line }
     this.lines.push(full)
     if (this.file) appendFileSync(this.file, `${toJson(full)}\n`)
+    for (const listener of this.listeners) listener(full)
     return full
+  }
+
+  // Calls `listener` with every line added from now on, until the returned function is called.
+  subscribe(listener: (line: Line) => void): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
+
+  // Starts the timeline again, as a reset of the run does.
+  clear(): void {
+    this.lines.length = 0
+    if (this.file) writeFileSync(this.file, '')
   }
 }
 

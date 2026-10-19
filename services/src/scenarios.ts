@@ -56,8 +56,9 @@ export interface Context {
 export interface Preset {
   name: string
   kind: 'routine' | 'adverse'
-  // For an adverse scenario, the control that should fire.
+  // For an adverse scenario, the control that should fire, and the building on the bank map it concerns.
   control?: string
+  building?: string
   waitsFor?: string[]
   run(ctx: Context): Promise<Check[]>
 }
@@ -230,6 +231,7 @@ export const presets: Preset[] = [
   {
     name: 'All devices lost',
     kind: 'adverse',
+    building: 'branch',
     control: "Recovery module: an account opening officer with a supervisor's approval, signer list only",
     async run(ctx) {
       const { bank } = ctx
@@ -260,6 +262,7 @@ export const presets: Preset[] = [
   {
     name: 'ATM fails to dispense',
     kind: 'adverse',
+    building: 'atm',
     control: 'ATM hold and confirmation',
     async run(ctx) {
       const { bank } = ctx
@@ -297,6 +300,7 @@ export const presets: Preset[] = [
   {
     name: 'Payment rejected',
     kind: 'adverse',
+    building: 'clearing-house',
     control: "Payments module checks the clearing system's signed rejection",
     async run(ctx) {
       const { bank, clearing } = ctx
@@ -324,6 +328,7 @@ export const presets: Preset[] = [
   {
     name: 'Unknown beneficiary',
     kind: 'adverse',
+    building: 'suspense-lot',
     control: 'Suspense account in the payments module',
     async run(ctx) {
       const { bank, clearing } = ctx
@@ -349,6 +354,7 @@ export const presets: Preset[] = [
   {
     name: 'Forged credit advice',
     kind: 'adverse',
+    building: 'clearing-house',
     control: 'Signature check and unique reference in the payments module',
     async run(ctx) {
       const { bank, clearing } = ctx
@@ -374,6 +380,7 @@ export const presets: Preset[] = [
   {
     name: 'Flagged payment in',
     kind: 'adverse',
+    building: 'compliance-yard',
     control: 'Screening in the payments module, compliance clearance',
     async run(ctx) {
       const { bank, clearing } = ctx
@@ -408,6 +415,7 @@ export const presets: Preset[] = [
   {
     name: 'Forged paper slip',
     kind: 'adverse',
+    building: 'branch',
     control: 'Second-person approval, then freeze and dispute reversal by forced transfer',
     async run(ctx) {
       const { bank } = ctx
@@ -455,6 +463,7 @@ export const presets: Preset[] = [
   {
     name: 'Red team',
     kind: 'adverse',
+    building: 'branch',
     control: 'Access manager, branch scoping, approval logic, rate limiter, one-use numbers, allow-list, payee register',
     async run(ctx) {
       const { bank } = ctx
@@ -500,6 +509,7 @@ export const presets: Preset[] = [
   {
     name: 'Ledger mismatch',
     kind: 'adverse',
+    building: 'water-tower',
     control: "The attested figures contract's comparison with the ledger; reconciliation by finance",
     async run(ctx) {
       const { bank, clearing } = ctx

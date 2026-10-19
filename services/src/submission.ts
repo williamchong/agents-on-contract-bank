@@ -37,6 +37,8 @@ export class Submission {
   private readonly abi: Abi
   // The contract each address is, so events read as "Payments.CreditReceived".
   readonly names = new Map<string, string>()
+  // A pause after each request, so an audience can follow a demo; none when scoring presets.
+  pace = 0
 
   constructor(chain: Chain, timeline: Timeline) {
     this.chain = chain
@@ -49,6 +51,7 @@ export class Submission {
   }
 
   async submit(request: Request): Promise<Outcome> {
+    if (this.pace) await new Promise((resolve) => setTimeout(resolve, this.pace))
     const { client, wallet, relayer } = this.chain
     const refusal = await this.simulate(request)
     if (refusal) {

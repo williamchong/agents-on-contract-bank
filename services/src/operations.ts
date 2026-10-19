@@ -3,7 +3,7 @@
 
 import { keccak256, numberToHex, toBytes, type Address, type Hex } from 'viem'
 import { ref, type Bank } from './bank.ts'
-import { atm, drawer, Holders, Ledger, vault, type CustomerName, type Location } from './books.ts'
+import { atm, drawer, hkd, Holders, Ledger, vault, type CustomerName, type Location } from './books.ts'
 import type { Outcome } from './submission.ts'
 
 // Reads
@@ -55,7 +55,7 @@ export async function cashSplitMatchesLedger(bank: Bank): Promise<boolean> {
 // Customers, from their own devices
 
 export function transfer(bank: Bank, from: CustomerName, to: string, amount: bigint): Promise<Outcome> {
-  return bank.act(from, 'app', `transfer ${amount} to ${to}`, [
+  return bank.act(from, 'app', `transfer ${hkd(amount)} to ${to}`, [
     bank.call('DepositToken', bank.contracts.token, 'transfer', [bank.account(to), amount]),
   ])
 }
@@ -70,7 +70,7 @@ export function registerPayee(bank: Bank, customer: CustomerName, payee: string)
 // A payment to someone at another bank. The payee's details stay with the bank; the chain sees their hash.
 export function payOut(bank: Bank, from: CustomerName, payee: string, amount: bigint): Promise<Outcome> {
   const c = bank.contracts
-  return bank.act(from, 'app', `pay ${amount} to ${payee} at another bank`, [
+  return bank.act(from, 'app', `pay ${hkd(amount)} to ${payee} at another bank`, [
     bank.call('DepositToken', c.token, 'approve', [c.payments, amount]),
     bank.call('Payments', c.payments, 'pay', [amount, keccak256(toBytes(payee))]),
   ])
@@ -127,7 +127,7 @@ export async function withdrawAtAtm(bank: Bank, customer: CustomerName, amount: 
 
 // The ATM submits a card authorisation it was given, which a replay attempt reuses.
 export function submitAtmWithdrawal(bank: Bank, customer: CustomerName, card: CardAuthorisation, branch = 1n): Promise<Outcome> {
-  return bank.act('ATM', 'atm', `withdraw ${card.amount} for ${customer} by card`, [
+  return bank.act('ATM', 'atm', `withdraw ${hkd(card.amount)} for ${customer} by card`, [
     bank.call('CashOperations', bank.contracts.cash, 'withdrawAtAtm', [branch, card]),
   ])
 }
@@ -143,7 +143,7 @@ export function reportDispense(bank: Bank, ref: Hex, dispensed: boolean): Promis
 // The branch
 
 export function cashDeposit(bank: Bank, customer: CustomerName, amount: bigint, teller = 'teller', branch = 1n): Promise<Outcome> {
-  return bank.act(teller, 'branch', `take ${amount} in cash for ${customer}`, [
+  return bank.act(teller, 'branch', `take ${hkd(amount)} in cash for ${customer}`, [
     bank.call('CashOperations', bank.contracts.cash, 'deposit', [branch, bank.account(customer), amount]),
   ])
 }
@@ -178,17 +178,17 @@ export async function transferAtCounter(
   const c = bank.contracts
   if ('card' in by) {
     const card = await authorise(bank, customer, { module: 'assisted', purpose: 'TRANSFER', branch, recipient: bank.account(to) }, amount)
-    return bank.act(teller, 'branch', `transfer ${amount} from ${customer} to ${to} on their card`, [
+    return bank.act(teller, 'branch', `transfer ${hkd(amount)} from ${customer} to ${to} on their card`, [
       bank.call('AssistedOperations', c.assisted, 'transfer', [branch, bank.account(to), card]),
     ])
   }
-  return bank.act(teller, 'branch', `transfer ${amount} from ${customer} to ${to} on a paper slip`, [
+  return bank.act(teller, 'branch', `transfer ${hkd(amount)} from ${customer} to ${to} on a paper slip`, [
     bank.call('AssistedOperations', c.assisted, 'transferOnPaper', [branch, bank.account(customer), bank.account(to), amount, slipHash(by.slip)]),
   ])
 }
 
 export async function withdrawAtCounter(bank: Bank, customer: CustomerName, amount: bigint, slip: string, teller = 'teller', branch = 1n): Promise<Outcome> {
-  return bank.act(teller, 'branch', `pay out ${amount} in cash to ${customer} on a paper slip`, [
+  return bank.act(teller, 'branch', `pay out ${hkd(amount)} in cash to ${customer} on a paper slip`, [
     bank.call('CashOperations', bank.contracts.cash, 'withdrawAtCounterOnPaper', [branch, bank.account(customer), amount, slipHash(slip)]),
   ])
 }
