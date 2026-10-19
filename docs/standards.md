@@ -73,6 +73,7 @@ Accounts built on `Account` are compatible with ERC-4337, though the bundler flo
 | Chain | Any EVM chain with the Cancun rules: a local single-process chain, and Base Sepolia for the public deployment. See [network](architecture.md#network). |
 | Explorer | The public chain's own block explorer |
 | Indexing | A standard indexing framework, to be chosen |
+| Dashboard | Nuxt with Vue, the bank map in Three.js through TresJS, and viem to read the chain |
 | Payment messages and statements | ISO 20022 message shapes and field names. On chain, partners sign an EIP-712 struct of the fields the contracts act on, with the hash of the full message. |
 
 ## Written here
