@@ -77,7 +77,7 @@ Accounts built on `Account` are compatible with ERC-4337, though the bundler flo
 
 ## Written here
 
-1. **General ledger.** Double-entry accounts for assets, liabilities and equity; the only contract that may create or destroy deposit tokens; attested figures for assets held off chain, their signatures and their freshness; the loss allowance; the capital and liquidity ratios and the lending guard.
+1. **General ledger.** Double-entry accounts for assets, liabilities and equity; the only contract that may create or destroy deposit tokens; the history of the balances held off chain; the loss allowance; the capital and liquidity ratios and the lending guard.
 2. **Operations.** Cash deposit and withdrawal with the ATM hold and confirmation, cash counts.
 3. **Payments.** Payments in and out through the clearing system, the check of its signature on each credit and rejection, registered payees, the queue when the settlement account is short, suspense, mandates for standing orders.
 4. **Assisted operations.** Acting on a paper instruction at a branch, with the approval ladder and the slip hash recorded.
@@ -87,8 +87,9 @@ Accounts built on `Account` are compatible with ERC-4337, though the bundler flo
 8. **Rates and interest.** Bank-set savings and loan rates; paying savings interest into the vault.
 9. **Lending.** Loans that create deposit tokens through the ledger, instalments, arrears and the loan status the allowance follows, write-off.
 10. **Stablecoin conversion and reserve bookkeeping.** Conversion at par both ways, confirmed reserve at the custodian, buffer, funds in transit, funds due back after redemptions, the bank's surplus, excess-only withdrawal, and the function that reports the reserve to the mint guard.
-11. **Partner keys.** The register of partners' signing keys that the payments module and the ledger check against.
-12. **Scheduled work.** Trigger-only entry points that run what is due once per period, catching up any periods missed, and the business day the contracts read, worked out from block time.
+11. **Partner keys.** The register of partners' signing keys that the payments module and the attested figures contract check against.
+12. **Attested figures.** Partners' signed statements of the assets held off chain, each compared with the ledger's balance at its date, and whether each figure is current.
+13. **Scheduled work.** Trigger-only entry points that run what is due once per period, catching up any periods missed, and the business day the contracts read, worked out from block time.
 
 ## Considered and not used
 
