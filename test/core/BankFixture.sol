@@ -7,6 +7,7 @@ import {TimelockController} from "@openzeppelin/contracts/governance/TimelockCon
 import {ERC7579Utils} from "@openzeppelin/contracts/account/utils/draft-ERC7579Utils.sol";
 import {Execution} from "@openzeppelin/contracts/interfaces/draft-IERC7579.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {IERC5267} from "@openzeppelin/contracts/interfaces/IERC5267.sol";
 import {P256} from "@openzeppelin/contracts/utils/cryptography/P256.sol";
 import {ERC7913P256Verifier} from "@openzeppelin/contracts/utils/cryptography/verifiers/ERC7913P256Verifier.sol";
 import {Roles} from "../../contracts/core/Roles.sol";
@@ -18,15 +19,16 @@ import {HoldRegister} from "../../contracts/core/HoldRegister.sol";
 import {PartnerKeys, Partners} from "../../contracts/core/PartnerKeys.sol";
 import {Payments} from "../../contracts/core/Payments.sol";
 import {Attestations} from "../../contracts/core/Attestations.sol";
+import {CashOperations} from "../../contracts/core/CashOperations.sol";
 
 /// @dev Deploys the bank as docs/roles.md describes it: governance is a time lock behind the
 /// officers' multi-signer account, holding the admin and governance roles, the staff roles module
 /// administers every staff and machine role, the hold register sets every frozen amount, the
 /// partner key register holds the keys the clearing system and the custodian sign with, the
-/// payments module holds money in waiting, and attested figures check the partners' statements
-/// against the ledger. The test contract deploys and wires the contracts, hands the admin role to
-/// governance and gives up its own, and governance then posts the opening balance sheet in
-/// docs/scenarios.md.
+/// payments module holds money in waiting, attested figures check the partners' statements
+/// against the ledger, and the cash module keeps the cash. The test contract deploys and wires the
+/// contracts, hands the admin role to governance and gives up its own, and governance then posts
+/// the opening balance sheet in docs/scenarios.md and splits its cash as docs/roles.md does.
 abstract contract BankFixture is Test {
     /// @dev One Hong Kong dollar, in the token's cents.
     uint256 constant HKD = 100;
@@ -37,6 +39,10 @@ abstract contract BankFixture is Test {
     bytes32 constant CLEARING = Partners.CLEARING;
     bytes32 constant CUSTODIAN = Partners.CUSTODIAN;
     uint256 constant STATEMENT_MAX_AGE = 2 days;
+    uint256 constant DRAWER_LIMIT = 100_000 * HKD;
+    uint256 constant ATM_LIMIT = 5_000 * HKD;
+    uint256 constant CASH_REPORT_THRESHOLD = 100_000 * HKD;
+    uint256 constant DISPENSE_TIMEOUT = 2 minutes;
 
     AccessManager manager;
     DepositToken token;
@@ -46,6 +52,7 @@ abstract contract BankFixture is Test {
     PartnerKeys partnerKeys;
     Payments payments;
     Attestations attestations;
+    CashOperations cash;
     ERC7913P256Verifier p256;
     MultiSignerAccount officers;
     TimelockController timelock;
@@ -64,6 +71,9 @@ abstract contract BankFixture is Test {
     address pending = makeAddr("pending");
     /// @dev Stands in for treasury's own module, still to come, holding the bookkeeper role.
     address treasury = makeAddr("treasury");
+    /// @dev Branch 1's first teller and its ATM, whose drawer and machine hold cash at opening.
+    address teller1;
+    address atm1 = makeAddr("atm1");
 
     function setUp() public virtual {
         officerKeys = [uint256(0x0F1), 0x0F2, 0x0F3, 0x0F4];
@@ -83,6 +93,12 @@ abstract contract BankFixture is Test {
         partnerKeys = new PartnerKeys(address(manager));
         payments = new Payments(address(manager), ledger, partnerKeys, SCREENING_THRESHOLD);
         attestations = new Attestations(address(manager), ledger, partnerKeys, STATEMENT_MAX_AGE);
+        cash = new CashOperations(
+            address(manager),
+            ledger,
+            CashOperations.Limits(DRAWER_LIMIT, ATM_LIMIT, CASH_REPORT_THRESHOLD, DISPENSE_TIMEOUT)
+        );
+        teller1 = _staff("teller1");
 
         _wire(address(token), token.mint.selector, Roles.LEDGER);
         _wire(address(token), token.burn.selector, Roles.LEDGER);
@@ -102,11 +118,17 @@ abstract contract BankFixture is Test {
         _wire(address(payments), payments.returnOutgoing.selector, Roles.COMPLIANCE);
         _wire(address(payments), payments.setScreeningThreshold.selector, Roles.GOVERNANCE);
         _wire(address(attestations), attestations.setMaxAge.selector, Roles.GOVERNANCE);
+        _wire(address(cash), cash.openCash.selector, Roles.GOVERNANCE);
+        _wire(address(cash), cash.setLimits.selector, Roles.GOVERNANCE);
+        _wire(address(cash), cash.withdrawAtAtm.selector, Roles.ATM);
+        _wire(address(cash), cash.confirmDispense.selector, Roles.ATM);
+        _wire(address(cash), cash.reportFailure.selector, Roles.ATM);
 
         manager.grantRole(Roles.LEDGER, address(ledger), 0);
         manager.grantRole(Roles.STAFF_ADMIN, address(staffRoles), 0);
         manager.grantRole(Roles.FREEZER, address(holds), 0);
         manager.grantRole(Roles.BOOKKEEPER, address(payments), 0);
+        manager.grantRole(Roles.BOOKKEEPER, address(cash), 0);
         manager.grantRole(Roles.BOOKKEEPER, treasury, 0);
         uint64[] memory staff = _staffAdministered();
         for (uint256 i = 0; i < staff.length; ++i) manager.setRoleAdmin(staff[i], Roles.STAFF_ADMIN);
@@ -116,12 +138,14 @@ abstract contract BankFixture is Test {
         token.allowUser(otherCustomers);
         token.allowUser(pending);
         token.allowUser(address(payments));
+        token.allowUser(address(cash));
 
         manager.grantRole(Roles.ADMIN, governance, 0);
         manager.grantRole(Roles.GOVERNANCE, governance, 0);
         manager.renounceRole(Roles.ADMIN, address(this));
 
         _govern(address(ledger), _openingCall());
+        _govern(address(cash), _openCashCall());
         _govern(address(partnerKeys), abi.encodeCall(PartnerKeys.setKey, (CLEARING, _signer(clearingKey))));
         _govern(address(partnerKeys), abi.encodeCall(PartnerKeys.setKey, (CUSTODIAN, _signer(custodianKey))));
     }
@@ -201,7 +225,7 @@ abstract contract BankFixture is Test {
                 account.executionNonce()
             )
         );
-        bytes32 digest = MessageHashUtils.toTypedDataHash(_separator(account), structHash);
+        bytes32 digest = MessageHashUtils.toTypedDataHash(_separator(address(account)), structHash);
         bytes[] memory sigs = new bytes[](keys.length);
         for (uint256 i = 0; i < keys.length; ++i) sigs[i] = _signP256(keys[i], digest);
         return abi.encode(_signers(keys), sigs);
@@ -214,13 +238,15 @@ abstract contract BankFixture is Test {
         return abi.encodePacked(r, s);
     }
 
-    function _separator(MultiSignerAccount account) private view returns (bytes32) {
-        (bytes1 fields, string memory name, string memory version, uint256 chainId, address verifying, bytes32 salt, ) = account
-            .eip712Domain();
+    /// @dev The EIP-712 domain separator of `signedFor`, from its own ERC-5267 description.
+    function _separator(address signedFor) internal view returns (bytes32) {
+        (bytes1 fields, string memory name, string memory version, uint256 chainId, address verifying, bytes32 salt, ) = IERC5267(
+            signedFor
+        ).eip712Domain();
         return MessageHashUtils.toDomainSeparator(fields, name, version, chainId, verifying, salt);
     }
 
-    function _verifiers() private view returns (address[] memory verifiers) {
+    function _verifiers() internal view returns (address[] memory verifiers) {
         verifiers = new address[](1);
         verifiers[0] = address(p256);
     }
@@ -266,6 +292,31 @@ abstract contract BankFixture is Test {
         lines[5] = GeneralLedger.Line(GeneralLedger.Account.Equity, -_hkd(907_000));
 
         return abi.encodeCall(GeneralLedger.postOpening, (holders, amounts, lines, "opening"));
+    }
+
+    /// @dev Cash opens split as 250,000 in the vault, 50,000 in the teller's drawer and 200,000 in the ATM.
+    function _openCashCall() private view returns (bytes memory) {
+        CashOperations.Location[] memory at = new CashOperations.Location[](3);
+        at[0] = _vault(1);
+        at[1] = _drawer(1, teller1);
+        at[2] = _atm(1, atm1);
+        uint256[] memory amounts = new uint256[](3);
+        amounts[0] = 250_000 * HKD;
+        amounts[1] = 50_000 * HKD;
+        amounts[2] = 200_000 * HKD;
+        return abi.encodeCall(CashOperations.openCash, (at, amounts));
+    }
+
+    function _vault(uint64 branch) internal pure returns (CashOperations.Location memory) {
+        return CashOperations.Location(CashOperations.Place.Vault, branch, address(0));
+    }
+
+    function _drawer(uint64 branch, address teller) internal pure returns (CashOperations.Location memory) {
+        return CashOperations.Location(CashOperations.Place.Drawer, branch, teller);
+    }
+
+    function _atm(uint64 branch, address machine) internal pure returns (CashOperations.Location memory) {
+        return CashOperations.Location(CashOperations.Place.Atm, branch, machine);
     }
 
     function _hkd(int128 amount) internal pure returns (int128) {
