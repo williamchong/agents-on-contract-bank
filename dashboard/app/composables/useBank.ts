@@ -1,109 +1,118 @@
-// The bank as the chain reports it, read directly from the contracts at each new block. This is the bank
-// map's first source; it moves to the indexer's feed once the indexer exists. See docs/plan.md open
-// question 15. The addresses come from the deployment, written to public/bank.json by `pnpm local`.
+// The bank as the chain reports it, read directly from the contracts at each new block: the bank map's and
+// the balance sheet's figures. The addresses come from the control service's deployment. See docs/plan.md
+// open questions 15 and 23.
 
 import { createPublicClient, http, parseAbi, type Address, type Hex } from 'viem'
-import { onScopeDispose, ref, shallowRef } from 'vue'
+import { onScopeDispose, ref, shallowRef, watch, type Ref } from 'vue'
+import type { Deployment } from '~/lib/story'
 
-// One Hong Kong dollar, in the token's cents.
-export const HKD = 100n
-// The settlement account on the opening balance sheet in docs/scenarios.md.
-export const OPENING_SETTLEMENT = 1_000_000n * HKD
+export { hkd, HKD, MIN_CAPITAL, MIN_LIQUIDITY, OPENING_SETTLEMENT } from '~/lib/money'
 
-interface Deployment {
-  chainId: number
-  contracts: { token: Address; ledger: Address; cash: Address; payments: Address; assisted: Address }
-  customers: Record<string, Address>
-  cash: { vault: Hex; drawer: Hex; atm: Hex }
-}
+// GeneralLedger.Account, in its order; keep in step with Ledger in services/src/books.ts.
+export const Accounts = ['Settlement', 'Cash', 'Securities', 'Loans', 'Allowance', 'ReserveSurplus', 'DueFromReserve', 'Deposits', 'Equity'] as const
+type Account = (typeof Accounts)[number]
 
 export interface BankState {
   block: bigint
   customers: { name: string; balance: bigint }[]
-  settlement: bigint
-  cash: { vault: bigint; drawer: bigint; atm: bigint }
+  ledger: Record<Account, bigint>
+  cash: { vault: bigint; drawer: bigint; atm: bigint; replacementDrawer: bigint }
   inPayments: bigint
   // Customers' money held at the branch for operations waiting for their approvers.
   awaitingApproval: bigint
+  // The clearing system's latest statement of the settlement account, compared with the ledger.
+  statement: { asOf: bigint; matched: boolean; current: boolean } | undefined
   booksBalance: boolean
 }
-
-// GeneralLedger.Account.Settlement, as services/src/books.ts numbers it.
-const SETTLEMENT = 0
 
 const abi = parseAbi([
   'function balanceOf(address) view returns (uint256)',
   'function balances() view returns (int256[])',
   'function cashAt(bytes32) view returns (uint256)',
   'function waitingTotal() view returns (uint256)',
+  'function figure(uint8) view returns ((uint256 amount, uint256 ledgerBalance, uint256 asOf, uint256 sequence, bool matched))',
+  'function isCurrent(uint8) view returns (bool)',
 ])
 
-export function useBank(rpcUrl = 'http://localhost:8545') {
+export function useBank(deployment: Ref<Deployment | undefined>, rpcUrl = 'http://localhost:8545') {
   const state = shallowRef<BankState>()
   const error = ref<string>()
   // The reads of one block go to the node together.
   const client = createPublicClient({ transport: http(rpcUrl, { batch: true }) })
   let stop: (() => void) | undefined
   let disposed = false
-  // Only the latest read may set the state, as an earlier one can finish after it.
-  let latest = 0
 
+  // Reads the latest state rather than a block by number, which a chain reverted under the node could
+  // answer from before the revert.
   async function read(d: Deployment, blockNumber: bigint): Promise<BankState> {
-    const balanceOf = (address: Address) => client.readContract({ address: d.contracts.token, abi, functionName: 'balanceOf', args: [address], blockNumber })
-    const cashAt = (id: Hex) => client.readContract({ address: d.contracts.cash, abi, functionName: 'cashAt', args: [id], blockNumber })
+    const c = d.contracts as Record<string, Address>
+    const balanceOf = (address: Address) => client.readContract({ address: c.token!, abi, functionName: 'balanceOf', args: [address] })
+    const cashAt = (id: string) => client.readContract({ address: c.cash!, abi, functionName: 'cashAt', args: [id as Hex] })
+    const waiting = (address: Address) => client.readContract({ address, abi, functionName: 'waitingTotal' })
     const names = Object.keys(d.customers).filter((n) => n !== 'other customers')
-    const waiting = (address: Address) => client.readContract({ address, abi, functionName: 'waitingTotal', blockNumber })
-    const [balances, ledger, vault, drawer, atm, inPayments, assistedWaiting, cashWaiting] = await Promise.all([
-      Promise.all(names.map((n) => balanceOf(d.customers[n]!))),
-      client.readContract({ address: d.contracts.ledger, abi, functionName: 'balances', blockNumber }),
-      cashAt(d.cash.vault),
-      cashAt(d.cash.drawer),
-      cashAt(d.cash.atm),
-      balanceOf(d.contracts.payments),
-      waiting(d.contracts.assisted),
-      waiting(d.contracts.cash),
+    const [balances, ledger, vault, drawer, atm, replacementDrawer, inPayments, assisted, atCash, figure, current] = await Promise.all([
+      Promise.all(names.map((n) => balanceOf(d.customers[n] as Address))),
+      client.readContract({ address: c.ledger!, abi, functionName: 'balances' }),
+      cashAt(d.cash.vault!),
+      cashAt(d.cash.drawer!),
+      cashAt(d.cash.atm!),
+      cashAt(d.cash.replacementDrawer!),
+      balanceOf(c.payments!),
+      waiting(c.assisted!),
+      waiting(c.cash!),
+      client.readContract({ address: c.attestations!, abi, functionName: 'figure', args: [0] }),
+      client.readContract({ address: c.attestations!, abi, functionName: 'isCurrent', args: [0] }),
     ])
     return {
       block: blockNumber,
       customers: names.map((name, i) => ({ name, balance: balances[i]! })),
-      settlement: ledger[SETTLEMENT]!,
-      cash: { vault, drawer, atm },
+      ledger: Object.fromEntries(Accounts.map((a, i) => [a, ledger[i]!])) as Record<Account, bigint>,
+      cash: { vault, drawer, atm, replacementDrawer },
       inPayments,
-      awaitingApproval: assistedWaiting + cashWaiting,
+      awaitingApproval: assisted + atCash,
+      statement: figure.sequence === 0n ? undefined : { asOf: figure.asOf, matched: figure.matched, current },
       booksBalance: ledger.reduce((a, b) => a + b, 0n) === 0n,
     }
   }
 
-  async function refresh(d: Deployment, block: bigint) {
-    const mine = ++latest
-    try {
-      const next = await read(d, block)
-      if (mine !== latest) return
-      state.value = next
-      error.value = undefined
-    } catch (e) {
-      if (mine === latest) error.value = `Could not read the chain: ${(e as Error).message}`
+  // Each deployment's poller has its own generation, so one left from an earlier deployment stops
+  // instead of writing the old bank's figures.
+  let generation = 0
+
+  // Watches the latest block by its hash, which changes whenever the chain does. One read at a time, so a
+  // slow read is never overtaken by the next and discarded; the next tick picks up whatever block is
+  // latest by then.
+  async function start(d: Deployment) {
+    stop?.()
+    const mine = ++generation
+    let last: string | undefined
+    let reading = false
+    const tick = async () => {
+      if (reading || mine !== generation) return
+      reading = true
+      try {
+        const block = await client.getBlock()
+        if (block.hash === last) return
+        last = block.hash ?? undefined
+        const next = await read(d, block.number)
+        if (mine !== generation) return
+        state.value = next
+        error.value = undefined
+        // A block mined while the reads were out may have left them straddling two blocks; read again.
+        if ((await client.getBlock()).hash !== last) last = undefined
+      } catch (e) {
+        error.value = `Could not reach the chain: ${(e as Error).message}`
+      } finally {
+        reading = false
+      }
     }
+    const timer = setInterval(() => void tick(), 500)
+    stop = () => clearInterval(timer)
+    if (disposed) stop()
+    await tick()
   }
 
-  async function start() {
-    let deployment: Deployment
-    try {
-      deployment = (await (await fetch('/bank.json')).json()) as Deployment
-    } catch {
-      error.value = 'No bank to draw yet: start the chain with `pnpm hardhat node` and deploy with `pnpm local`.'
-      return
-    }
-    await refresh(deployment, await client.getBlockNumber())
-    if (disposed) return
-    stop = client.watchBlockNumber({
-      pollingInterval: 1000,
-      onBlockNumber: (block) => void refresh(deployment, block),
-      onError: (e) => (error.value = `Could not reach the chain: ${e.message}`),
-    })
-  }
-
-  void start()
+  watch(deployment, (d) => d && void start(d), { immediate: true })
   onScopeDispose(() => {
     disposed = true
     stop?.()
@@ -111,7 +120,18 @@ export function useBank(rpcUrl = 'http://localhost:8545') {
   return { state, error }
 }
 
-// Cents to Hong Kong dollars, as the map labels them.
-export function hkd(cents: bigint): string {
-  return `HK$${(cents / HKD).toLocaleString('en-HK')}`
+// Equity over loans net of the allowance, and liquid assets over deposits, as docs/architecture.md defines
+// the two ratios, in per cent to two places, with the totals of each side of the balance sheet.
+export function ratios(ledger: Record<Account, bigint>) {
+  const equity = -ledger.Equity
+  const netLoans = ledger.Loans + ledger.Allowance
+  const liquid = ledger.Settlement + ledger.Cash + ledger.Securities
+  const deposits = -ledger.Deposits
+  const percent = (a: bigint, b: bigint) => (b === 0n ? 0 : Number((a * 10_000n) / b) / 100)
+  return {
+    capital: percent(equity, netLoans),
+    liquidity: percent(liquid, deposits),
+    totalAssets: liquid + netLoans,
+    totalLiabilities: deposits + equity,
+  }
 }

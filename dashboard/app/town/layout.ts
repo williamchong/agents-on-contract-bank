@@ -5,8 +5,21 @@ export type Vec3 = [number, number, number]
 
 export type BuildingShape = 'block' | 'tower' | 'lot'
 
+export type BuildingId =
+  | 'head-office'
+  | 'town-hall'
+  | 'water-tower'
+  | 'branch'
+  | 'vault'
+  | 'atm'
+  | 'custodian'
+  | 'post-office'
+  | 'compliance-yard'
+  | 'suspense-lot'
+  | 'clearing-house'
+
 export interface Building {
-  id: string
+  id: BuildingId
   label: string
   shape: BuildingShape
   position: Vec3
@@ -45,4 +58,49 @@ export const roads: Road[] = [
   // The street of houses.
   { from: [-7, 7.5], to: [7, 7.5] },
   { from: [0, 4], to: [0, 7.5] },
+]
+
+// Where each member of staff stands, marked with a short code for their role: the branch's people in a row
+// west of the branch, head office's in a row behind head office, and the red team, whose teller role is at
+// the second branch, out on the edge of town.
+export interface StaffPost {
+  name: string
+  code: string
+  position: Vec3
+  color: string
+}
+
+const branchStaff = '#d9822b'
+const headOfficeStaff = '#5f7f9a'
+const row = (names: [string, string][], z: number, x0: number, color: string): StaffPost[] =>
+  names.map(([name, code], i) => ({ name, code, position: [x0 + i * 1.3, 0, z] as Vec3, color }))
+
+export const staffPosts: StaffPost[] = [
+  ...row(
+    [
+      ['teller', 'T'],
+      ['replacement teller', 'T2'],
+      ['supervisor', 'S'],
+      ['branch manager', 'BM'],
+      ['vault custodian', 'VC'],
+      ['account opening officer', 'AO'],
+    ],
+    6.4,
+    -13.4,
+    branchStaff,
+  ),
+  ...row(
+    [
+      ['compliance', 'C'],
+      ['back office', 'BO'],
+      ['finance', 'F'],
+      ['risk', 'R'],
+      ['support', 'Su'],
+      ['IT security', 'IT'],
+    ],
+    -3.2,
+    -3.2,
+    headOfficeStaff,
+  ),
+  { name: 'red team', code: 'RT', position: [13, 0, -6], color: '#c0392b' },
 ]
