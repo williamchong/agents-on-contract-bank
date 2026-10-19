@@ -36,6 +36,9 @@ export class Control {
   private bank!: Bank
   private clearing!: Clearing
   private readonly timeline = new Timeline()
+  // Slow enough by default for an audience to see each step, a waiting item before it is approved; kept
+  // across a reset.
+  private pace = 700
   // While a bank is being opened, its setting up is not part of the story, so nothing is sent.
   private opening = false
   private card: Card | undefined
@@ -57,8 +60,7 @@ export class Control {
       this.opening = false
     }
     this.timeline.clear()
-    // Slow enough for an audience to see each step, a waiting item before it is approved.
-    this.bank.submission.pace = 700
+    this.bank.submission.pace = this.pace
     this.clearing = await Clearing.open(this.bank)
   }
 
@@ -85,7 +87,34 @@ export class Control {
   }
 
   state() {
-    return { lines: this.bank.timeline.lines, card: this.card, nextBeat: beats[this.nextBeat]?.number }
+    const s = this.bank.submission
+    return { lines: this.bank.timeline.lines, card: this.card, nextBeat: beats[this.nextBeat]?.number, paused: s.isPaused, pace: s.pace }
+  }
+
+  // Pausing holds the run before its next request; it does not take the command lock, so the operator
+  // can pause a scenario while it runs.
+  pause(): void {
+    if (this.bank.submission.isPaused) return
+    this.bank.submission.pause()
+    this.note('pause the run')
+  }
+
+  resume(): void {
+    if (!this.bank.submission.isPaused) return
+    this.bank.submission.resume()
+    this.note('resume the run')
+  }
+
+  // How long each request waits, so the operator can slow a run for an audience or let it go at full speed.
+  setPace(ms: number): void {
+    if (!Number.isFinite(ms) || ms < 0 || ms > MAX_PACE) throw new Error(`A pace is between 0 and ${MAX_PACE} ms`)
+    this.pace = ms
+    this.bank.submission.pace = ms
+  }
+
+  // An operator line written outside a command, which must never bring the service down.
+  private note(action: string): void {
+    operator(this.bank, action).catch(() => {})
   }
 
   runPreset(name: string): Promise<Card> {
@@ -118,12 +147,14 @@ export class Control {
     })
   }
 
+  // Closes the day, or moves block time on: every time lock, limit and signature window moves with it.
   async time(action: 'end of day' | 'advance', seconds = 3600n): Promise<void> {
+    if (seconds <= 0n) throw new Error('Time only moves forward')
     await this.exclusive(async () => {
       if (action === 'end of day') {
         await closeDay(this.context())
       } else {
-        await operator(this.bank, `move time on by ${seconds / 60n} minutes`)
+        await operator(this.bank, `move time on by ${seconds % 86_400n === 0n ? `${seconds / 86_400n} days` : `${seconds / 60n} minutes`}`)
         await advance(this.chain, seconds)
       }
     })
@@ -189,6 +220,8 @@ export class Control {
   }
 }
 
+const MAX_PACE = 10_000
+
 class Busy extends Error {
   constructor() {
     super('Another command is still running')
@@ -239,6 +272,15 @@ export function serve(control: Control, port = 8546) {
           return reply(200, control.state())
         case '/reset':
           await control.reset()
+          return reply(200, control.state())
+        case '/pause':
+          control.pause()
+          return reply(200, control.state())
+        case '/resume':
+          control.resume()
+          return reply(200, control.state())
+        case '/pace':
+          control.setPace(Number(url.searchParams.get('ms') ?? Number.NaN))
           return reply(200, control.state())
         default:
           return reply(404, { error: 'Not found' })

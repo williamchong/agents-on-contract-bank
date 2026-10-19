@@ -67,10 +67,11 @@ export function registerPayee(bank: Bank, customer: CustomerName, payee: string)
   ])
 }
 
-// A payment to someone at another bank. The payee's details stay with the bank; the chain sees their hash.
+// A payment to someone at another bank, whom `payee` names as the story says it. The payee's details stay
+// with the bank; the chain sees their hash.
 export function payOut(bank: Bank, from: CustomerName, payee: string, amount: bigint): Promise<Outcome> {
   const c = bank.contracts
-  return bank.act(from, 'app', `pay ${hkd(amount)} to ${payee} at another bank`, [
+  return bank.act(from, 'app', `pay ${hkd(amount)} to ${payee}`, [
     bank.call('DepositToken', c.token, 'approve', [c.payments, amount]),
     bank.call('Payments', c.payments, 'pay', [amount, keccak256(toBytes(payee))]),
   ])

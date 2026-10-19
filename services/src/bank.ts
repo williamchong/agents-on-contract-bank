@@ -378,6 +378,7 @@ const wiring: [keyof Contracts, ContractName, string, bigint][] = [
   ['assisted', 'AssistedOperations', 'setLadder', Roles.GOVERNANCE],
   ['limits', 'CustomerLimits', 'countMovement', Roles.LIMIT_KEEPER],
   ['limits', 'CustomerLimits', 'countPayment', Roles.LIMIT_KEEPER],
+  ['limits', 'CustomerLimits', 'releasePayment', Roles.LIMIT_KEEPER],
   ['limits', 'CustomerLimits', 'enrol', Roles.GOVERNANCE],
   ['limits', 'CustomerLimits', 'setChannel', Roles.GOVERNANCE],
   ['limits', 'CustomerLimits', 'setLimits', Roles.GOVERNANCE],

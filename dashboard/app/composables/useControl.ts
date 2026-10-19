@@ -26,6 +26,8 @@ export function useControl() {
   const lines = ref<Line[]>([])
   const card = shallowRef<Card>()
   const nextBeat = ref<number>()
+  const paused = ref(false)
+  const pace = ref(700)
   const busy = ref(false)
   const error = ref<string>()
   let source: EventSource | undefined
@@ -39,7 +41,7 @@ export function useControl() {
       lines.value = state.lines
       deployment.value = d
       card.value = state.card
-      nextBeat.value = state.nextBeat
+      apply(state)
       error.value = undefined
     } catch {
       error.value = 'No bank to show yet: start the chain with `pnpm hardhat node` and the bank with `pnpm demo`.'
@@ -66,8 +68,26 @@ export function useControl() {
     }
   }
 
+  function apply(state: { nextBeat?: number; paused: boolean; pace: number }) {
+    nextBeat.value = state.nextBeat
+    paused.value = state.paused
+    pace.value = state.pace
+  }
+
   async function refreshBeat() {
-    nextBeat.value = (await (await fetch(`${base}/state`)).json()).nextBeat
+    apply(await (await fetch(`${base}/state`)).json())
+  }
+
+  // Pausing, resuming and the pace act at once, even while a run holds the other commands.
+  async function setting(path: string) {
+    try {
+      const res = await fetch(`${base}${path}`, { method: 'POST' })
+      const body = await res.json()
+      if (!res.ok) error.value = body.error
+      else apply(body)
+    } catch {
+      error.value = 'The control service is not answering: is `pnpm demo` running?'
+    }
   }
 
   // Sends an operator command; the run's lines arrive as they happen.
@@ -88,5 +108,5 @@ export function useControl() {
 
   listen()
   onScopeDispose(() => source?.close())
-  return { deployment, lines, card, nextBeat, busy, error, command }
+  return { deployment, lines, card, nextBeat, paused, pace, busy, error, command, setting }
 }

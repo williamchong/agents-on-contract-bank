@@ -1,12 +1,19 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { Deployment } from '~/lib/story'
 
 // The operator's commands: the guided tour, the daily routines, an adverse scenario, time, and a reset to
 // the opening balance sheet. Each goes to the control service, which has no authority on chain. See
 // docs/architecture.md#control-panel.
-const props = defineProps<{ deployment: Deployment | undefined; nextBeat: number | undefined; busy: boolean }>()
-const emit = defineEmits<{ command: [path: string] }>()
+const props = defineProps<{ deployment: Deployment | undefined; nextBeat: number | undefined; busy: boolean; paused: boolean; pace: number }>()
+const emit = defineEmits<{ command: [path: string]; setting: [path: string] }>()
+
+const paces = [
+  { label: 'Slow', ms: 1500 },
+  { label: 'Normal', ms: 700 },
+  { label: 'Fast', ms: 0 },
+]
+const days = ref(1)
 
 const scenarios = computed(() => props.deployment?.presets.filter((p) => p.kind === 'adverse') ?? [])
 const beat = computed(() => props.deployment?.beats.find((b) => b.number === props.nextBeat))
@@ -38,7 +45,27 @@ function inject(event: Event) {
       </select>
     </div>
     <div class="row">
+      <button @click="emit('setting', paused ? '/resume' : '/pause')">{{ paused ? 'Resume' : 'Pause' }}</button>
+      <span class="speed" role="group" aria-label="Speed">
+        <button
+          v-for="p in paces"
+          :key="p.ms"
+          :aria-pressed="pace === p.ms"
+          :class="{ on: pace === p.ms }"
+          @click="emit('setting', `/pace?ms=${p.ms}`)"
+        >
+          {{ p.label }}
+        </button>
+      </span>
+    </div>
+    <div class="row">
       <button :disabled="busy" @click="emit('command', '/time/advance?seconds=3600')">+1 hour</button>
+      <label class="jump">
+        <input v-model.number="days" type="number" min="1" max="365" aria-label="Days to jump" />
+        <button :disabled="busy || !(days >= 1)" @click="emit('command', `/time/advance?seconds=${Math.floor(days) * 86400}`)">
+          Jump {{ days === 1 ? 'a day' : `${days} days` }}
+        </button>
+      </label>
       <button :disabled="busy" @click="emit('command', '/time/end-of-day')">Close the day</button>
       <button :disabled="busy" class="reset" @click="emit('command', '/reset')">Reset</button>
     </div>
@@ -78,5 +105,31 @@ select:disabled {
 
 .reset {
   margin-left: auto;
+}
+
+.speed {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.on {
+  background: var(--ink);
+  color: var(--panel);
+}
+
+.jump {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.jump input {
+  width: 3.5em;
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--chip);
+  color: var(--ink);
 }
 </style>

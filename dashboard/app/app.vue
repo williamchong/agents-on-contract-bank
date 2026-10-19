@@ -4,7 +4,7 @@ import { useControl } from '~/composables/useControl'
 
 // The dashboard: the invariant strip across the top, the bank map, the story view with its waiting strip,
 // the scenario card, the balance sheet and the control panel. See docs/architecture.md#dashboard.
-const { deployment, lines, card, nextBeat, busy, error, command } = useControl()
+const { deployment, lines, card, nextBeat, paused, pace, busy, error, command, setting } = useControl()
 const { state, error: chainError } = useBank(deployment)
 </script>
 
@@ -17,7 +17,15 @@ const { state, error: chainError } = useBank(deployment)
         <BankMap :deployment="deployment" :state="state" :lines="lines" :focus="card?.building" />
       </div>
       <aside>
-        <ControlPanel :deployment="deployment" :next-beat="nextBeat" :busy="busy" @command="command" />
+        <ControlPanel
+          :deployment="deployment"
+          :next-beat="nextBeat"
+          :busy="busy"
+          :paused="paused"
+          :pace="pace"
+          @command="command"
+          @setting="setting"
+        />
         <ScenarioCard :card="card" />
         <WaitingStrip :lines="lines" :deployment="deployment" />
         <StoryView :lines="lines" :deployment="deployment" />
