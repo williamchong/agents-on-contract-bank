@@ -24,6 +24,11 @@ const tallestHouse = 150_000n * HKD
 // The water tower is full at twice the opening settlement balance.
 const fullTower = 2n * OPENING_SETTLEMENT
 
+// Both tellers' drawers: whoever holds the role, the other's has gone back to the vault.
+function drawers(s: BankState): bigint {
+  return s.cash.drawer + s.cash.replacementDrawer
+}
+
 // What each building shows from the chain, under its name.
 const figures = computed((): Record<string, string> => {
   const s = props.state
@@ -33,8 +38,8 @@ const figures = computed((): Record<string, string> => {
     'water-tower': hkd(s.ledger.Settlement),
     vault: hkd(s.cash.vault),
     branch: s.awaitingApproval
-      ? `${hkd(s.cash.drawer)} in the drawer, ${hkd(s.awaitingApproval)} awaiting approval`
-      : `${hkd(s.cash.drawer)} in the drawer`,
+      ? `${hkd(drawers(s))} in the drawers, ${hkd(s.awaitingApproval)} awaiting approval`
+      : `${hkd(drawers(s))} in the drawers`,
     atm: hkd(s.cash.atm),
     'post-office': s.inPayments ? `${hkd(s.inPayments)} waiting` : 'Nothing waiting',
   }

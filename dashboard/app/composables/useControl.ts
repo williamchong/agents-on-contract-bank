@@ -5,18 +5,26 @@
 import { onScopeDispose, ref, shallowRef } from 'vue'
 import type { Deployment, Line } from '~/lib/story'
 
+// A dashboard panel an adverse scenario can bring forward.
+export type Panel = 'story' | 'waiting' | 'balance sheet'
+
 export interface Card {
   title: string
   kind: 'routine' | 'adverse' | 'tour'
   control?: string
-  // The building on the bank map an adverse scenario concerns, which the map marks while it is shown.
+  // The building on the bank map and the panel an adverse scenario concerns, which the adverse view marks
+  // and brings forward while it is shown.
   building?: string
+  panel?: Panel
   pointAt?: string
   claim?: string
   waitsFor?: string[]
   status: 'running' | 'passed' | 'failed'
   checks: { name: string; pass: boolean; detail?: string }[]
   error?: string
+  // The story lines that started and ended it.
+  from?: number
+  to?: number
 }
 
 const base = 'http://127.0.0.1:8546'
@@ -28,6 +36,7 @@ export function useControl() {
   const nextBeat = ref<number>()
   const paused = ref(false)
   const pace = ref(700)
+  const daily = ref(false)
   const busy = ref(false)
   const error = ref<string>()
   let source: EventSource | undefined
@@ -68,17 +77,19 @@ export function useControl() {
     }
   }
 
-  function apply(state: { nextBeat?: number; paused: boolean; pace: number }) {
+  function apply(state: { nextBeat?: number; paused: boolean; pace: number; daily: boolean }) {
     nextBeat.value = state.nextBeat
     paused.value = state.paused
     pace.value = state.pace
+    daily.value = state.daily
   }
 
   async function refreshBeat() {
     apply(await (await fetch(`${base}/status`)).json())
   }
 
-  // Pausing, resuming and the pace act at once, even while a run holds the other commands.
+  // Pausing, resuming, the pace and starting or stopping daily operation act at once, even while a command
+  // runs.
   async function setting(path: string) {
     try {
       const res = await fetch(`${base}${path}`, { method: 'POST' })
@@ -108,5 +119,5 @@ export function useControl() {
 
   listen()
   onScopeDispose(() => source?.close())
-  return { deployment, lines, card, nextBeat, paused, pace, busy, error, command, setting }
+  return { deployment, lines, card, nextBeat, paused, pace, daily, busy, error, command, setting }
 }

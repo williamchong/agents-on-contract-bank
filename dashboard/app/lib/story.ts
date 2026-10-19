@@ -21,6 +21,8 @@ export interface Line {
   actor: string
   channel: string
   action: string
+  signers?: string[]
+  role?: string
   tx?: string
   reason?: { error: string; args: unknown[] }
   events: ChainEvent[]
@@ -32,8 +34,21 @@ export interface Deployment {
   customers: Record<string, string>
   staff: Record<string, string>
   cash: Record<string, string>
-  presets: { name: string; kind: 'routine' | 'adverse'; control?: string }[]
+  presets: { name: string; kind: 'routine' | 'adverse'; group?: string; control?: string }[]
+  groups: string[]
   beats: { number: number; title: string; pointAt: string; claim: string }[]
+}
+
+// The general ledger accounts a line's entry moved, by their number in GeneralLedger.Account.
+export function accountsMoved(line: Line): number[] {
+  return line.events
+    .filter((e) => e.name === 'EntryPosted')
+    .flatMap((e) => (e.args.lines as { account: number | string }[]).map((l) => Number(l.account)))
+}
+
+// What the adverse view marks: a refusal, a figure or count that did not match the ledger, or an incident.
+export function isAlarm(line: Line): boolean {
+  return line.kind === 'refused' || line.events.some((e) => e.name === 'IncidentReported' || e.args.matched === false)
 }
 
 // The rule behind each refusal, in plain words, by the contract error that names it.

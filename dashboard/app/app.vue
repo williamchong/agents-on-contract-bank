@@ -1,11 +1,24 @@
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue'
 import { useBank } from '~/composables/useBank'
-import { useControl } from '~/composables/useControl'
+import { useControl, type Panel } from '~/composables/useControl'
+import { accountsMoved } from '~/lib/story'
 
 // The dashboard: the invariant strip across the top, the bank map, the story view with its waiting strip,
-// the scenario card, the balance sheet and the control panel. See docs/architecture.md#dashboard.
-const { deployment, lines, card, nextBeat, paused, pace, busy, error, command, setting } = useControl()
+// the scenario card, the balance sheet and the control panel. While an adverse scenario is shown, the
+// panel it concerns comes forward, just under its card. See docs/architecture.md#dashboard.
+const { deployment, lines, card, nextBeat, paused, pace, daily, busy, error, command, setting } = useControl()
 const { state, error: chainError } = useBank(deployment)
+
+const selected = ref<number>()
+// A reset starts the story again, so a line selected before it is gone.
+watch(deployment, () => (selected.value = undefined))
+const moved = computed(() => {
+  const line = lines.value.find((l) => l.seq === selected.value)
+  return line ? accountsMoved(line) : []
+})
+const adverse = computed(() => (card.value?.kind === 'adverse' ? card.value : undefined))
+const order = (panel: Panel) => ({ order: adverse.value?.panel === panel ? 2 : 3 })
 </script>
 
 <template>
@@ -23,13 +36,22 @@ const { state, error: chainError } = useBank(deployment)
           :busy="busy"
           :paused="paused"
           :pace="pace"
+          :daily="daily"
+          :style="{ order: 0 }"
           @command="command"
           @setting="setting"
         />
-        <ScenarioCard :card="card" />
-        <WaitingStrip :lines="lines" :deployment="deployment" />
-        <StoryView :lines="lines" :deployment="deployment" />
-        <BalanceSheet :state="state" />
+        <ScenarioCard :card="card" :style="{ order: 1 }" />
+        <WaitingStrip :lines="lines" :deployment="deployment" :style="order('waiting')" />
+        <StoryView
+          :lines="lines"
+          :deployment="deployment"
+          :selected="selected"
+          :alarms="adverse"
+          :style="order('story')"
+          @select="selected = $event"
+        />
+        <BalanceSheet :state="state" :lines="lines" :moved="moved" :style="order('balance sheet')" />
       </aside>
     </main>
   </div>

@@ -14,6 +14,8 @@ type Account = (typeof Accounts)[number]
 
 export interface BankState {
   block: bigint
+  // The block's time, against which the balance sheet ages each attested figure.
+  time: bigint
   customers: { name: string; balance: bigint }[]
   ledger: Record<Account, bigint>
   cash: { vault: bigint; drawer: bigint; atm: bigint; replacementDrawer: bigint }
@@ -44,7 +46,7 @@ export function useBank(deployment: Ref<Deployment | undefined>, rpcUrl = 'http:
 
   // Reads the latest state rather than a block by number, which a chain reverted under the node could
   // answer from before the revert.
-  async function read(d: Deployment, blockNumber: bigint): Promise<BankState> {
+  async function read(d: Deployment, blockNumber: bigint, time: bigint): Promise<BankState> {
     const c = d.contracts as Record<string, Address>
     const balanceOf = (address: Address) => client.readContract({ address: c.token!, abi, functionName: 'balanceOf', args: [address] })
     const cashAt = (id: string) => client.readContract({ address: c.cash!, abi, functionName: 'cashAt', args: [id as Hex] })
@@ -65,6 +67,7 @@ export function useBank(deployment: Ref<Deployment | undefined>, rpcUrl = 'http:
     ])
     return {
       block: blockNumber,
+      time,
       customers: names.map((name, i) => ({ name, balance: balances[i]! })),
       ledger: Object.fromEntries(Accounts.map((a, i) => [a, ledger[i]!])) as Record<Account, bigint>,
       cash: { vault, drawer, atm, replacementDrawer },
@@ -94,7 +97,7 @@ export function useBank(deployment: Ref<Deployment | undefined>, rpcUrl = 'http:
         const block = await client.getBlock()
         if (block.hash === last) return
         last = block.hash ?? undefined
-        const next = await read(d, block.number)
+        const next = await read(d, block.number, block.timestamp)
         if (mine !== generation) return
         state.value = next
         error.value = undefined

@@ -1,9 +1,9 @@
 // The control service: holds the bank, runs on the operator's machine beside the local chain, and serves
-// the dashboard the run's timeline as it grows and the operator's controls: the daily routines, an adverse
-// scenario, the guided tour's next beat, closing the day or moving time on, and resetting the run to the
-// opening balance sheet. It has no authority on chain; everything it starts acts through the actors' own
-// accounts and the submission service. It listens on the local machine only. See open question 23 in
-// docs/plan.md and the control panel in docs/architecture.md.
+// the dashboard the run's timeline as it grows and the operator's controls: starting and stopping daily
+// operation, an adverse scenario, the guided tour's next beat, pausing, pacing, closing the day or moving
+// time on, and resetting the run to the opening balance sheet. It has no authority on chain; everything
+// it starts acts through the actors' own accounts and the submission service. It listens on the local
+// machine only. See open question 23 in docs/plan.md and the control panel in docs/architecture.md.
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { deployBank, Staff, type Bank } from './bank.ts'
@@ -11,7 +11,7 @@ import { drawer, Holders } from './books.ts'
 import { advance, type Chain } from './chain.ts'
 import { Clearing } from './clearing.ts'
 import { locationId, places } from './operations.ts'
-import { closeDay, operator, presets, type Check, type Context } from './scenarios.ts'
+import { closeDay, operator, presets, ScenarioGroups, type Check, type Context, type Panel } from './scenarios.ts'
 import { Timeline, toJson, type Line } from './timeline.ts'
 import { beats } from './tour.ts'
 
@@ -21,12 +21,16 @@ export interface Card {
   kind: 'routine' | 'adverse' | 'tour'
   control?: string
   building?: string
+  panel?: Panel
   pointAt?: string
   claim?: string
   waitsFor?: string[]
   status: 'running' | 'passed' | 'failed'
   checks: Check[]
   error?: string
+  // The story lines that started and ended it, so the adverse view can mark what happened in between.
+  from?: number
+  to?: number
 }
 
 type Message = { type: 'line'; line: Line } | { type: 'card'; card: Card } | { type: 'reset' }
@@ -43,7 +47,12 @@ export class Control {
   private opening = false
   private card: Card | undefined
   private nextBeat = 0
-  private busy = false
+  // Commands run one at a time, each after the one before, as the chain's state moves under each.
+  private queue: Promise<unknown> = Promise.resolve()
+  // Daily operation runs while this is set; each start has its own number, so a run stopped and started
+  // again leaves only one going.
+  private daily = false
+  private dailyRun = 0
   private readonly clients = new Set<ServerResponse>()
 
   constructor(chain: Chain) {
@@ -81,7 +90,8 @@ export class Control {
         ...Object.fromEntries(await Promise.all(Object.entries(places(bank)).map(async ([k, at]) => [k, await locationId(bank, at)]))),
         replacementDrawer: await locationId(bank, drawer(bank.account('replacement teller'))),
       },
-      presets: presets.map((p) => ({ name: p.name, kind: p.kind, control: p.control })),
+      presets: presets.map((p) => ({ name: p.name, kind: p.kind, group: p.group, control: p.control })),
+      groups: ScenarioGroups,
       beats: beats.map(({ number, title, pointAt, claim }) => ({ number, title, pointAt, claim })),
     }
   }
@@ -92,7 +102,7 @@ export class Control {
 
   // What the control panel shows of the run, without its story.
   status() {
-    return { nextBeat: beats[this.nextBeat]?.number, paused: this.bank.submission.isPaused, pace: this.pace }
+    return { nextBeat: beats[this.nextBeat]?.number, paused: this.bank.submission.isPaused, pace: this.pace, daily: this.daily }
   }
 
   // Pausing holds the run before its next request; it does not take the command lock, so the operator
@@ -122,15 +132,64 @@ export class Control {
     operator(this.bank, action).catch((e) => console.error(`Could not record "${action}":`, e))
   }
 
-  runPreset(name: string): Promise<Card> {
+  // A preset on the scenario card; daily operation's routines show there only if one fails, so the card
+  // of a scenario injected meanwhile stays up.
+  runPreset(name: string, quiet = false): Promise<Card> {
     const preset = presets.find((p) => p.name === name)
     if (!preset) throw new Error(`No preset called ${name}`)
-    const { control, building, waitsFor } = preset
-    const card: Card = { title: preset.name, kind: preset.kind, status: 'running', checks: [], ...{ control, building, waitsFor } }
-    return this.run(`run ${preset.kind === 'adverse' ? 'the scenario' : 'the routine'}: ${preset.name}`, card, (ctx) => preset.run(ctx))
+    const { control, building, panel, waitsFor } = preset
+    const card: Card = { title: preset.name, kind: preset.kind, status: 'running', checks: [], ...{ control, building, panel, waitsFor } }
+    return this.run(`run ${preset.kind === 'adverse' ? 'the scenario' : 'the routine'}: ${preset.name}`, card, (ctx) => preset.run(ctx), quiet)
   }
 
-  // Every daily routine in turn; each closes its own day.
+  // Starts daily operation: the routines run in turn, each closing its own day, then time moves on to the
+  // next business day's opening, until the operator stops it or a routine fails. Each routine is its own
+  // command, so a scenario injected meanwhile runs between two of them.
+  startDaily(): void {
+    if (this.daily) return
+    this.daily = true
+    const run = ++this.dailyRun
+    this.note('start daily operation')
+    this.dailyLoop(run).catch((e) => {
+      console.error('Daily operation stopped:', e)
+      if (run === this.dailyRun) this.daily = false
+    })
+  }
+
+  stopDaily(): void {
+    if (!this.daily) return
+    this.daily = false
+    this.note('stop daily operation')
+  }
+
+  private async dailyLoop(run: number): Promise<void> {
+    const going = () => this.daily && run === this.dailyRun
+    while (going()) {
+      for (const routine of presets.filter((p) => p.kind === 'routine')) {
+        if (!going()) return
+        const card = await this.runPreset(routine.name, true)
+        if (card.status !== 'passed' && going()) {
+          this.daily = false
+          this.note(`stop daily operation: ${routine.name} failed`)
+          return
+        }
+      }
+      if (going()) await this.exclusive(() => this.nextBusinessDay())
+    }
+  }
+
+  // Moves block time on to 9 in the morning of the next weekday, Hong Kong time, as the contracts count days.
+  private async nextBusinessDay(): Promise<void> {
+    const now = await this.bank.now()
+    let day = (now + HK_OFFSET) / DAY + 1n
+    // 1 January 1970 was a Thursday, so a day number plus 4, modulo 7, is 0 on a Sunday and 6 on a Saturday.
+    while ((day + 4n) % 7n === 0n || (day + 4n) % 7n === 6n) day++
+    const opening = day * DAY - HK_OFFSET + 9n * 3600n
+    await operator(this.bank, 'move on to the next business day')
+    await advance(this.chain, opening - now)
+  }
+
+  // Every daily routine in turn, as one command; each closes its own day.
   runDaily(): Promise<Card> {
     const routines = presets.filter((p) => p.kind === 'routine')
     const card: Card = { title: 'Daily operation', kind: 'routine', status: 'running', checks: [] }
@@ -144,12 +203,10 @@ export class Control {
   nextTourBeat(): Promise<Card> {
     const beat = beats[this.nextBeat]
     if (!beat) throw new Error('The tour has run all its beats; reset to start it again')
+    // Claimed as it is queued, so a second press moves on to the beat after.
+    this.nextBeat++
     const card: Card = { title: `Beat ${beat.number}: ${beat.title}`, kind: 'tour', pointAt: beat.pointAt, claim: beat.claim, status: 'running', checks: [] }
-    // The beat is used up only once it runs, not when the service was busy and turned it away.
-    return this.run(`move the tour on to beat ${beat.number}: ${beat.title}`, card, (ctx) => {
-      this.nextBeat++
-      return beat.run(ctx)
-    })
+    return this.run(`move the tour on to beat ${beat.number}: ${beat.title}`, card, (ctx) => beat.run(ctx))
   }
 
   // Closes the day, or moves block time on: every time lock, limit and signature window moves with it.
@@ -169,6 +226,9 @@ export class Control {
   // reverting the chain: block numbers then only rise, and nothing that reads the chain by block can see
   // a block from before a revert.
   async reset(): Promise<void> {
+    this.daily = false
+    // A paused run would hold the reset behind it for ever.
+    this.bank.submission.resume()
     await this.exclusive(async () => {
       await this.open()
       this.card = undefined
@@ -181,11 +241,12 @@ export class Control {
     return { bank: this.bank, clearing: this.clearing }
   }
 
-  private async run(command: string, card: Card, body: (ctx: Context) => Promise<Check[]>): Promise<Card> {
+  // Runs a command with its card; a quiet one shows its card only if it fails.
+  private async run(command: string, card: Card, body: (ctx: Context) => Promise<Check[]>, quiet = false): Promise<Card> {
     return this.exclusive(async () => {
       await operator(this.bank, command)
-      this.card = card
-      this.send({ type: 'card', card })
+      card.from = this.bank.timeline.lines.at(-1)?.seq
+      if (!quiet) this.show(card)
       try {
         card.checks = await body(this.context())
         card.status = card.checks.every((c) => c.pass) ? 'passed' : 'failed'
@@ -193,20 +254,22 @@ export class Control {
         card.status = 'failed'
         card.error = e instanceof Error ? e.message : String(e)
       }
-      this.send({ type: 'card', card })
+      card.to = this.bank.timeline.lines.at(-1)?.seq
+      if (!quiet || card.status === 'failed') this.show(card)
       return card
     })
   }
 
-  // One command at a time, as the chain's state moves under each.
-  private async exclusive<T>(body: () => Promise<T>): Promise<T> {
-    if (this.busy) throw new Busy()
-    this.busy = true
-    try {
-      return await body()
-    } finally {
-      this.busy = false
-    }
+  private show(card: Card): void {
+    this.card = card
+    this.send({ type: 'card', card })
+  }
+
+  // Runs `body` once every command before it has finished.
+  private exclusive<T>(body: () => Promise<T>): Promise<T> {
+    const turn = this.queue.then(body)
+    this.queue = turn.catch(() => {})
+    return turn
   }
 
   // Server-sent events
@@ -227,17 +290,12 @@ export class Control {
 
 const MAX_PACE = 10_000
 const DAY = 86_400n
+const HK_OFFSET = 8n * 3600n
 
 // A span of block time as the story says it: whole days, or minutes.
 function describeSpan(seconds: bigint): string {
   if (seconds % DAY === 0n) return seconds === DAY ? 'a day' : `${seconds / DAY} days`
   return `${seconds / 60n} minutes`
-}
-
-class Busy extends Error {
-  constructor() {
-    super('Another command is still running')
-  }
 }
 
 // Only the dashboard on the local machine may read or drive the control service: a page from anywhere
@@ -273,8 +331,12 @@ export function serve(control: Control, port = 8546) {
       switch (url.pathname) {
         case '/preset':
           return reply(200, await control.runPreset(url.searchParams.get('name') ?? ''))
-        case '/daily':
-          return reply(200, await control.runDaily())
+        case '/daily/start':
+          control.startDaily()
+          return reply(200, control.status())
+        case '/daily/stop':
+          control.stopDaily()
+          return reply(200, control.status())
         case '/tour/next':
           return reply(200, await control.nextTourBeat())
         case '/time/end-of-day':
@@ -299,7 +361,7 @@ export function serve(control: Control, port = 8546) {
           return reply(404, { error: 'Not found' })
       }
     } catch (e) {
-      reply(e instanceof Busy ? 409 : 400, { error: e instanceof Error ? e.message : String(e) })
+      reply(400, { error: e instanceof Error ? e.message : String(e) })
     }
   })
   server.listen(port, '127.0.0.1')

@@ -2,10 +2,17 @@
 import { computed, ref } from 'vue'
 import type { Deployment } from '~/lib/story'
 
-// The operator's commands: the guided tour, the daily routines, an adverse scenario, time, and a reset to
-// the opening balance sheet. Each goes to the control service, which has no authority on chain. See
+// The operator's commands: the guided tour, daily operation, an adverse scenario, time, and a reset to the
+// opening balance sheet. Each goes to the control service, which has no authority on chain. See
 // docs/architecture.md#control-panel.
-const props = defineProps<{ deployment: Deployment | undefined; nextBeat: number | undefined; busy: boolean; paused: boolean; pace: number }>()
+const props = defineProps<{
+  deployment: Deployment | undefined
+  nextBeat: number | undefined
+  busy: boolean
+  paused: boolean
+  pace: number
+  daily: boolean
+}>()
 const emit = defineEmits<{ command: [path: string]; setting: [path: string] }>()
 
 const paces = [
@@ -18,7 +25,12 @@ const days = ref(1)
 const jumpDays = computed(() => (Number.isFinite(days.value) ? Math.floor(days.value) : 0))
 const DAY_SECONDS = 86_400
 
-const scenarios = computed(() => props.deployment?.presets.filter((p) => p.kind === 'adverse') ?? [])
+// The adverse scenarios in their four groups; a group with none yet is listed empty.
+const groups = computed(() => {
+  const d = props.deployment
+  if (!d) return []
+  return d.groups.map((name) => ({ name, presets: d.presets.filter((p) => p.kind === 'adverse' && p.group === name) }))
+})
 const beat = computed(() => props.deployment?.beats.find((b) => b.number === props.nextBeat))
 
 function inject(event: Event) {
@@ -35,7 +47,9 @@ function inject(event: Event) {
       <button :disabled="busy || !beat" @click="emit('command', '/tour/next')">
         {{ beat ? `Tour: beat ${beat.number}, ${beat.title}` : 'Tour finished' }}
       </button>
-      <button :disabled="busy" @click="emit('command', '/daily')">Run the daily routines</button>
+      <button :aria-pressed="daily" @click="emit('setting', daily ? '/daily/stop' : '/daily/start')">
+        {{ daily ? 'Stop daily operation' : 'Start daily operation' }}
+      </button>
     </div>
     <div class="row">
       <select
@@ -44,7 +58,10 @@ function inject(event: Event) {
         @change="inject"
       >
         <option value="">Inject an adverse scenario…</option>
-        <option v-for="s in scenarios" :key="s.name" :value="s.name">{{ s.name }}</option>
+        <optgroup v-for="g in groups" :key="g.name" :label="g.name">
+          <option v-for="s in g.presets" :key="s.name" :value="s.name">{{ s.name }}</option>
+          <option v-if="!g.presets.length" disabled>None yet</option>
+        </optgroup>
       </select>
     </div>
     <div class="row">
