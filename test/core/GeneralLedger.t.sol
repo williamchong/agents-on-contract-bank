@@ -43,6 +43,17 @@ contract GeneralLedgerTest is BankFixture {
         _assertBooksBalance();
     }
 
+    /// @dev The history of each balance held off chain ends at its current balance, which is never
+    /// negative.
+    function invariant_HistoryEndsAtTheBalance() public view {
+        GeneralLedger.Account[3] memory held = _heldOffChain();
+        for (uint256 i = 0; i < held.length; ++i) {
+            int256 balance = ledger.balanceOf(held[i]);
+            assertGe(balance, 0);
+            assertEq(ledger.balanceAt(held[i], uint48(block.timestamp)), uint256(balance));
+        }
+    }
+
     // Opening balance sheet
 
     function test_Opening_MatchesTheScenarios() public view {
@@ -180,6 +191,52 @@ contract GeneralLedgerTest is BankFixture {
         _cashIn(100);
     }
 
+    // Balances held off chain
+
+    function test_History_BalanceAtItsOwnTime() public {
+        uint48 before = uint48(block.timestamp);
+        vm.warp(block.timestamp + 1 hours);
+        _cashIn(100);
+        assertEq(ledger.balanceAt(GeneralLedger.Account.Cash, before), uint128(_hkd(500_000)));
+        assertEq(ledger.balanceAt(GeneralLedger.Account.Cash, uint48(block.timestamp)), uint128(_hkd(500_000)) + 100);
+    }
+
+    function test_History_SameBlockKeepsTheLater() public {
+        _cashIn(100);
+        _cashIn(50);
+        assertEq(ledger.balanceAt(GeneralLedger.Account.Cash, uint48(block.timestamp)), uint128(_hkd(500_000)) + 150);
+    }
+
+    function test_History_NothingBeforeTheOpening() public view {
+        assertEq(ledger.balanceAt(GeneralLedger.Account.Settlement, 0), 0);
+    }
+
+    function test_History_OnlyBalancesHeldOffChain() public {
+        vm.expectRevert(abi.encodeWithSelector(GeneralLedger.NotHeldOffChain.selector, GeneralLedger.Account.Loans));
+        ledger.balanceAt(GeneralLedger.Account.Loans, uint48(block.timestamp));
+    }
+
+    function test_NegativeAsset_Refused() public {
+        GeneralLedger.Account[3] memory held = _heldOffChain();
+        for (uint256 i = 0; i < held.length; ++i) {
+            int128 x = int128(ledger.balanceOf(held[i])) + 1;
+            vm.expectRevert(abi.encodeWithSelector(GeneralLedger.NegativeAsset.selector, held[i], int256(-1)));
+            ledger.post(_lines(held[i], -x, GeneralLedger.Account.Equity, x), "overdrawn");
+        }
+    }
+
+    function test_NegativeAsset_DownToZeroAllowed() public {
+        int128 x = int128(ledger.balanceOf(GeneralLedger.Account.Settlement));
+        ledger.post(_lines(GeneralLedger.Account.Settlement, -x, GeneralLedger.Account.Securities, x), "all in bills");
+        assertEq(ledger.balanceAt(GeneralLedger.Account.Settlement, uint48(block.timestamp)), 0);
+    }
+
+    function test_NegativeAsset_OrderOfLinesDecidesNothing() public {
+        int128 x = int128(ledger.balanceOf(GeneralLedger.Account.Cash)) + 10;
+        ledger.post(_lines(GeneralLedger.Account.Cash, -x, GeneralLedger.Account.Cash, x), "nets to nothing");
+        assertEq(ledger.balanceOf(GeneralLedger.Account.Cash), _hkd(500_000));
+    }
+
     // Refusals
 
     function test_UnbalancedEntryRefused() public {
@@ -203,6 +260,10 @@ contract GeneralLedgerTest is BankFixture {
 
     function _cashIn(uint256 amount) internal returns (uint256) {
         return ledger.postWithMint(alice, amount, _lines(GeneralLedger.Account.Cash, int128(int256(amount))), "cash in");
+    }
+
+    function _heldOffChain() internal pure returns (GeneralLedger.Account[3] memory) {
+        return [GeneralLedger.Account.Settlement, GeneralLedger.Account.Cash, GeneralLedger.Account.Securities];
     }
 
     /// @dev A ledger not yet opened, on a token of its own, wired by governance as the fixture wires the bank's.
@@ -254,6 +315,10 @@ contract LedgerHandler is Test {
         amount = bound(amount, 0, token.balanceOf(customer));
         vm.prank(customer);
         token.transfer(bob, amount);
+    }
+
+    function warp(uint256 seconds_) external {
+        vm.warp(block.timestamp + bound(seconds_, 1, 3 days));
     }
 
     function mintAround(uint256 amount) external {

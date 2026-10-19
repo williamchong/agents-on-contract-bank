@@ -3,6 +3,7 @@ pragma solidity ^0.8.27;
 
 import {AccessManaged} from "@openzeppelin/contracts/access/manager/AccessManaged.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {Checkpoints} from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 import {DepositToken} from "./DepositToken.sol";
 
 /// @dev The bank's double-entry general ledger over the chart of accounts in docs/architecture.md,
@@ -10,10 +11,13 @@ import {DepositToken} from "./DepositToken.sol";
 /// a debit is positive and a credit negative, so every entry and the whole book sum to zero. The
 /// chain keeps a running balance per account and emits each entry as an event; the entries are not
 /// stored. The Deposits balance is not stored either; it is the token's supply, so the two cannot
-/// disagree. See open question 8 in docs/plan.md.
+/// disagree. The balances held off chain, at the clearing system, the custodian and in the vault,
+/// also keep their history by block time, so a partner's statement can be compared with the balance
+/// at its own date; none of them can go negative. See open questions 8 and 16 in docs/plan.md.
 contract GeneralLedger is AccessManaged {
     using SafeCast for uint256;
     using SafeCast for int256;
+    using Checkpoints for Checkpoints.Trace208;
 
     enum Account {
         Settlement,
@@ -35,6 +39,7 @@ contract GeneralLedger is AccessManaged {
     DepositToken public immutable token;
     uint256 public entryCount;
     mapping(Account => int256) private _balances;
+    mapping(Account => Checkpoints.Trace208) private _history;
 
     /// @dev `ref` is the operation's own reference, so its token movements and its entry can be
     /// joined; `poster` is the module that posted it.
@@ -44,6 +49,8 @@ contract GeneralLedger is AccessManaged {
     error DepositsMoveOnlyWithTokens();
     error OpeningNotFirst();
     error HoldersMismatch(uint256 holders, uint256 amounts);
+    error NegativeAsset(Account account, int256 balance);
+    error NotHeldOffChain(Account account);
 
     constructor(address manager, DepositToken token_) AccessManaged(manager) {
         token = token_;
@@ -51,6 +58,17 @@ contract GeneralLedger is AccessManaged {
 
     function balanceOf(Account account) public view returns (int256) {
         return account == Account.Deposits ? -token.totalSupply().toInt256() : _balances[account];
+    }
+
+    /// @dev The balance of an account held off chain as it stood at the end of block time `timestamp`.
+    function balanceAt(Account account, uint48 timestamp) external view returns (uint256) {
+        if (!isHeldOffChain(account)) revert NotHeldOffChain(account);
+        return _history[account].upperLookupRecent(timestamp);
+    }
+
+    /// @dev The assets a partner's statement or a cash count attests.
+    function isHeldOffChain(Account account) public pure returns (bool) {
+        return account == Account.Settlement || account == Account.Cash || account == Account.Securities;
     }
 
     /// @dev Every account's balance, indexed by `Account`.
@@ -115,6 +133,15 @@ contract GeneralLedger is AccessManaged {
             entry[i] = lines[i];
         }
         if (sum != 0) revert UnbalancedEntry(sum);
+        // Checked once the whole entry is in, so the order of its lines decides nothing.
+        uint48 now_ = block.timestamp.toUint48();
+        for (uint256 i = 0; i < lines.length; ++i) {
+            Account account = lines[i].account;
+            if (!isHeldOffChain(account)) continue;
+            int256 balance = _balances[account];
+            if (balance < 0) revert NegativeAsset(account, balance);
+            _history[account].push(now_, balance.toUint256().toUint208());
+        }
         if (deposits != 0) entry[lines.length] = Line(Account.Deposits, deposits);
 
         id = ++entryCount;
