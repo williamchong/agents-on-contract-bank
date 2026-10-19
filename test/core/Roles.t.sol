@@ -8,6 +8,7 @@ import {DepositToken} from "../../contracts/core/DepositToken.sol";
 import {GeneralLedger} from "../../contracts/core/GeneralLedger.sol";
 import {PartnerKeys} from "../../contracts/core/PartnerKeys.sol";
 import {Payments} from "../../contracts/core/Payments.sol";
+import {Attestations} from "../../contracts/core/Attestations.sol";
 import {BankFixture} from "./BankFixture.sol";
 
 /// @dev Checks every restricted function is wired to the role docs/roles.md gives it, and that
@@ -106,7 +107,7 @@ contract RolesTest is BankFixture {
     /// to the allow-list stays with the admin until the onboarding module is wired to it.
     function _expected() private view returns (Wire[] memory w) {
         GeneralLedger.Line[] memory none = new GeneralLedger.Line[](0);
-        w = new Wire[](18);
+        w = new Wire[](19);
         w[0] = Wire(address(token), abi.encodeCall(DepositToken.mint, (alice, 1)), Roles.LEDGER);
         w[1] = Wire(address(token), abi.encodeCall(DepositToken.burn, (alice, 1)), Roles.LEDGER);
         w[2] = Wire(address(token), abi.encodeCall(DepositToken.forcedTransfer, (alice, bob, 1)), Roles.ENFORCER);
@@ -129,5 +130,6 @@ contract RolesTest is BankFixture {
         w[15] = Wire(address(payments), abi.encodeCall(Payments.clearOutgoing, (bytes32(0))), Roles.COMPLIANCE);
         w[16] = Wire(address(payments), abi.encodeCall(Payments.returnOutgoing, (bytes32(0))), Roles.COMPLIANCE);
         w[17] = Wire(address(payments), abi.encodeCall(Payments.setScreeningThreshold, (0)), Roles.GOVERNANCE);
+        w[18] = Wire(address(attestations), abi.encodeCall(Attestations.setMaxAge, (0)), Roles.GOVERNANCE);
     }
 }
