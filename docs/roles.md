@@ -71,7 +71,7 @@ Each role the contracts check is a number in the access manager. Contracts, test
 | 21 | Scheduler | Machine | Governance |
 | 30 | Ledger: create and destroy deposit tokens | General ledger | Governance, at deployment or upgrade |
 | 31 | Bookkeeper: post entries | Operations, payments, savings and lending modules, and the lending guard | Governance, at deployment or upgrade |
-| 32 | Enforcer: force a transfer | Assisted operations, own-account transfer and dispute reversal modules | Governance, at deployment or upgrade |
+| 32 | Enforcer: force a transfer | Assisted operations, cash (withdrawals at the counter on paper), own-account transfer and dispute reversal modules | Governance, at deployment or upgrade |
 | 33 | Freezer: set frozen amounts | Hold register | Governance, at deployment or upgrade |
 | 34 | Issuer: create and destroy stablecoin | Conversion module | Governance, at deployment or upgrade |
 | 35 | Staff admin: grant and revoke staff and machine roles | Staff roles module | Governance, at deployment or upgrade |
