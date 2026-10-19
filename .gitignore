@@ -4,3 +4,5 @@ cache/
 .env
 .nuxt/
 .output/
+dashboard/public/bank.json
+dashboard/public/timeline.jsonl

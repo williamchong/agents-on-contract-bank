@@ -25,7 +25,7 @@ export const buildings: Building[] = [
   { id: 'town-hall', label: 'Town hall', shape: 'block', position: [-6, 0, -6], size: [3, 2.2, 2.5], color: '#c7b8d9' },
   { id: 'water-tower', label: 'Water tower', shape: 'tower', position: [5, 0, -5], size: [1.6, 4, 1.6], color: '#8fb8d9' },
   { id: 'branch', label: 'Branch', shape: 'block', position: [-5, 0, 4], size: [2.5, 1.8, 2.5], color: '#e0a87c' },
-  { id: 'vault', label: 'Vault', shape: 'block', position: [-8, 0, 4], size: [1.6, 1.2, 1.6], color: '#9a9a9a' },
+  { id: 'vault', label: 'Vault', shape: 'block', position: [-9, 0, 1.5], size: [1.6, 1.2, 1.6], color: '#9a9a9a' },
   { id: 'atm', label: 'ATM', shape: 'block', position: [-2.5, 0, 4], size: [0.6, 1, 0.4], color: '#5f7f9a' },
   { id: 'custodian', label: 'Custodian', shape: 'block', position: [-11, 0, -1], size: [2.5, 2.5, 2.5], color: '#a3b59a' },
   { id: 'post-office', label: 'Post office', shape: 'block', position: [6, 0, 4], size: [2.5, 1.8, 2.2], color: '#d98f8f' },
