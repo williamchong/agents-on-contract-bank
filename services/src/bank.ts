@@ -25,7 +25,7 @@ import {
 } from 'viem'
 import { encodeCalls } from 'viem/experimental/erc7821'
 import { abiOf, bytecodeOf, type AbiOf, type ContractName } from './artifacts.ts'
-import { atm, drawer, HKD, Holders, Ledger, Opening, vault } from './books.ts'
+import { atm, Channel, Customers, drawer, HKD, Holders, Ledger, Opening, vault } from './books.ts'
 import { advance, type Chain } from './chain.ts'
 import { atBranch, BranchRole, Roles } from './roles.ts'
 import { Signer } from './signer.ts'
@@ -42,6 +42,9 @@ export const Settings = {
   atmLimit: 5_000n * HKD,
   cashReportThreshold: 100_000n * HKD,
   dispenseTimeout: 120n,
+  appLimit: 10_000n * HKD,
+  unregisteredPayeeLimit: 2_000n * HKD,
+  payeeWait: 86_400n,
   // The branch approval ladder's steps.
   ladder: { first: 50_000n * HKD, second: 500_000n * HKD },
 } as const
@@ -65,6 +68,7 @@ export interface Contracts {
   officers: Address
   timelock: Address
   manager: Address
+  limits: Address
   token: Address
   ledger: Address
   staffRoles: Address
@@ -188,6 +192,7 @@ const contractNames: Record<keyof Contracts, string> = {
   officers: 'Officers',
   timelock: 'Governance',
   manager: 'AccessManager',
+  limits: 'CustomerLimits',
   token: 'DepositToken',
   ledger: 'GeneralLedger',
   staffRoles: 'StaffRoles',
@@ -215,7 +220,11 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
   const officers = await deployer.account(signer, officerKeys, Settings.governanceThreshold)
   const timelock = await deployer.deploy('TimelockController', [Settings.governanceDelay, [officers], [zeroAddress], zeroAddress])
   const manager = await deployer.deploy('AccessManager', [chain.relayer])
-  const token = await deployer.deploy('DepositToken', [manager])
+  const limits = await deployer.deploy('CustomerLimits', [
+    manager,
+    { app: Settings.appLimit, unregistered: Settings.unregisteredPayeeLimit, payeeWait: Settings.payeeWait },
+  ])
+  const token = await deployer.deploy('DepositToken', [manager, limits])
   const ledger = await deployer.deploy('GeneralLedger', [manager, token])
   const staffRoles = await deployer.deploy('StaffRoles', [manager, officers])
   const holds = await deployer.deploy('HoldRegister', [manager, token])
@@ -239,6 +248,7 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
     officers,
     timelock,
     manager,
+    limits,
     token,
     ledger,
     staffRoles,
@@ -265,6 +275,11 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
     bank.add(name, { account: await deployer.account(signer, keys, 1n), keys: keys.slice(0, 1) })
   }
 
+  // How movements into the modules count, set while the deployer is still the admin: not at all into
+  // those that keep their own channel's limit, and against the app limit only into payments, which
+  // checks the payee itself.
+  for (const module of [cash, assisted]) await deployer.write('CustomerLimits', limits, 'setChannel', [module, Channel.Own])
+  await deployer.write('CustomerLimits', limits, 'setChannel', [payments, Channel.PayeeCheckedThere])
   await wire(deployer, contracts)
   for (const name of Holders) await deployer.write('DepositToken', token, 'allowUser', [bank.account(name)])
   await deployer.write('DepositToken', token, 'allowUser', [payments])
@@ -347,6 +362,11 @@ const wiring: [keyof Contracts, ContractName, string, bigint][] = [
   ['cash', 'CashOperations', 'reportFailure', Roles.ATM],
   ['cash', 'CashOperations', 'setLadder', Roles.GOVERNANCE],
   ['assisted', 'AssistedOperations', 'setLadder', Roles.GOVERNANCE],
+  ['limits', 'CustomerLimits', 'countMovement', Roles.LIMIT_KEEPER],
+  ['limits', 'CustomerLimits', 'countPayment', Roles.LIMIT_KEEPER],
+  ['limits', 'CustomerLimits', 'enrol', Roles.GOVERNANCE],
+  ['limits', 'CustomerLimits', 'setChannel', Roles.GOVERNANCE],
+  ['limits', 'CustomerLimits', 'setLimits', Roles.GOVERNANCE],
 ]
 
 // Every staff and machine role, for each branch, which the staff roles module administers.
@@ -369,11 +389,14 @@ async function wire(deployer: Deployer, c: Contracts): Promise<void> {
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.BOOKKEEPER, c.cash, 0])
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.ENFORCER, c.cash, 0])
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.ENFORCER, c.assisted, 0])
+  await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.LIMIT_KEEPER, c.token, 0])
+  await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.LIMIT_KEEPER, c.payments, 0])
   for (const role of administered) await deployer.write('AccessManager', c.manager, 'setRoleAdmin', [role, Roles.STAFF_ADMIN])
 }
 
 // Governance's first decision, as one batch through the time lock: the opening balance sheet and its
-// cash split, the partners' keys, and the control roles governance grants.
+// cash split, the partners' keys, the control roles governance grants, and the customers enrolled in their
+// limits, which the onboarding module will do once it exists.
 async function governFirstDay(bank: Bank, signer: Signer): Promise<void> {
   const c = bank.contracts
   const line = (account: number, amount: bigint) => ({ account, amount })
@@ -398,6 +421,7 @@ async function governFirstDay(bank: Bank, signer: Signer): Promise<void> {
     bank.call('PartnerKeys', c.partnerKeys, 'setKey', [clearingId, signer.signerBytes(partnerKey.clearing)]),
     bank.call('PartnerKeys', c.partnerKeys, 'setKey', [custodianId, signer.signerBytes(partnerKey.custodian)]),
     ...governanceGrants.map((name) => bank.call('StaffRoles', c.staffRoles, 'grant', [bank.account(name), Staff[name]])),
+    ...Customers.map((name) => bank.call('CustomerLimits', c.limits, 'enrol', [bank.account(name)])),
   ]
   await govern(bank, 'governance officers', 'open the bank', calls)
 }

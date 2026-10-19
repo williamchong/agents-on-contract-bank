@@ -21,6 +21,7 @@ export const Roles = {
   FREEZER: 33n,
   ISSUER: 34n,
   STAFF_ADMIN: 35n,
+  LIMIT_KEEPER: 36n,
 } as const
 
 export const BranchRole = {

@@ -60,6 +60,13 @@ export function transfer(bank: Bank, from: CustomerName, to: string, amount: big
   ])
 }
 
+// The customer registers a payee from their phone; it counts as registered once the waiting period ends.
+export function registerPayee(bank: Bank, customer: CustomerName, payee: string): Promise<Outcome> {
+  return bank.act(customer, 'app', `register ${payee} as a payee`, [
+    bank.call('CustomerLimits', bank.contracts.limits, 'registerPayee', [keccak256(toBytes(payee))]),
+  ])
+}
+
 // A payment to someone at another bank. The payee's details stay with the bank; the chain sees their hash.
 export function payOut(bank: Bank, from: CustomerName, payee: string, amount: bigint): Promise<Outcome> {
   const c = bank.contracts

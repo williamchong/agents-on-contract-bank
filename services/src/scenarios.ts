@@ -26,6 +26,7 @@ import {
   payOut,
   places,
   releasePayments,
+  registerPayee,
   reportDispense,
   slipHash,
   submitAtmWithdrawal,
@@ -147,17 +148,21 @@ export const presets: Preset[] = [
   {
     name: 'Payments day',
     kind: 'routine',
-    waitsFor: ['paying a registered payee (payee register)'],
     async run(ctx) {
       const { bank, clearing } = ctx
+      // Alice registers her supplier from her phone, and the payee waiting period passes.
+      const supplier = 'a supplier at another bank'
+      const registered = await registerPayee(bank, 'Alice', supplier)
+      await advance(bank.chain, Settings.payeeWait)
       const settlementBefore = await ledgerBalance(bank, Ledger.Settlement)
-      const paid = await payOut(bank, 'Alice', 'a supplier at another bank', 3_000n * HKD)
+      const paid = await payOut(bank, 'Alice', supplier, 3_000n * HKD)
       const released = await releasePayments(bank)
       const advice = await clearing.creditAdvice(bank.account('Bob'), 4_500n * HKD)
       const received = await clearing.relayCredit(advice, 'relay a payment for Bob from someone never registered')
       const close = await closeDay(ctx)
       return [
-        allowed('Alice pays someone at another bank', paid),
+        allowed('Alice registers her supplier as a payee', registered),
+        allowed('and pays them more than an unregistered payee could be paid', paid),
         check('the payment leaves through the clearing system', emitted(released, 'PaymentSent')),
         allowed('Bob is paid by someone at another bank', received),
         check(
@@ -406,8 +411,7 @@ export const presets: Preset[] = [
   {
     name: 'Red team',
     kind: 'adverse',
-    control: 'Access manager, branch scoping, approval logic, one-use numbers, allow-list',
-    waitsFor: ['exceeding the app limit, and paying an unregistered payee above the small limit (payee register and channel limits)'],
+    control: 'Access manager, branch scoping, approval logic, rate limiter, one-use numbers, allow-list, payee register',
     async run(ctx) {
       const { bank } = ctx
       const c = bank.contracts
@@ -431,6 +435,9 @@ export const presets: Preset[] = [
       const notOnboarded = await bank.act('Alice', 'app', 'send money to an account that is not onboarded', [
         bank.call('DepositToken', c.token, 'transfer', [stranger, 100n * HKD]),
       ])
+      // With Alice's phone in hand: more than the app limit, then a stranger above the small limit.
+      const overAppLimit = await transfer(bank, 'Alice', 'Bob', Settings.appLimit + HKD)
+      const strangerPaid = await payOut(bank, 'Alice', "the red team's account at another bank", Settings.unregisteredPayeeLimit + HKD)
       return [
         // It holds no approving role, so the ladder refuses it before it could approve its own.
         refusedWith('approving its own operation is refused', approveOwn, 'NotApprover'),
@@ -438,6 +445,8 @@ export const presets: Preset[] = [
         refusedWith('acting at this branch with a teller role for another is refused', atOtherBranch, 'NotTeller'),
         refusedWith('replaying a used authorisation is refused, naming the one-use number', replay, 'InvalidAccountNonce'),
         refusedWith('sending to an account that is not onboarded is refused, naming the allow-list', notOnboarded, 'ERC20UserRestricted'),
+        refusedWith('more than the app limit is refused', overAppLimit, 'DailyLimitExceeded'),
+        refusedWith('a payee never registered is paid no more than the small limit', strangerPaid, 'DailyLimitExceeded'),
         check('no balance changes', (await customerTotal(bank)) + (await supply(bank)) === total),
         ...(await invariants(bank)),
       ]

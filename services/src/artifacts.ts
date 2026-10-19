@@ -9,6 +9,7 @@ import type { ERC7913P256Verifier$Type } from '../../artifacts/@openzeppelin/con
 import type { AssistedOperations$Type } from '../../artifacts/contracts/core/AssistedOperations.sol/artifacts.js'
 import type { Attestations$Type } from '../../artifacts/contracts/core/Attestations.sol/artifacts.js'
 import type { CashOperations$Type } from '../../artifacts/contracts/core/CashOperations.sol/artifacts.js'
+import type { CustomerLimits$Type } from '../../artifacts/contracts/core/CustomerLimits.sol/artifacts.js'
 import type { DepositToken$Type } from '../../artifacts/contracts/core/DepositToken.sol/artifacts.js'
 import type { GeneralLedger$Type } from '../../artifacts/contracts/core/GeneralLedger.sol/artifacts.js'
 import type { HoldRegister$Type } from '../../artifacts/contracts/core/HoldRegister.sol/artifacts.js'
@@ -24,6 +25,7 @@ interface Artifacts {
   AssistedOperations: AssistedOperations$Type
   Attestations: Attestations$Type
   CashOperations: CashOperations$Type
+  CustomerLimits: CustomerLimits$Type
   DepositToken: DepositToken$Type
   GeneralLedger: GeneralLedger$Type
   HoldRegister: HoldRegister$Type
@@ -43,6 +45,7 @@ const sources: Record<ContractName, string> = {
   AssistedOperations: 'contracts/core/AssistedOperations.sol',
   Attestations: 'contracts/core/Attestations.sol',
   CashOperations: 'contracts/core/CashOperations.sol',
+  CustomerLimits: 'contracts/core/CustomerLimits.sol',
   DepositToken: 'contracts/core/DepositToken.sol',
   GeneralLedger: 'contracts/core/GeneralLedger.sol',
   HoldRegister: 'contracts/core/HoldRegister.sol',
