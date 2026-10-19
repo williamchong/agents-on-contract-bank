@@ -14,6 +14,9 @@ const paces = [
   { label: 'Fast', ms: 0 },
 ]
 const days = ref(1)
+// Whole days only; an empty or invalid entry reads as NaN, which jumps nothing.
+const jumpDays = computed(() => (Number.isFinite(days.value) ? Math.floor(days.value) : 0))
+const DAY_SECONDS = 86_400
 
 const scenarios = computed(() => props.deployment?.presets.filter((p) => p.kind === 'adverse') ?? [])
 const beat = computed(() => props.deployment?.beats.find((b) => b.number === props.nextBeat))
@@ -62,8 +65,8 @@ function inject(event: Event) {
       <button :disabled="busy" @click="emit('command', '/time/advance?seconds=3600')">+1 hour</button>
       <label class="jump">
         <input v-model.number="days" type="number" min="1" max="365" aria-label="Days to jump" />
-        <button :disabled="busy || !(days >= 1)" @click="emit('command', `/time/advance?seconds=${Math.floor(days) * 86400}`)">
-          Jump {{ days === 1 ? 'a day' : `${days} days` }}
+        <button :disabled="busy || jumpDays < 1" @click="emit('command', `/time/advance?seconds=${jumpDays * DAY_SECONDS}`)">
+          Jump {{ jumpDays === 1 ? 'a day' : `${jumpDays} days` }}
         </button>
       </label>
       <button :disabled="busy" @click="emit('command', '/time/end-of-day')">Close the day</button>

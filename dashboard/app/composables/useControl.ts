@@ -75,7 +75,7 @@ export function useControl() {
   }
 
   async function refreshBeat() {
-    apply(await (await fetch(`${base}/state`)).json())
+    apply(await (await fetch(`${base}/status`)).json())
   }
 
   // Pausing, resuming and the pace act at once, even while a run holds the other commands.

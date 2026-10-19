@@ -87,8 +87,12 @@ export class Control {
   }
 
   state() {
-    const s = this.bank.submission
-    return { lines: this.bank.timeline.lines, card: this.card, nextBeat: beats[this.nextBeat]?.number, paused: s.isPaused, pace: s.pace }
+    return { lines: this.bank.timeline.lines, card: this.card, ...this.status() }
+  }
+
+  // What the control panel shows of the run, without its story.
+  status() {
+    return { nextBeat: beats[this.nextBeat]?.number, paused: this.bank.submission.isPaused, pace: this.pace }
   }
 
   // Pausing holds the run before its next request; it does not take the command lock, so the operator
@@ -112,9 +116,10 @@ export class Control {
     this.bank.submission.pace = ms
   }
 
-  // An operator line written outside a command, which must never bring the service down.
+  // An operator line written outside a command. It only reads the latest block, and losing the line is
+  // better than bringing the service down mid-run, so a failure is logged and dropped.
   private note(action: string): void {
-    operator(this.bank, action).catch(() => {})
+    operator(this.bank, action).catch((e) => console.error(`Could not record "${action}":`, e))
   }
 
   runPreset(name: string): Promise<Card> {
@@ -154,7 +159,7 @@ export class Control {
       if (action === 'end of day') {
         await closeDay(this.context())
       } else {
-        await operator(this.bank, `move time on by ${seconds % 86_400n === 0n ? `${seconds / 86_400n} days` : `${seconds / 60n} minutes`}`)
+        await operator(this.bank, `move time on by ${describeSpan(seconds)}`)
         await advance(this.chain, seconds)
       }
     })
@@ -221,6 +226,13 @@ export class Control {
 }
 
 const MAX_PACE = 10_000
+const DAY = 86_400n
+
+// A span of block time as the story says it: whole days, or minutes.
+function describeSpan(seconds: bigint): string {
+  if (seconds % DAY === 0n) return seconds === DAY ? 'a day' : `${seconds / DAY} days`
+  return `${seconds / 60n} minutes`
+}
 
 class Busy extends Error {
   constructor() {
@@ -255,6 +267,7 @@ export function serve(control: Control, port = 8546) {
       if (req.method === 'OPTIONS') return reply(204, '')
       if (req.method === 'GET' && url.pathname === '/deployment') return reply(200, await control.deployment())
       if (req.method === 'GET' && url.pathname === '/state') return reply(200, control.state())
+      if (req.method === 'GET' && url.pathname === '/status') return reply(200, control.status())
       if (req.method === 'GET' && url.pathname === '/events') return control.subscribe(res, origin)
       if (req.method !== 'POST') return reply(404, { error: 'Not found' })
       switch (url.pathname) {
@@ -275,13 +288,13 @@ export function serve(control: Control, port = 8546) {
           return reply(200, control.state())
         case '/pause':
           control.pause()
-          return reply(200, control.state())
+          return reply(200, control.status())
         case '/resume':
           control.resume()
-          return reply(200, control.state())
+          return reply(200, control.status())
         case '/pace':
           control.setPace(Number(url.searchParams.get('ms') ?? Number.NaN))
-          return reply(200, control.state())
+          return reply(200, control.status())
         default:
           return reply(404, { error: 'Not found' })
       }
