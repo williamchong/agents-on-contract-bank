@@ -8,6 +8,12 @@ export default defineConfig({
       evmVersion: "cancun",
       optimizer: { enabled: true, runs: 200 },
     },
+    // Deployed as they are, so the deploy script needs their artifacts too.
+    npmFilesToBuild: [
+      "@openzeppelin/contracts/access/manager/AccessManager.sol",
+      "@openzeppelin/contracts/governance/TimelockController.sol",
+      "@openzeppelin/contracts/utils/cryptography/verifiers/ERC7913P256Verifier.sol",
+    ],
   },
   networks: {
     baseSepolia: {
