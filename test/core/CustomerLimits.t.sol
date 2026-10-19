@@ -5,6 +5,7 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 import {Roles} from "../../contracts/core/Roles.sol";
 import {DailyLimit} from "../../contracts/core/DailyLimit.sol";
 import {CustomerLimits} from "../../contracts/core/CustomerLimits.sol";
+import {Payments} from "../../contracts/core/Payments.sol";
 import {BankFixture} from "./BankFixture.sol";
 
 /// @dev Checks the app channel's limits and the payee register against the limits in docs/roles.md and
@@ -157,6 +158,59 @@ contract CustomerLimitsTest is BankFixture {
         limits.registerPayee(SUPPLIER);
     }
 
+    // A payment that comes back
+
+    /// @dev The receiving bank rejects a payment: the money comes back, and so does the day's limit it used.
+    function test_Rejected_PaymentGivesItsLimitsBack() public {
+        bytes32 ref = _payAndSend(1_500 * HKD, SUPPLIER);
+        assertEq(limits.unregisteredAvailable(dave), UNREGISTERED_PAYEE_LIMIT - 1_500 * HKD);
+        _rejectPayment(ref, 1_500 * HKD);
+        assertEq(limits.appAvailable(dave), APP_LIMIT);
+        assertEq(limits.unregisteredAvailable(dave), UNREGISTERED_PAYEE_LIMIT);
+    }
+
+    function test_Rejected_ToARegisteredPayeeGivesBackTheAppLimitOnly() public {
+        vm.prank(dave);
+        limits.registerPayee(SUPPLIER);
+        vm.warp(block.timestamp + PAYEE_WAIT);
+        _transfer(1_000 * HKD);
+        bytes32 ref = _payAndSend(3_000 * HKD, SUPPLIER);
+        assertEq(limits.appAvailable(dave), APP_LIMIT - 4_000 * HKD);
+        _rejectPayment(ref, 3_000 * HKD);
+        assertEq(limits.appAvailable(dave), APP_LIMIT - 1_000 * HKD, "the transfer stays counted");
+        assertEq(limits.unregisteredAvailable(dave), UNREGISTERED_PAYEE_LIMIT);
+    }
+
+    /// @dev A rejection that arrives the next day gives nothing back: that day's limits have already reset.
+    function test_Rejected_NextDayGivesNothingBackToToday() public {
+        bytes32 ref = _payAndSend(1_500 * HKD, SUPPLIER);
+        vm.warp(block.timestamp + 1 days);
+        _transfer(9_000 * HKD);
+        _rejectPayment(ref, 1_500 * HKD);
+        assertEq(limits.appAvailable(dave), APP_LIMIT - 9_000 * HKD);
+    }
+
+    /// @dev A payer enrolled only after paying had nothing counted, so the rejection gives nothing back and
+    /// still goes through.
+    function test_Rejected_PaymentOfAPayerEnrolledSincePays() public {
+        address eve = makeAddr("eve");
+        vm.prank(governance);
+        token.allowUser(eve);
+        vm.prank(otherCustomers);
+        token.transfer(eve, 10_000 * HKD);
+        vm.startPrank(eve);
+        token.approve(address(payments), 3_000 * HKD);
+        bytes32 ref = payments.pay(3_000 * HKD, SUPPLIER);
+        vm.stopPrank();
+        payments.release(10);
+        vm.prank(governance);
+        limits.enrol(eve);
+        uint256 before = token.balanceOf(eve);
+        _rejectPayment(ref, 3_000 * HKD);
+        assertEq(token.balanceOf(eve), before + 3_000 * HKD);
+        assertEq(limits.appAvailable(eve), APP_LIMIT);
+    }
+
     // The customer's own limits
 
     function test_Own_LoweredAtOnce() public {
@@ -219,6 +273,17 @@ contract CustomerLimitsTest is BankFixture {
     function _pay(uint256 amount, bytes32 payee) private {
         vm.prank(dave);
         payments.pay(amount, payee);
+    }
+
+    function _payAndSend(uint256 amount, bytes32 payee) private returns (bytes32 ref) {
+        vm.prank(dave);
+        ref = payments.pay(amount, payee);
+        payments.release(10);
+    }
+
+    function _rejectPayment(bytes32 ref, uint256 amount) private {
+        Payments.PaymentRejection memory m = Payments.PaymentRejection(ref, amount, "AC04", keccak256("pacs.004"));
+        payments.rejectPayment(m, _signP256(clearingKey, payments.hashPaymentRejection(m)));
     }
 
     function _key(address customer) private pure returns (bytes32) {

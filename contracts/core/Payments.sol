@@ -8,6 +8,7 @@ import {DepositToken} from "./DepositToken.sol";
 import {GeneralLedger} from "./GeneralLedger.sol";
 import {PartnerKeys, Partners} from "./PartnerKeys.sol";
 import {CustomerLimits} from "./CustomerLimits.sol";
+import {DailyLimit} from "./DailyLimit.sol";
 
 /// @dev The payments module: payments in by the clearing system's signed credit advice, payments out
 /// by the payer's own call, and the money in waiting between. It is a bank-owned account on the
@@ -83,6 +84,15 @@ contract Payments is EIP712, AccessManaged {
     mapping(uint256 position => bytes32 ref) public queue;
     mapping(bytes32 ref => Payment) private _incoming;
     mapping(bytes32 ref => Payment) private _outgoing;
+    /// @dev The day a payment out was counted against its payer's limits, if it was, and whether against
+    /// the unregistered payee limit too, so a payment that comes back gives back only what it took.
+    mapping(bytes32 ref => Counted) private _counted;
+
+    struct Counted {
+        uint64 day;
+        bool app;
+        bool unregistered;
+    }
 
     event CreditReceived(
         bytes32 indexed ref,
@@ -209,8 +219,9 @@ contract Payments is EIP712, AccessManaged {
     /// screening threshold the payment joins the queue at once.
     function pay(uint256 amount, bytes32 payeeHash) external returns (bytes32 ref) {
         if (amount == 0) revert ZeroAmount();
-        customerLimits.countPayment(msg.sender, payeeHash, amount);
+        bool unregistered = customerLimits.countPayment(msg.sender, payeeHash, amount);
         ref = keccak256(abi.encode(block.chainid, address(this), ++orderCount));
+        _counted[ref] = Counted(DailyLimit.today(), customerLimits.countsApp(msg.sender, address(this)), unregistered);
         Status status = amount >= screeningThreshold ? Status.Screening : Status.Queued;
         _outgoing[ref] = Payment(msg.sender, amount, status);
         token.transferFrom(msg.sender, address(this), amount);
@@ -229,6 +240,7 @@ contract Payments is EIP712, AccessManaged {
         Payment storage p = _awaiting(_outgoing, ref, Status.Screening);
         p.status = Status.Returned;
         token.transfer(p.party, p.amount);
+        _releaseLimits(ref, p);
         emit PaymentReturned(ref, p.party, p.amount);
     }
 
@@ -264,10 +276,16 @@ contract Payments is EIP712, AccessManaged {
         if (p.status != Status.Sent || p.amount != m.amount) revert UnknownPayment(m.originalEndToEndId, m.amount);
         p.status = Status.Rejected;
         _postMint(p.party, p.amount, m.originalEndToEndId);
+        _releaseLimits(m.originalEndToEndId, p);
         emit PaymentRejected(m.originalEndToEndId, p.party, p.amount, m.reasonCode, m.documentHash);
     }
 
     // Internal
+
+    function _releaseLimits(bytes32 ref, Payment storage p) private {
+        Counted memory c = _counted[ref];
+        if (c.app || c.unregistered) customerLimits.releasePayment(p.party, p.amount, c.day, c.app, c.unregistered);
+    }
 
     function _enqueue(bytes32 ref) private {
         queue[queueTail++] = ref;

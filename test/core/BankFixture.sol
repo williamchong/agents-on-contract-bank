@@ -161,6 +161,7 @@ abstract contract BankFixture is Test {
         _wire(address(assisted), assisted.setLadder.selector, Roles.GOVERNANCE);
         _wire(address(limits), limits.countMovement.selector, Roles.LIMIT_KEEPER);
         _wire(address(limits), limits.countPayment.selector, Roles.LIMIT_KEEPER);
+        _wire(address(limits), limits.releasePayment.selector, Roles.LIMIT_KEEPER);
         _wire(address(limits), limits.enrol.selector, Roles.GOVERNANCE);
         _wire(address(limits), limits.setChannel.selector, Roles.GOVERNANCE);
         _wire(address(limits), limits.setLimits.selector, Roles.GOVERNANCE);

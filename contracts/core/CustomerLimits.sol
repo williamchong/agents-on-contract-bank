@@ -124,8 +124,25 @@ contract CustomerLimits is AccessManaged {
 
     /// @dev Counts a payment out to `payee` against the payer's unregistered payee limit, unless the
     /// payee is on their register.
-    function countPayment(address payer, bytes32 payee, uint256 amount) external restricted {
-        if (enrolled[payer]) _countUnregistered(payer, payee, amount);
+    /// Returns whether it was counted there, so the payments module can give it back if the payment
+    /// comes back.
+    function countPayment(address payer, bytes32 payee, uint256 amount) external restricted returns (bool unregistered) {
+        return enrolled[payer] && _countUnregistered(payer, payee, amount);
+    }
+
+    /// @dev Whether a movement from `from` into `module` is counted against the app limit, as the token's
+    /// count does it, so a module can record what it took.
+    function countsApp(address from, address module) external view returns (bool) {
+        return enrolled[from] && channelOf[module] != Channel.Own;
+    }
+
+    /// @dev Gives back what a payment out counted on `day`, against the app limit and the unregistered
+    /// payee limit as the flags say it was, when the payment comes back: stopped by compliance or rejected
+    /// by the receiving bank, as a failed dispense gives back the ATM limit. A day already passed has
+    /// nothing to give back.
+    function releasePayment(address payer, uint256 amount, uint64 day, bool app, bool unregistered) external restricted {
+        if (app) _app.release(_key(payer), amount, day);
+        if (unregistered) _unregistered.release(_key(payer), amount, day);
     }
 
     // The customer, from their own device
@@ -160,8 +177,10 @@ contract CustomerLimits is AccessManaged {
 
     // Internal
 
-    function _countUnregistered(address customer, bytes32 payee, uint256 amount) private {
-        if (!isPayee(customer, payee)) _unregistered.consume(_key(customer), amount, unregisteredLimit(customer));
+    function _countUnregistered(address customer, bytes32 payee, uint256 amount) private returns (bool counted) {
+        if (isPayee(customer, payee)) return false;
+        _unregistered.consume(_key(customer), amount, unregisteredLimit(customer));
+        return true;
     }
 
     function _requireEnrolled(address account) private view {

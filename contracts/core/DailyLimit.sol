@@ -53,9 +53,12 @@ library DailyLimit {
     }
 
     /// @dev Gives back `amount` counted on `day` that never left, such as a failed dispense. Usage
-    /// from an earlier day has already lapsed, so there is nothing to give back.
+    /// from an earlier day has already lapsed, so there is nothing to give back, and never more than is
+    /// counted, so a release can never stop the movement that triggers it.
     function release(Limiter storage self, bytes32 key, uint256 amount, uint64 day) internal {
         Usage storage u = self.usage[key];
-        if (u.day == day) u.used -= amount.toUint192();
+        if (u.day != day) return;
+        uint192 back = amount > u.used ? u.used : amount.toUint192();
+        u.used -= back;
     }
 }
