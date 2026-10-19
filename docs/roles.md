@@ -216,7 +216,7 @@ The scheduler says when; the contracts decide what, to whom and how much. A trig
 | Top up the reserve buffer | Treasury | Finance | | Role, approval |
 | Return reserve released by redemptions | Custodian, under a standing instruction | None | Up to the amount burned | Partner signature; no role |
 | Withdraw excess reserve | Treasury | Governance | Above target only | Role, governance |
-| Accept a partner's statement | Clearing system or custodian, by a signed statement the adapter relays | None | Each in sequence; not dated in the future | Partner signature; no role. The attested figures contract compares it with the ledger. |
+| Accept a partner's statement | Clearing system or custodian, by a signed statement the adapter relays | None | Each in sequence, dated before the block that accepts it | Partner signature; no role. The attested figures contract compares it with the ledger. |
 | Reconcile, prepare the balance sheet and reserve statement | Finance | None | | Role; partner signatures. The comparison is made on chain as each statement arrives; finance reports a mismatch. |
 | Enrol or retire ATM and terminals | IT security | Supervisor | | Staff roles module: role, approval |
 | Rotate a compromised key | IT security | Risk | | Role, approval |
