@@ -36,3 +36,13 @@ export const BranchRole = {
 export function atBranch(branch: bigint, role: bigint): bigint {
   return 100n * branch + role
 }
+
+const words = (o: Record<string, bigint>) => new Map(Object.entries(o).map(([k, v]) => [v, k.toLowerCase().replaceAll('_', ' ')]))
+const roleWords = words(Roles)
+const branchRoleWords = words(BranchRole)
+
+// A role number in words, as the story's under-the-hood view shows it, such as "teller at branch 1".
+export function roleName(role: bigint): string {
+  if (role < 100n) return roleWords.get(role) ?? `role ${role}`
+  return `${branchRoleWords.get(role % 100n) ?? `role ${role % 100n}`} at branch ${role / 100n}`
+}

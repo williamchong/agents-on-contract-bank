@@ -21,6 +21,9 @@ export interface Line {
   actor: string
   channel: string
   action: string
+  // The keys that signed, and the role the request was checked against.
+  signers?: string[]
+  role?: string
   tx?: Hex
   // For a refusal, the rule that stopped it, as the contract's error and its arguments.
   reason?: { error: string; args: unknown[] }

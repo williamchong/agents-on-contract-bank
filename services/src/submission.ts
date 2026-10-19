@@ -25,6 +25,9 @@ export interface Request {
   action: string
   to: Address
   data: Hex
+  // Under the hood: the keys that signed, and the role the request is checked against.
+  signers?: string[]
+  role?: string
 }
 
 export type Outcome =
@@ -82,6 +85,8 @@ export class Submission {
         actor: request.actor,
         channel: request.channel,
         action: request.action,
+        signers: request.signers,
+        role: request.role,
         reason: refusal,
         events: [],
       })
@@ -100,6 +105,8 @@ export class Submission {
       actor: request.actor,
       channel: request.channel,
       action: request.action,
+      signers: request.signers,
+      role: request.role,
       tx: hash,
       events,
     })

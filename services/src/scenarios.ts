@@ -4,7 +4,7 @@
 
 import { isAddressEqual, keccak256, numberToHex, toBytes, type Address, type Hex } from 'viem'
 import { grantThroughBranch, Settings, Staff, type Bank } from './bank.ts'
-import { HKD, Ledger, OperationStatus, Opening, PaymentStatus, vault } from './books.ts'
+import { DisputeStatus, drawer, HKD, Ledger, OperationStatus, Opening, PaymentStatus, vault } from './books.ts'
 import { advance } from './chain.ts'
 import type { Clearing } from './clearing.ts'
 import {
@@ -27,12 +27,13 @@ import {
   payOut,
   places,
   approveRecovery,
+  approveReversal,
   proposeRecovery,
+  proposeReversal,
   releasePayments,
   registerPayee,
   reportDispense,
   reportIncident,
-  reverseDispute,
   slipHash,
   submitAtmWithdrawal,
   supply,
@@ -41,6 +42,9 @@ import {
   withdrawAtAtm,
 } from './operations.ts'
 import type { Outcome } from './submission.ts'
+
+// What a teller's drawer keeps for the next customers; the custodian moves cash above it to the vault.
+const DRAWER_FLOAT = 10_000n * HKD
 
 export interface Check {
   name: string
@@ -53,12 +57,22 @@ export interface Context {
   clearing: Clearing
 }
 
+// The groups adverse scenarios are listed in; see docs/scenarios.md#adverse-scenarios.
+export const ScenarioGroups = ['Customer mishap', 'Fraud and attack', 'Operational incident', 'Financial stress'] as const
+export type ScenarioGroup = (typeof ScenarioGroups)[number]
+
+// The dashboard panel an adverse scenario concerns, which the adverse view brings forward.
+export type Panel = 'story' | 'waiting' | 'balance sheet'
+
 export interface Preset {
   name: string
   kind: 'routine' | 'adverse'
-  // For an adverse scenario, the control that should fire, and the building on the bank map it concerns.
+  // For an adverse scenario, its group, the control that should fire, and the building on the bank map and
+  // the panel it concerns.
+  group?: ScenarioGroup
   control?: string
   building?: string
+  panel?: Panel
   waitsFor?: string[]
   run(ctx: Context): Promise<Check[]>
 }
@@ -115,34 +129,43 @@ export const presets: Preset[] = [
     kind: 'routine',
     async run(ctx) {
       const { bank } = ctx
-      const { drawer } = places(bank)
+      const { drawer, atm } = places(bank)
       const cashBefore = await ledgerBalance(bank, Ledger.Cash)
       const deposit = await cashDeposit(bank, 'Alice', 2_000n * HKD)
+      const bob = await balanceOf(bank, 'Bob')
+      const atmCash = await cashAt(bank, atm)
       const held = await withdrawAtAtm(bank, 'Bob', 1_000n * HKD)
       const ref = refOf(held, 'WithdrawalHeld')
+      // The amount has left Bob's account, and the machine's cash has not moved: it waits for the dispense.
+      const waited = ref !== undefined && (await balanceOf(bank, 'Bob')) === bob - 1_000n * HKD && (await cashAt(bank, atm)) === atmCash
       const dispensed = ref ? await reportDispense(bank, ref, true) : held
       const app = await transfer(bank, 'Carol', 'Dave', 500n * HKD)
       // On a paper slip even a small transfer waits for the supervisor.
-      const slip = await transferAtCounter(bank, 'Alice', 'Bob', 1_200n * HKD, { slip: "Alice's signed slip, 1,200 to Bob" })
+      const slip = await transferAtCounter(bank, 'Bob', 'Alice', 1_200n * HKD, { slip: "Bob's signed slip, 1,200 to Alice" })
       const slipRef = refOf(slip, 'OperationOpened')
       const slipWaited = slipRef !== undefined && (await bank.read('AssistedOperations', bank.contracts.assisted, 'nextApproverRole', [slipRef])) === Staff.supervisor
       const slipApproved = slipRef ? await decide(bank, 'supervisor', 'assisted', slipRef, 'approve') : slip
-      // A larger transfer by card climbs the approval ladder to the supervisor too.
-      const card = await transferAtCounter(bank, 'Bob', 'Carol', 60_000n * HKD, { card: true })
+      // A larger transfer by card climbs the approval ladder to the supervisor too. Bob pays Carol, and Carol
+      // pays him back on a day he is short, so the routine runs day after day.
+      const [payer, payee] = (await balanceOf(bank, 'Bob')) >= 60_000n * HKD ? (['Bob', 'Carol'] as const) : (['Carol', 'Bob'] as const)
+      const card = await transferAtCounter(bank, payer, payee, 60_000n * HKD, { card: true })
       const cardRef = refOf(card, 'OperationOpened')
       const cardApproved = cardRef ? await decide(bank, 'supervisor', 'assisted', cardRef, 'approve') : card
-      const toVault = await moveCash(bank, drawer, vault(), 40_000n * HKD, 'move surplus drawer cash to the vault')
-      // The custodian counts what is really in the drawer: what it opened with, the deposit, less the move.
-      const count = await countCash(bank, drawer, Opening.drawer + 2_000n * HKD - 40_000n * HKD, "the teller's drawer")
+      const inDrawer = await cashAt(bank, drawer)
+      const surplus = inDrawer - DRAWER_FLOAT
+      const toVault = surplus > 0n ? await moveCash(bank, drawer, vault(), surplus, 'move surplus drawer cash to the vault') : undefined
+      // The custodian counts what is really in the drawer: what it held, less the move.
+      const count = await countCash(bank, drawer, surplus > 0n ? DRAWER_FLOAT : inDrawer, "the teller's drawer")
       const close = await closeDay(ctx)
       return [
         allowed('cash paid in at the counter', deposit),
+        check('the ATM withdrawal waits for the dispense', waited),
         allowed('cash withdrawn at the ATM', dispensed),
         allowed('a transfer from the app', app),
         check('the paper slip waits for the supervisor', slipWaited),
         check('and goes through once approved', emitted(slipApproved, 'OperationCarriedOut')),
         check('a larger card transfer climbs the ladder', emitted(cardApproved, 'OperationCarriedOut')),
-        allowed('drawer cash moved to the vault under dual control', toVault),
+        check('drawer cash above the float moved to the vault under dual control', toVault === undefined || toVault.ok),
         check("the teller's drawer counts as booked", matched(count, 'CashCounted') === true),
         check('cash moved with deposits on the ledger', (await ledgerBalance(bank, Ledger.Cash)) === cashBefore + 1_000n * HKD),
         check('the reconciliation line reports a match', matched(close, 'StatementAccepted') === true),
@@ -156,10 +179,11 @@ export const presets: Preset[] = [
     kind: 'routine',
     async run(ctx) {
       const { bank, clearing } = ctx
-      // Alice registers her supplier from her phone, and the payee waiting period passes.
+      // Alice registers her supplier from her phone, and the payee waiting period passes; on a later day the
+      // supplier is on her register already.
       const supplier = 'a supplier at another bank'
       const registered = await registerPayee(bank, 'Alice', supplier)
-      await advance(bank.chain, Settings.payeeWait)
+      if (emitted(registered, 'PayeeRegistered')) await advance(bank.chain, Settings.payeeWait)
       const settlementBefore = await ledgerBalance(bank, Ledger.Settlement)
       const paid = await payOut(bank, 'Alice', supplier, 3_000n * HKD)
       const released = await releasePayments(bank)
@@ -187,36 +211,47 @@ export const presets: Preset[] = [
     async run(ctx) {
       const { bank } = ctx
       const c = bank.contracts
-      // The teller leaves: the branch manager revokes their role at once, and grants it to their replacement.
+      // The teller leaves: their drawer goes back to the vault, the branch manager revokes their role at once
+      // and grants it to the one hired, who is issued a drawer of their own.
+      const leaving = drawer(bank.account('teller'))
+      const inDrawer = await cashAt(bank, leaving)
+      const handedBack = inDrawer > 0n ? await moveCash(bank, leaving, vault(), inDrawer, "move the leaving teller's drawer to the vault") : undefined
       const revoked = await bank.act('branch manager', 'branch', 'revoke the leaving teller', [
         bank.call('StaffRoles', c.staffRoles, 'revoke', [bank.account('teller'), Staff.teller]),
       ])
       const afterLeaving = await cashDeposit(bank, 'Alice', 100n * HKD)
-      const hired = await grantThroughBranch(bank, 'branch manager', bank.account('replacement teller'), Staff.teller, 'grant the replacement teller the role')
+      const hired = await grantThroughBranch(bank, 'branch manager', bank.account('replacement teller'), Staff.teller, 'grant the teller hired the role')
+      const issued = await moveCash(bank, vault(), drawer(bank.account('replacement teller')), Opening.drawer, "issue the new teller's drawer")
       const replacementServes = await cashDeposit(bank, 'Alice', 100n * HKD, 'replacement teller')
+      // Whoever holds the role is the teller from now on, and the one who left is the next to be hired.
+      bank.swap('teller', 'replacement teller')
       // Alice loses her phone: her card removes it and enrols her new one.
       const alice = bank.account('Alice')
       const balance = await balanceOf(bank, 'Alice')
-      const lost = 'Alice:phone'
+      const lost = bank.party('Alice').keys[0]!
+      const phone = bank.freshKey('Alice:phone')
       const replaced = await bank.act(
         'Alice',
         'app',
         'revoke the lost phone and enrol a new one',
         [
           bank.call('MultiSignerAccount', alice, 'removeSigners', [[bank.signer.signerBytes(lost)]]),
-          bank.call('MultiSignerAccount', alice, 'addSigners', [[bank.signer.signerBytes('Alice:new phone')]]),
+          bank.call('MultiSignerAccount', alice, 'addSigners', [[bank.signer.signerBytes(phone)]]),
         ],
-        ['Alice:card'],
+        [bank.cardOf('Alice')],
       )
+      if (replaced.ok) bank.setDevices('Alice', [phone])
       const pay = (keys: string[], action: string) =>
         bank.act('Alice', 'app', action, [bank.call('DepositToken', c.token, 'transfer', [bank.account('Bob'), 1n])], keys)
-      const oldPhone = await pay([lost], 'try to pay from the lost phone')
-      const newPhone = await pay(['Alice:new phone'], 'pay from the new phone')
+      const oldPhone = await pay([lost], 'pay from the lost phone')
+      const newPhone = await pay([phone], 'pay from the new phone')
       return [
+        check("the leaving teller's drawer goes back to the vault", handedBack === undefined || handedBack.ok),
         allowed("the leaving teller's role is revoked at once", revoked),
         refusedWith('the leaving teller can no longer take cash', afterLeaving, 'NotTeller'),
-        allowed('the replacement is granted the role', hired),
-        allowed('the replacement takes cash', replacementServes),
+        allowed('the teller hired is granted the role', hired),
+        allowed('and issued a drawer', issued),
+        allowed('the teller hired takes cash', replacementServes),
         allowed("the customer's card swaps the lost phone for the new one", replaced),
         refusedWith('the lost phone can no longer sign', oldPhone, 'InvalidExecutionSignature'),
         allowed('the new phone signs', newPhone),
@@ -231,7 +266,9 @@ export const presets: Preset[] = [
   {
     name: 'All devices lost',
     kind: 'adverse',
+    group: 'Customer mishap',
     building: 'branch',
+    panel: 'waiting',
     control: "Recovery module: an account opening officer with a supervisor's approval, signer list only",
     async run(ctx) {
       const { bank } = ctx
@@ -239,18 +276,23 @@ export const presets: Preset[] = [
       const balance = await balanceOf(bank, 'Carol')
       const total = await supply(bank)
       const isSigner = (key: string) => bank.read('MultiSignerAccount', account, 'isSigner', [bank.signer.signerBytes(key)])
-      const proposed = await proposeRecovery(bank, 'Carol', ['Carol:phone', 'Carol:card'], 'Carol:new phone')
-      const waited = proposed.ok && (await isSigner('Carol:phone')) && !(await isSigner('Carol:new phone'))
+      const phone = bank.party('Carol').keys[0]!
+      const card = bank.cardOf('Carol')
+      const newPhone = bank.freshKey('Carol:phone')
+      const newCard = bank.freshKey('Carol:card')
+      const proposed = await proposeRecovery(bank, 'Carol', [phone, card], [newPhone, newCard])
+      const waited = proposed.ok && (await isSigner(phone)) && !(await isSigner(newPhone))
       const recovered = proposed.ok ? await approveRecovery(bank, proposed) : proposed
+      if (recovered.ok) bank.setDevices('Carol', [newPhone], newCard)
       const pay = (key: string) =>
         bank.act('Carol', 'app', `pay from ${key}`, [bank.call('DepositToken', bank.contracts.token, 'transfer', [bank.account('Dave'), 1n])], [key])
-      const oldPhone = await pay('Carol:phone')
+      const oldPhone = await pay(phone)
       return [
         check('the recovery waits for the supervisor', waited),
         allowed('then goes through once approved', recovered),
         check('the customer is notified through every contact: the recovery is on record', emitted(recovered, 'AccountRecovered')),
-        check('the old signers are gone', !(await isSigner('Carol:phone')) && !(await isSigner('Carol:card'))),
-        check('a new one is enrolled', await isSigner('Carol:new phone')),
+        check('the old signers are gone', !(await isSigner(phone)) && !(await isSigner(card))),
+        check('a new phone and card are enrolled', (await isSigner(newPhone)) && (await isSigner(newCard))),
         refusedWith('the lost phone can no longer sign', oldPhone, 'InvalidExecutionSignature'),
         check('the address and balance are unchanged', bank.account('Carol') === account && (await balanceOf(bank, 'Carol')) === balance),
         check('no money moved', (await supply(bank)) === total),
@@ -262,7 +304,9 @@ export const presets: Preset[] = [
   {
     name: 'ATM fails to dispense',
     kind: 'adverse',
+    group: 'Customer mishap',
     building: 'atm',
+    panel: 'waiting',
     control: 'ATM hold and confirmation',
     async run(ctx) {
       const { bank } = ctx
@@ -300,7 +344,9 @@ export const presets: Preset[] = [
   {
     name: 'Payment rejected',
     kind: 'adverse',
+    group: 'Customer mishap',
     building: 'clearing-house',
+    panel: 'balance sheet',
     control: "Payments module checks the clearing system's signed rejection",
     async run(ctx) {
       const { bank, clearing } = ctx
@@ -328,7 +374,9 @@ export const presets: Preset[] = [
   {
     name: 'Unknown beneficiary',
     kind: 'adverse',
+    group: 'Customer mishap',
     building: 'suspense-lot',
+    panel: 'waiting',
     control: 'Suspense account in the payments module',
     async run(ctx) {
       const { bank, clearing } = ctx
@@ -354,7 +402,9 @@ export const presets: Preset[] = [
   {
     name: 'Forged credit advice',
     kind: 'adverse',
+    group: 'Fraud and attack',
     building: 'clearing-house',
+    panel: 'story',
     control: 'Signature check and unique reference in the payments module',
     async run(ctx) {
       const { bank, clearing } = ctx
@@ -380,7 +430,9 @@ export const presets: Preset[] = [
   {
     name: 'Flagged payment in',
     kind: 'adverse',
+    group: 'Fraud and attack',
     building: 'compliance-yard',
+    panel: 'waiting',
     control: 'Screening in the payments module, compliance clearance',
     async run(ctx) {
       const { bank, clearing } = ctx
@@ -415,7 +467,9 @@ export const presets: Preset[] = [
   {
     name: 'Forged paper slip',
     kind: 'adverse',
+    group: 'Fraud and attack',
     building: 'branch',
+    panel: 'waiting',
     control: 'Second-person approval, then freeze and dispute reversal by forced transfer',
     async run(ctx) {
       const { bank } = ctx
@@ -434,7 +488,10 @@ export const presets: Preset[] = [
       const disputed = ref ? await openDispute(bank, 'Alice', 'Dave', amount, ref) : opened
       const dispute = emitted(disputed, 'DisputeOpened') ? eventArg<bigint>(disputed, 'DisputeOpened', 'id') : undefined
       const moveOn = await transfer(bank, 'Dave', 'Bob', (await balanceOf(bank, 'Dave')) - 1n)
-      const reversed = dispute !== undefined ? await reverseDispute(bank, dispute) : disputed
+      const proposed = dispute !== undefined ? await proposeReversal(bank, dispute) : disputed
+      const waitsForCompliance =
+        dispute !== undefined && (await bank.read('DisputeReversal', bank.contracts.disputes, 'dispute', [dispute])).status === DisputeStatus.Proposed
+      const reversed = dispute !== undefined && proposed.ok ? await approveReversal(bank, dispute) : proposed
       return [
         check('the transfer waits for an approver', waiting),
         refusedWith('the teller alone cannot complete it', alone, 'NotApprover'),
@@ -453,7 +510,9 @@ export const presets: Preset[] = [
         check('the money left her account', left),
         allowed('her dispute freezes the money where it went', disputed),
         refusedWith('the recipient cannot move it on', moveOn, 'ERC20InsufficientUnfrozenBalance'),
-        check('the reversal, approved by compliance, returns the money', emitted(reversed, 'DisputeReversed')),
+        allowed('back office proposes the reversal', proposed),
+        check('the reversal waits for compliance', waitsForCompliance),
+        check('compliance approves it, and the money returns', emitted(reversed, 'DisputeReversed')),
         check('the customer is whole again', (await balanceOf(bank, 'Alice')) === before),
         ...(await invariants(bank)),
       ]
@@ -463,7 +522,9 @@ export const presets: Preset[] = [
   {
     name: 'Red team',
     kind: 'adverse',
+    group: 'Fraud and attack',
     building: 'branch',
+    panel: 'story',
     control: 'Access manager, branch scoping, approval logic, rate limiter, one-use numbers, allow-list, payee register',
     async run(ctx) {
       const { bank } = ctx
@@ -509,7 +570,9 @@ export const presets: Preset[] = [
   {
     name: 'Ledger mismatch',
     kind: 'adverse',
+    group: 'Operational incident',
     building: 'water-tower',
+    panel: 'balance sheet',
     control: "The attested figures contract's comparison with the ledger; reconciliation by finance",
     async run(ctx) {
       const { bank, clearing } = ctx
@@ -528,6 +591,10 @@ export const presets: Preset[] = [
       const countId = numberToHex(eventArg<bigint>(count, 'CashCounted', 'id'), { size: 32 })
       const reported = await reportIncident(bank, 'statement mismatch', statementId, report('the clearing statement'))
       const countReported = await reportIncident(bank, 'cash count mismatch', countId, report('the vault count'))
+      // Settled: the clearing system refunds the fee it charged in error, and the vault is counted again.
+      await clearing.refund(25n * HKD)
+      const recount = await countCash(bank, vault(), vaultCash, 'the vault again')
+      const next = await closeDay(ctx)
       return [
         check('the reconciliation line fails', matched(statement, 'StatementAccepted') === false),
         check('the figure is marked, not current', !current),
@@ -540,6 +607,8 @@ export const presets: Preset[] = [
             emitted(countReported, 'IncidentReported') &&
             (await incidents()) === before + 2n,
         ),
+        check('once the fee is refunded, the next statement matches', matched(next, 'StatementAccepted') === true),
+        check('the vault counted again matches', matched(recount, 'CashCounted') === true),
         ...(await invariants(bank)),
       ]
     },

@@ -5,8 +5,10 @@
 import { deployBank, type Bank } from './bank.ts'
 import { revertTo, snapshot, type Chain } from './chain.ts'
 import { Clearing } from './clearing.ts'
+import { Control, type Card } from './control.ts'
 import { presets, type Check, type Preset } from './scenarios.ts'
 import type { Line } from './timeline.ts'
+import { beats } from './tour.ts'
 
 export interface Result {
   preset: Preset
@@ -19,9 +21,12 @@ export interface Result {
 export async function runPresets(chain: Chain, only?: (p: Preset) => boolean): Promise<{ bank: Bank; results: Result[] }> {
   const bank = await deployBank(chain)
   let start = await snapshot(chain)
+  // The parties' devices and roles change with the chain, so they go back with it.
+  const restore = bank.remember()
   const results: Result[] = []
   for (const preset of presets.filter(only ?? (() => true))) {
     await revertTo(chain, start)
+    restore()
     // A snapshot is used up by reverting to it.
     start = await snapshot(chain)
     const from = bank.timeline.lines.length
@@ -35,6 +40,31 @@ export async function runPresets(chain: Chain, only?: (p: Preset) => boolean): P
     }
   }
   return { bank, results }
+}
+
+// Plays what the control panel offers on one bank, in order, as a presenter does without resetting: the
+// tour, then daily operation and every adverse scenario, twice. Each must leave a bank the next can run on.
+export async function runInOrder(chain: Chain, rounds = 2): Promise<Card[]> {
+  const control = new Control(chain)
+  await control.open()
+  control.setPace(0)
+  const cards: Card[] = []
+  for (const _ of beats) cards.push(await control.nextTourBeat())
+  for (let round = 0; round < rounds; round++) {
+    cards.push(await control.runDaily())
+    for (const p of presets.filter((p) => p.kind === 'adverse')) cards.push(await control.runPreset(p.name))
+  }
+  return cards
+}
+
+export function reportCards(cards: Card[]): string {
+  const out = cards.flatMap((c) => [
+    `${c.status === 'passed' ? 'PASS' : 'FAIL'}  ${c.title}`,
+    ...(c.error ? [`      error: ${c.error}`] : []),
+    ...c.checks.filter((x) => !x.pass).map((x) => `      ✘ ${x.name}${x.detail ? `: ${x.detail}` : ''}`),
+  ])
+  out.push('', `${cards.filter((c) => c.status === 'passed').length} of ${cards.length} passed in order on one bank`)
+  return out.join('\n')
 }
 
 export function report(results: Result[]): string {

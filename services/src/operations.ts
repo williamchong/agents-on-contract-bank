@@ -101,7 +101,8 @@ export async function authorise(bank: Bank, customer: CustomerName, intent: Inte
   const next = await bank.read('DepositToken', c.token, 'nonces', [account, key])
   const nonce = numberToHex((key << 64n) | next, { size: 32 })
   const validBefore = (await bank.now()) + 3600n
-  const signature = bank.signer.signForAccount(account, [`${customer}:${device}`], {
+  const signer = device === 'card' ? bank.cardOf(customer) : bank.party(customer).keys[0]!
+  const signature = bank.signer.signForAccount(account, [signer], {
     domain: { name: 'Deposit HKD', version: '1', chainId: bank.chain.chainId, verifyingContract: c.token },
     types: {
       ReceiveWithAuthorization: [
@@ -210,15 +211,15 @@ export function decide(bank: Bank, approver: string, module: 'assisted' | 'cash'
 }
 
 // The account opening officer, after checking the customer's identity in person, proposes replacing the
-// lost devices and card with a new device; a supervisor approves it with `approveRecovery`.
-export function proposeRecovery(bank: Bank, customer: CustomerName, lost: string[], replacement: string, branch = 1n): Promise<Outcome> {
+// lost devices and card with new ones; a supervisor approves it with `approveRecovery`.
+export function proposeRecovery(bank: Bank, customer: CustomerName, lost: string[], replacements: string[], branch = 1n): Promise<Outcome> {
   const c = bank.contracts
   return bank.act('account opening officer', 'branch', `propose recovering ${customer}'s account`, [
     bank.call('AccountRecovery', c.recovery, 'propose', [
       bank.account(customer),
       branch,
       lost.map((k) => bank.signer.signerBytes(k)),
-      [bank.signer.signerBytes(replacement)],
+      replacements.map((k) => bank.signer.signerBytes(k)),
       keccak256(toBytes(`identity check of ${customer} at branch ${branch}`)),
     ]),
   ])
@@ -237,11 +238,12 @@ export function openDispute(bank: Bank, customer: CustomerName, recipient: strin
   ])
 }
 
-export async function reverseDispute(bank: Bank, id: bigint): Promise<Outcome> {
-  const c = bank.contracts
-  const proposed = await bank.act('back office', 'head office', `propose reversing dispute ${id}`, [bank.call('DisputeReversal', c.disputes, 'propose', [id])])
-  if (!proposed.ok) return proposed
-  return bank.act('compliance', 'head office', `approve reversing dispute ${id}`, [bank.call('DisputeReversal', c.disputes, 'approve', [id])])
+export function proposeReversal(bank: Bank, id: bigint): Promise<Outcome> {
+  return bank.act('back office', 'head office', `propose reversing dispute ${id}`, [bank.call('DisputeReversal', bank.contracts.disputes, 'propose', [id])])
+}
+
+export function approveReversal(bank: Bank, id: bigint): Promise<Outcome> {
+  return bank.act('compliance', 'head office', `approve reversing dispute ${id}`, [bank.call('DisputeReversal', bank.contracts.disputes, 'approve', [id])])
 }
 
 // Head office

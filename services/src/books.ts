@@ -53,6 +53,9 @@ export const PaymentStatus = { None: 0, Credited: 1, Screening: 2, Suspense: 3, 
 // CustomerLimits.Channel, in its order.
 export const Channel = { App: 0, Own: 1, PayeeCheckedThere: 2 } as const
 
+// DisputeReversal.Status, in its order.
+export const DisputeStatus = { None: 0, Open: 1, Proposed: 2, Reversed: 3, Rejected: 4 } as const
+
 // BranchApprovals.Status, in its order.
 export const OperationStatus = { None: 0, Waiting: 1, CarriedOut: 2, Refused: 3, Cancelled: 4 } as const
 

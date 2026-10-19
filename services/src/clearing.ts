@@ -119,6 +119,11 @@ export class Clearing {
     await this.move(-amount)
   }
 
+  // Gives back a fee charged in error, once the bank's reconciliation has raised it.
+  async refund(amount: bigint): Promise<void> {
+    await this.move(amount)
+  }
+
   // The receiving bank refused a payment the bank sent: the amount comes back, with a signed rejection.
   async reject(ref: Hex, amount: bigint, reason = 'AC04'): Promise<Outcome> {
     const message = {

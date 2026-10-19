@@ -27,7 +27,7 @@ import { encodeCalls } from 'viem/experimental/erc7821'
 import { abiOf, bytecodeOf, type AbiOf, type ContractName } from './artifacts.ts'
 import { atm, Channel, Customers, drawer, HKD, Holders, Ledger, Opening, vault } from './books.ts'
 import { advance, type Chain } from './chain.ts'
-import { atBranch, BranchRole, Roles } from './roles.ts'
+import { atBranch, BranchRole, roleName, Roles } from './roles.ts'
 import { Signer } from './signer.ts'
 import { Submission, type Outcome } from './submission.ts'
 import { Timeline } from './timeline.ts'
@@ -83,10 +83,12 @@ export interface Contracts {
   incidents: Address
 }
 
-// The account a party acts from, and the keys that sign for it unless others are named.
+// The account a party acts from, the keys that sign for it unless others are named, and a customer's card.
+// Devices and cards change over a run, as a customer replaces a lost phone or the bank recovers an account.
 export interface Party {
   account: Address
   keys: string[]
+  card?: string
 }
 
 export const Officers = ['chief executive', 'stablecoin manager', 'chief financial officer', 'chief risk officer']
@@ -110,6 +112,15 @@ export const Staff = {
 } as const
 export type StaffName = keyof typeof Staff
 
+// The role a party's request is checked against: a member of staff's, the ATM's, or a customer's hold on
+// their own account. Someone hired and not yet granted a role has none.
+function roleChecked(name: string): string | undefined {
+  if (name in Staff) return roleName(Staff[name as StaffName])
+  if (name === 'ATM') return roleName(Roles.ATM)
+  if ((Holders as readonly string[]).includes(name)) return 'account holder'
+  return undefined
+}
+
 // The roles governance grants itself; the branch roles are granted through the branch manager.
 const governanceGrants = ['risk', 'compliance', 'finance', 'back office', 'support', 'IT security', 'branch manager', 'branch 2 manager'] as const
 
@@ -123,6 +134,7 @@ export class Bank {
   readonly timeline: Timeline
   readonly contracts: Contracts
   private readonly parties = new Map<string, Party>()
+  private readonly issued = new Map<string, number>()
 
   constructor(chain: Chain, signer: Signer, timeline: Timeline, contracts: Contracts) {
     this.chain = chain
@@ -139,10 +151,51 @@ export class Bank {
     this.parties.set(name, party)
   }
 
-  account(name: string): Address {
+  party(name: string): Readonly<Party> {
     const party = this.parties.get(name)
     if (!party) throw new Error(`No party called ${name}`)
-    return party.account
+    return party
+  }
+
+  account(name: string): Address {
+    return this.party(name).account
+  }
+
+  // The card a customer's card authorisations are signed with.
+  cardOf(name: string): string {
+    const card = this.party(name).card
+    if (!card) throw new Error(`${name} has no card`)
+    return card
+  }
+
+  // A party's devices and card from now on, after one was replaced.
+  setDevices(name: string, keys: string[], card?: string): void {
+    const party = this.party(name)
+    this.parties.set(name, { ...party, keys, card: card ?? party.card })
+  }
+
+  // Two names trade the accounts they stand for, as when the teller leaves and the one hired takes the
+  // role: whoever holds it now is "the teller".
+  swap(a: string, b: string): void {
+    const pa = this.party(a)
+    this.parties.set(a, this.party(b))
+    this.parties.set(b, pa)
+  }
+
+  // A key name not used before, for a device or card enrolled during the run.
+  freshKey(base: string): string {
+    const n = (this.issued.get(base) ?? 1) + 1
+    this.issued.set(base, n)
+    return `${base} ${n}`
+  }
+
+  // Who is who as of now, to put back when the chain is reverted to a snapshot taken now.
+  remember(): () => void {
+    const parties = new Map(this.parties)
+    return () => {
+      this.parties.clear()
+      for (const [name, party] of parties) this.parties.set(name, party)
+    }
   }
 
   now(): Promise<bigint> {
@@ -151,15 +204,17 @@ export class Bank {
 
   // A party acts: its keys sign the batch for its account, and the submission service relays it.
   async act(name: string, channel: string, action: string, calls: Call[], keys?: string[]): Promise<Outcome> {
-    const party = this.parties.get(name)
-    if (!party) throw new Error(`No party called ${name}`)
+    const party = this.party(name)
     const executionData = encodeCalls(calls)
     const nonce = await this.read('MultiSignerAccount', party.account, 'executionNonce', [])
-    const signature = this.signer.signExecution(party.account, keys ?? party.keys, executionData, nonce)
+    const signers = keys ?? party.keys
+    const signature = this.signer.signExecution(party.account, signers, executionData, nonce)
     return this.submission.submit({
       actor: name,
       channel,
       action,
+      signers,
+      role: roleChecked(name),
       to: party.account,
       data: encodeFunctionData({ abi: abiOf('MultiSignerAccount'), functionName: 'executeSigned', args: [executionData, signature] }),
     })
@@ -286,7 +341,7 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
   // A customer's account has the recovery module fixed in it.
   for (const name of Holders) {
     const keys = [`${name}:phone`, `${name}:card`]
-    bank.add(name, { account: await deployer.account(signer, keys, 1n, recovery), keys: keys.slice(0, 1) })
+    bank.add(name, { account: await deployer.account(signer, keys, 1n, recovery), keys: keys.slice(0, 1), card: keys[1] })
   }
 
   // How movements into the modules count, set while the deployer is still the admin: not at all into
