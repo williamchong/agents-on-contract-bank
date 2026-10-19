@@ -2,7 +2,7 @@
 // same operations as tools at milestone 5; see docs/roles.md.
 
 import { keccak256, numberToHex, toBytes, type Address, type Hex } from 'viem'
-import type { Bank } from './bank.ts'
+import { ref, type Bank } from './bank.ts'
 import { atm, drawer, Holders, Ledger, vault, type CustomerName, type Location } from './books.ts'
 import type { Outcome } from './submission.ts'
 
@@ -252,6 +252,15 @@ export function compliance(
   action: string,
 ): Promise<Outcome> {
   return bank.act('compliance', 'head office', action, [bank.call('Payments', bank.contracts.payments, functionName, [ref])])
+}
+
+export type IncidentKind = 'statement mismatch' | 'cash count mismatch'
+
+// Finance reports an incident concerning `subject` to the regulator and records it, with the report's hash.
+export function reportIncident(bank: Bank, kind: IncidentKind, subject: Hex, report: string): Promise<Outcome> {
+  return bank.act('finance', 'head office', `report an incident to the regulator: ${kind}`, [
+    bank.call('IncidentLog', bank.contracts.incidents, 'report', [ref(kind), subject, keccak256(toBytes(report))]),
+  ])
 }
 
 // Anyone may release payments waiting in the queue: the release chooses nothing.

@@ -80,6 +80,7 @@ export interface Contracts {
   assisted: Address
   recovery: Address
   disputes: Address
+  incidents: Address
 }
 
 // The account a party acts from, and the keys that sign for it unless others are named.
@@ -206,6 +207,7 @@ const contractNames: Record<keyof Contracts, string> = {
   assisted: 'AssistedOperations',
   recovery: 'AccountRecovery',
   disputes: 'DisputeReversal',
+  incidents: 'IncidentLog',
 }
 
 // A short reference as a ledger entry or message carries it, such as "opening".
@@ -237,6 +239,7 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
   const attestations = await deployer.deploy('Attestations', [manager, ledger, partnerKeys, Settings.statementMaxAge])
   const recovery = await deployer.deploy('AccountRecovery', [manager])
   const disputes = await deployer.deploy('DisputeReversal', [manager, token, holds])
+  const incidents = await deployer.deploy('IncidentLog', [manager])
   const cash = await deployer.deploy('CashOperations', [
     manager,
     ledger,
@@ -267,6 +270,7 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
     assisted,
     recovery,
     disputes,
+    incidents,
   }
   const bank = new Bank(chain, signer, timeline, contracts)
   bank.add('governance officers', { account: officers, keys: officerKeys.slice(0, Number(Settings.governanceThreshold)) })
@@ -377,6 +381,7 @@ const wiring: [keyof Contracts, ContractName, string, bigint][] = [
   ['limits', 'CustomerLimits', 'enrol', Roles.GOVERNANCE],
   ['limits', 'CustomerLimits', 'setChannel', Roles.GOVERNANCE],
   ['limits', 'CustomerLimits', 'setLimits', Roles.GOVERNANCE],
+  ['incidents', 'IncidentLog', 'report', Roles.FINANCE],
 ]
 
 // Every staff and machine role, for each branch, which the staff roles module administers.

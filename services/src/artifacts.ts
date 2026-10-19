@@ -15,6 +15,7 @@ import type { DepositToken$Type } from '../../artifacts/contracts/core/DepositTo
 import type { DisputeReversal$Type } from '../../artifacts/contracts/core/DisputeReversal.sol/artifacts.js'
 import type { GeneralLedger$Type } from '../../artifacts/contracts/core/GeneralLedger.sol/artifacts.js'
 import type { HoldRegister$Type } from '../../artifacts/contracts/core/HoldRegister.sol/artifacts.js'
+import type { IncidentLog$Type } from '../../artifacts/contracts/core/IncidentLog.sol/artifacts.js'
 import type { MultiSignerAccount$Type } from '../../artifacts/contracts/core/MultiSignerAccount.sol/artifacts.js'
 import type { PartnerKeys$Type } from '../../artifacts/contracts/core/PartnerKeys.sol/artifacts.js'
 import type { Payments$Type } from '../../artifacts/contracts/core/Payments.sol/artifacts.js'
@@ -33,6 +34,7 @@ interface Artifacts {
   DisputeReversal: DisputeReversal$Type
   GeneralLedger: GeneralLedger$Type
   HoldRegister: HoldRegister$Type
+  IncidentLog: IncidentLog$Type
   MultiSignerAccount: MultiSignerAccount$Type
   PartnerKeys: PartnerKeys$Type
   Payments: Payments$Type
@@ -55,6 +57,7 @@ const sources: Record<ContractName, string> = {
   DisputeReversal: 'contracts/core/DisputeReversal.sol',
   GeneralLedger: 'contracts/core/GeneralLedger.sol',
   HoldRegister: 'contracts/core/HoldRegister.sol',
+  IncidentLog: 'contracts/core/IncidentLog.sol',
   MultiSignerAccount: 'contracts/core/MultiSignerAccount.sol',
   PartnerKeys: 'contracts/core/PartnerKeys.sol',
   Payments: 'contracts/core/Payments.sol',

@@ -2,7 +2,7 @@
 // criteria in docs/scenarios.md. A preset whose routine needs a contract still to come runs the part
 // that exists and lists the rest in `waitsFor`, so the score never claims more than was run.
 
-import { isAddressEqual, keccak256, toBytes, type Address, type Hex } from 'viem'
+import { isAddressEqual, keccak256, numberToHex, toBytes, type Address, type Hex } from 'viem'
 import { grantThroughBranch, Settings, Staff, type Bank } from './bank.ts'
 import { HKD, Ledger, OperationStatus, Opening, PaymentStatus, vault } from './books.ts'
 import { advance } from './chain.ts'
@@ -31,6 +31,7 @@ import {
   releasePayments,
   registerPayee,
   reportDispense,
+  reportIncident,
   reverseDispute,
   slipHash,
   submitAtmWithdrawal,
@@ -500,7 +501,6 @@ export const presets: Preset[] = [
     name: 'Ledger mismatch',
     kind: 'adverse',
     control: "The attested figures contract's comparison with the ledger; reconciliation by finance",
-    waitsFor: ['the incident report to the regulator (incident log)'],
     async run(ctx) {
       const { bank, clearing } = ctx
       // The clearing system charges a fee the bank never booked.
@@ -511,11 +511,25 @@ export const presets: Preset[] = [
       // A cash count that differs is marked the same way.
       const vaultCash = await cashAt(bank, vault())
       const count = await countCash(bank, vault(), vaultCash - 100n * HKD, 'the vault')
+      // Finance reports both to the regulator, each against what it concerns.
+      const incidents = () => bank.read('IncidentLog', bank.contracts.incidents, 'incidentCount', [])
+      const before = await incidents()
+      const statementId = eventArg<Hex>(statement, 'StatementAccepted', 'statementId')
+      const countId = numberToHex(eventArg<bigint>(count, 'CashCounted', 'id'), { size: 32 })
+      const reported = await reportIncident(bank, 'statement mismatch', statementId, report('the clearing statement'))
+      const countReported = await reportIncident(bank, 'cash count mismatch', countId, report('the vault count'))
       return [
         check('the reconciliation line fails', matched(statement, 'StatementAccepted') === false),
         check('the figure is marked, not current', !current),
         check('the cash count that differs is marked too', matched(count, 'CashCounted') === false),
         check('nothing is posted to make them agree', (await bank.read('GeneralLedger', bank.contracts.ledger, 'entryCount', [])) === entries),
+        check(
+          'the incident is recorded and reported',
+          emitted(reported, 'IncidentReported') &&
+            eventArg<Hex>(reported, 'IncidentReported', 'subject') === statementId &&
+            emitted(countReported, 'IncidentReported') &&
+            (await incidents()) === before + 2n,
+        ),
         ...(await invariants(bank)),
       ]
     },
@@ -531,6 +545,11 @@ async function authoriseOnce(ctx: Context) {
   const ref = refOf(used, 'WithdrawalHeld')
   if (ref) await reportDispense(bank, ref, true)
   return card
+}
+
+// The report finance sends the regulator about `what`; only its hash goes on chain.
+function report(what: string): string {
+  return `finance's report to the regulator of ${what}, which did not match the ledger`
 }
 
 function moduleHolds(bank: Bank): Promise<bigint> {
