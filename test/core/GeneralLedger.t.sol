@@ -268,7 +268,7 @@ contract GeneralLedgerTest is BankFixture {
 
     /// @dev A ledger not yet opened, on a token of its own, wired by governance as the fixture wires the bank's.
     function _freshLedger() private returns (GeneralLedger fresh) {
-        DepositToken freshToken = new DepositToken(address(manager));
+        DepositToken freshToken = new DepositToken(address(manager), limits);
         fresh = new GeneralLedger(address(manager), freshToken);
         vm.startPrank(governance);
         _wire(address(freshToken), freshToken.mint.selector, Roles.LEDGER);

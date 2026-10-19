@@ -6,16 +6,26 @@ import {ERC20TransferAuthorization} from "@openzeppelin/contracts/token/ERC20/ex
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {AccessManaged} from "@openzeppelin/contracts/access/manager/AccessManaged.sol";
 import {ERC20uRWA} from "@openzeppelin/community-contracts/contracts/token/ERC20/extensions/ERC20uRWA.sol";
+import {CustomerLimits} from "./CustomerLimits.sol";
 
 /// @dev The deposit token: one token is one Hong Kong dollar the bank owes its holder, counted in
 /// cents. Freezes, the allow-list, the block-list and forced transfers come from ERC-7943, and
 /// customer-signed transfers from EIP-3009. Every privileged call is decided by the access
-/// manager; only the general ledger may create or destroy tokens. See docs/standards.md.
+/// manager; only the general ledger may create or destroy tokens. Every movement out of a customer's
+/// account that is not forced is counted against their daily limits, however it was started. See
+/// docs/standards.md and open question 20 in docs/plan.md.
 contract DepositToken is ERC20, EIP712, ERC20TransferAuthorization, ERC20uRWA, AccessManaged {
+    CustomerLimits public immutable customerLimits;
+
     error NotAdmitted(address account);
     error NotBlocked(address account);
 
-    constructor(address manager) ERC20("Deposit HKD", "dHKD") EIP712("Deposit HKD", "1") AccessManaged(manager) {}
+    constructor(
+        address manager,
+        CustomerLimits customerLimits_
+    ) ERC20("Deposit HKD", "dHKD") EIP712("Deposit HKD", "1") AccessManaged(manager) {
+        customerLimits = customerLimits_;
+    }
 
     function decimals() public pure override returns (uint8) {
         return 2;
@@ -67,7 +77,10 @@ contract DepositToken is ERC20, EIP712, ERC20TransferAuthorization, ERC20uRWA, A
 
     function _checkFreezer(address, uint256) internal view override {}
 
+    /// @dev A transfer, an allowance spent or a signed authorisation all end here, so the customer's
+    /// limits see every movement they started. Creation, destruction and forced transfers are the bank's.
     function _update(address from, address to, uint256 amount) internal override(ERC20, ERC20uRWA) {
         super._update(from, to, amount);
+        if (from != address(0) && to != address(0) && !_isForcedTransfer()) customerLimits.countMovement(from, to, amount);
     }
 }

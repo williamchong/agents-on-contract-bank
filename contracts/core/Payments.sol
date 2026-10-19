@@ -7,6 +7,7 @@ import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {DepositToken} from "./DepositToken.sol";
 import {GeneralLedger} from "./GeneralLedger.sol";
 import {PartnerKeys, Partners} from "./PartnerKeys.sol";
+import {CustomerLimits} from "./CustomerLimits.sol";
 
 /// @dev The payments module: payments in by the clearing system's signed credit advice, payments out
 /// by the payer's own call, and the money in waiting between. It is a bank-owned account on the
@@ -72,6 +73,7 @@ contract Payments is EIP712, AccessManaged {
     GeneralLedger public immutable ledger;
     DepositToken public immutable token;
     PartnerKeys public immutable partners;
+    CustomerLimits public immutable customerLimits;
 
     uint256 public screeningThreshold;
     uint256 public orderCount;
@@ -113,6 +115,7 @@ contract Payments is EIP712, AccessManaged {
         ledger = ledger_;
         token = ledger_.token();
         partners = partners_;
+        customerLimits = token.customerLimits();
         screeningThreshold = screeningThreshold_;
     }
 
@@ -201,10 +204,12 @@ contract Payments is EIP712, AccessManaged {
 
     /// @dev The payer's own call: the amount moves from the payer to the module, which the payer has
     /// approved in the same batch, so frozen money cannot be sent. `payeeHash` stands for the payee's
-    /// details, which stay with the bank's systems. Below the screening threshold the payment joins
-    /// the queue at once.
+    /// details, which stay with the bank's systems. A payee the payer has not registered counts against
+    /// their unregistered payee limit, and the movement itself against their app limit. Below the
+    /// screening threshold the payment joins the queue at once.
     function pay(uint256 amount, bytes32 payeeHash) external returns (bytes32 ref) {
         if (amount == 0) revert ZeroAmount();
+        customerLimits.countPayment(msg.sender, payeeHash, amount);
         ref = keccak256(abi.encode(block.chainid, address(this), ++orderCount));
         Status status = amount >= screeningThreshold ? Status.Screening : Status.Queued;
         _outgoing[ref] = Payment(msg.sender, amount, status);

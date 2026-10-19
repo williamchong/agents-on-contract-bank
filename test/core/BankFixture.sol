@@ -23,6 +23,7 @@ import {Attestations} from "../../contracts/core/Attestations.sol";
 import {CashOperations} from "../../contracts/core/CashOperations.sol";
 import {BranchApprovals} from "../../contracts/core/BranchApprovals.sol";
 import {AssistedOperations} from "../../contracts/core/AssistedOperations.sol";
+import {CustomerLimits} from "../../contracts/core/CustomerLimits.sol";
 
 /// @dev Deploys the bank as docs/roles.md describes it: governance is a time lock behind the
 /// officers' multi-signer account, holding the admin and governance roles, the staff roles module
@@ -49,8 +50,12 @@ abstract contract BankFixture is Test {
     uint256 constant DISPENSE_TIMEOUT = 2 minutes;
     uint256 constant LADDER_FIRST = 50_000 * HKD;
     uint256 constant LADDER_SECOND = 500_000 * HKD;
+    uint256 constant APP_LIMIT = 10_000 * HKD;
+    uint256 constant UNREGISTERED_PAYEE_LIMIT = 2_000 * HKD;
+    uint256 constant PAYEE_WAIT = 24 hours;
 
     AccessManager manager;
+    CustomerLimits limits;
     DepositToken token;
     GeneralLedger ledger;
     StaffRoles staffRoles;
@@ -93,7 +98,11 @@ abstract contract BankFixture is Test {
         governance = address(timelock);
 
         manager = new AccessManager(address(this));
-        token = new DepositToken(address(manager));
+        limits = new CustomerLimits(
+            address(manager),
+            CustomerLimits.Limits(APP_LIMIT, UNREGISTERED_PAYEE_LIMIT, PAYEE_WAIT)
+        );
+        token = new DepositToken(address(manager), limits);
         ledger = new GeneralLedger(address(manager), token);
         staffRoles = new StaffRoles(manager, officers);
         holds = new HoldRegister(manager, token);
@@ -108,6 +117,10 @@ abstract contract BankFixture is Test {
         );
         assisted = new AssistedOperations(address(manager), token, BranchApprovals.Ladder(LADDER_FIRST, LADDER_SECOND));
         teller1 = _staff("teller1");
+        // How movements into the modules count, set while the deployer is still the admin.
+        limits.setChannel(address(cash), CustomerLimits.Channel.Own);
+        limits.setChannel(address(assisted), CustomerLimits.Channel.Own);
+        limits.setChannel(address(payments), CustomerLimits.Channel.PayeeCheckedThere);
 
         _wire(address(token), token.mint.selector, Roles.LEDGER);
         _wire(address(token), token.burn.selector, Roles.LEDGER);
@@ -134,6 +147,11 @@ abstract contract BankFixture is Test {
         _wire(address(cash), cash.reportFailure.selector, Roles.ATM);
         _wire(address(cash), cash.setLadder.selector, Roles.GOVERNANCE);
         _wire(address(assisted), assisted.setLadder.selector, Roles.GOVERNANCE);
+        _wire(address(limits), limits.countMovement.selector, Roles.LIMIT_KEEPER);
+        _wire(address(limits), limits.countPayment.selector, Roles.LIMIT_KEEPER);
+        _wire(address(limits), limits.enrol.selector, Roles.GOVERNANCE);
+        _wire(address(limits), limits.setChannel.selector, Roles.GOVERNANCE);
+        _wire(address(limits), limits.setLimits.selector, Roles.GOVERNANCE);
 
         manager.grantRole(Roles.LEDGER, address(ledger), 0);
         manager.grantRole(Roles.STAFF_ADMIN, address(staffRoles), 0);
@@ -142,6 +160,8 @@ abstract contract BankFixture is Test {
         manager.grantRole(Roles.BOOKKEEPER, address(cash), 0);
         manager.grantRole(Roles.ENFORCER, address(cash), 0);
         manager.grantRole(Roles.ENFORCER, address(assisted), 0);
+        manager.grantRole(Roles.LIMIT_KEEPER, address(token), 0);
+        manager.grantRole(Roles.LIMIT_KEEPER, address(payments), 0);
         manager.grantRole(Roles.BOOKKEEPER, treasury, 0);
         uint64[] memory staff = _staffAdministered();
         for (uint256 i = 0; i < staff.length; ++i) manager.setRoleAdmin(staff[i], Roles.STAFF_ADMIN);
