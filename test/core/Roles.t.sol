@@ -9,6 +9,7 @@ import {GeneralLedger} from "../../contracts/core/GeneralLedger.sol";
 import {PartnerKeys} from "../../contracts/core/PartnerKeys.sol";
 import {Payments} from "../../contracts/core/Payments.sol";
 import {Attestations} from "../../contracts/core/Attestations.sol";
+import {CashOperations} from "../../contracts/core/CashOperations.sol";
 import {BankFixture} from "./BankFixture.sol";
 
 /// @dev Checks every restricted function is wired to the role docs/roles.md gives it, and that
@@ -107,7 +108,8 @@ contract RolesTest is BankFixture {
     /// to the allow-list stays with the admin until the onboarding module is wired to it.
     function _expected() private view returns (Wire[] memory w) {
         GeneralLedger.Line[] memory none = new GeneralLedger.Line[](0);
-        w = new Wire[](19);
+        CashOperations.CardAuthorisation memory card;
+        w = new Wire[](24);
         w[0] = Wire(address(token), abi.encodeCall(DepositToken.mint, (alice, 1)), Roles.LEDGER);
         w[1] = Wire(address(token), abi.encodeCall(DepositToken.burn, (alice, 1)), Roles.LEDGER);
         w[2] = Wire(address(token), abi.encodeCall(DepositToken.forcedTransfer, (alice, bob, 1)), Roles.ENFORCER);
@@ -131,5 +133,14 @@ contract RolesTest is BankFixture {
         w[16] = Wire(address(payments), abi.encodeCall(Payments.returnOutgoing, (bytes32(0))), Roles.COMPLIANCE);
         w[17] = Wire(address(payments), abi.encodeCall(Payments.setScreeningThreshold, (0)), Roles.GOVERNANCE);
         w[18] = Wire(address(attestations), abi.encodeCall(Attestations.setMaxAge, (0)), Roles.GOVERNANCE);
+        w[19] = Wire(
+            address(cash),
+            abi.encodeCall(CashOperations.openCash, (new CashOperations.Location[](0), new uint256[](0))),
+            Roles.GOVERNANCE
+        );
+        w[20] = Wire(address(cash), abi.encodeCall(CashOperations.setLimits, (CashOperations.Limits(0, 0, 0, 0))), Roles.GOVERNANCE);
+        w[21] = Wire(address(cash), abi.encodeCall(CashOperations.withdrawAtAtm, (1, card)), Roles.ATM);
+        w[22] = Wire(address(cash), abi.encodeCall(CashOperations.confirmDispense, (bytes32(0))), Roles.ATM);
+        w[23] = Wire(address(cash), abi.encodeCall(CashOperations.reportFailure, (bytes32(0))), Roles.ATM);
     }
 }
