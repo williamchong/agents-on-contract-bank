@@ -16,11 +16,13 @@ import {MultiSignerAccount} from "../../contracts/core/MultiSignerAccount.sol";
 import {StaffRoles} from "../../contracts/core/StaffRoles.sol";
 import {HoldRegister} from "../../contracts/core/HoldRegister.sol";
 import {PartnerKeys} from "../../contracts/core/PartnerKeys.sol";
+import {Payments} from "../../contracts/core/Payments.sol";
 
 /// @dev Deploys the bank as docs/roles.md describes it: governance is a time lock behind the
 /// officers' multi-signer account, holding the admin and governance roles, the staff roles module
 /// administers every staff and machine role, the hold register sets every frozen amount, and the
-/// partner key register holds the keys partners sign with. The test contract deploys and wires the
+/// partner key register holds the keys partners sign with, among them the clearing system's, and
+/// the payments module holds money in waiting. The test contract deploys and wires the
 /// contracts, hands the admin role to governance and gives up its own, and governance then posts
 /// the opening balance sheet in docs/scenarios.md.
 abstract contract BankFixture is Test {
@@ -29,6 +31,8 @@ abstract contract BankFixture is Test {
     uint256 constant GOVERNANCE_DELAY = 2 days;
     uint64 constant GOVERNANCE_THRESHOLD = 3;
     uint64 constant BRANCHES = 2;
+    uint256 constant SCREENING_THRESHOLD = 50_000 * HKD;
+    bytes32 constant CLEARING = keccak256("clearing");
 
     AccessManager manager;
     DepositToken token;
@@ -36,6 +40,7 @@ abstract contract BankFixture is Test {
     StaffRoles staffRoles;
     HoldRegister holds;
     PartnerKeys partnerKeys;
+    Payments payments;
     ERC7913P256Verifier p256;
     MultiSignerAccount officers;
     TimelockController timelock;
@@ -43,6 +48,7 @@ abstract contract BankFixture is Test {
     address governance;
 
     uint256[] officerKeys;
+    uint256 clearingKey = _key("clearing");
 
     address alice = makeAddr("alice");
     address bob = makeAddr("bob");
@@ -67,6 +73,7 @@ abstract contract BankFixture is Test {
         staffRoles = new StaffRoles(manager, officers);
         holds = new HoldRegister(manager, token);
         partnerKeys = new PartnerKeys(address(manager));
+        payments = new Payments(address(manager), ledger, partnerKeys, SCREENING_THRESHOLD);
 
         _wire(address(token), token.mint.selector, Roles.LEDGER);
         _wire(address(token), token.burn.selector, Roles.LEDGER);
@@ -80,10 +87,16 @@ abstract contract BankFixture is Test {
         _wire(address(ledger), ledger.postOpening.selector, Roles.GOVERNANCE);
         _wire(address(partnerKeys), partnerKeys.setKey.selector, Roles.GOVERNANCE);
         _wire(address(partnerKeys), partnerKeys.revokeKey.selector, Roles.IT_SECURITY);
+        _wire(address(payments), payments.clearIncoming.selector, Roles.COMPLIANCE);
+        _wire(address(payments), payments.returnIncoming.selector, Roles.COMPLIANCE);
+        _wire(address(payments), payments.clearOutgoing.selector, Roles.COMPLIANCE);
+        _wire(address(payments), payments.returnOutgoing.selector, Roles.COMPLIANCE);
+        _wire(address(payments), payments.setScreeningThreshold.selector, Roles.GOVERNANCE);
 
         manager.grantRole(Roles.LEDGER, address(ledger), 0);
         manager.grantRole(Roles.STAFF_ADMIN, address(staffRoles), 0);
         manager.grantRole(Roles.FREEZER, address(holds), 0);
+        manager.grantRole(Roles.BOOKKEEPER, address(payments), 0);
         uint64[] memory staff = _staffAdministered();
         for (uint256 i = 0; i < staff.length; ++i) manager.setRoleAdmin(staff[i], Roles.STAFF_ADMIN);
 
@@ -91,12 +104,14 @@ abstract contract BankFixture is Test {
         token.allowUser(bob);
         token.allowUser(otherCustomers);
         token.allowUser(pending);
+        token.allowUser(address(payments));
 
         manager.grantRole(Roles.ADMIN, governance, 0);
         manager.grantRole(Roles.GOVERNANCE, governance, 0);
         manager.renounceRole(Roles.ADMIN, address(this));
 
         _govern(address(ledger), _openingCall());
+        _govern(address(partnerKeys), abi.encodeCall(PartnerKeys.setKey, (CLEARING, _signer(clearingKey))));
     }
 
     // Governance

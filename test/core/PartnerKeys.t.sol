@@ -14,11 +14,9 @@ import {BankFixture} from "./BankFixture.sol";
 /// docs/roles.md: governance registers and replaces a key after its delay, IT security revokes one
 /// at once, and a partner's signature verifies only under its current key.
 contract PartnerKeysTest is BankFixture {
-    bytes32 constant CLEARING = keccak256("clearing");
     bytes32 constant CUSTODIAN = keccak256("custodian");
     bytes32 constant DIGEST = keccak256("credit advice");
 
-    uint256 clearingKey = _key("clearing");
     uint256 custodianKey = _key("custodian");
     address itSecurity;
     address support;
@@ -32,8 +30,6 @@ contract PartnerKeysTest is BankFixture {
         _grantStaff(itSecurity, Roles.IT_SECURITY);
         _grantStaff(support, Roles.SUPPORT);
         _grantStaff(branchManager, Roles.atBranch(1, Roles.BRANCH_MANAGER));
-
-        _setKey(CLEARING, _signer(clearingKey));
     }
 
     // Registering
