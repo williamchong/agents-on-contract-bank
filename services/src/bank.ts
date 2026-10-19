@@ -78,6 +78,8 @@ export interface Contracts {
   attestations: Address
   cash: Address
   assisted: Address
+  recovery: Address
+  disputes: Address
 }
 
 // The account a party acts from, and the keys that sign for it unless others are named.
@@ -202,6 +204,8 @@ const contractNames: Record<keyof Contracts, string> = {
   attestations: 'Attestations',
   cash: 'CashOperations',
   assisted: 'AssistedOperations',
+  recovery: 'AccountRecovery',
+  disputes: 'DisputeReversal',
 }
 
 // A short reference as a ledger entry or message carries it, such as "opening".
@@ -217,7 +221,7 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
   const signer = new Signer(verifier, chain.chainId)
 
   const officerKeys = Officers.map((o) => `officer:${o}`)
-  const officers = await deployer.account(signer, officerKeys, Settings.governanceThreshold)
+  const officers = await deployer.account(signer, officerKeys, Settings.governanceThreshold, zeroAddress)
   const timelock = await deployer.deploy('TimelockController', [Settings.governanceDelay, [officers], [zeroAddress], zeroAddress])
   const manager = await deployer.deploy('AccessManager', [chain.relayer])
   const limits = await deployer.deploy('CustomerLimits', [
@@ -231,6 +235,8 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
   const partnerKeys = await deployer.deploy('PartnerKeys', [manager])
   const payments = await deployer.deploy('Payments', [manager, ledger, partnerKeys, Settings.screeningThreshold])
   const attestations = await deployer.deploy('Attestations', [manager, ledger, partnerKeys, Settings.statementMaxAge])
+  const recovery = await deployer.deploy('AccountRecovery', [manager])
+  const disputes = await deployer.deploy('DisputeReversal', [manager, token, holds])
   const cash = await deployer.deploy('CashOperations', [
     manager,
     ledger,
@@ -240,9 +246,10 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
       cashReport: Settings.cashReportThreshold,
       dispenseTimeout: Settings.dispenseTimeout,
     },
+    recovery,
     Settings.ladder,
   ])
-  const assisted = await deployer.deploy('AssistedOperations', [manager, token, Settings.ladder])
+  const assisted = await deployer.deploy('AssistedOperations', [manager, token, recovery, Settings.ladder])
   const contracts: Contracts = {
     verifier,
     officers,
@@ -258,6 +265,8 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
     attestations,
     cash,
     assisted,
+    recovery,
+    disputes,
   }
   const bank = new Bank(chain, signer, timeline, contracts)
   bank.add('governance officers', { account: officers, keys: officerKeys.slice(0, Number(Settings.governanceThreshold)) })
@@ -266,13 +275,14 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
   // phone and card. A customer signs with their phone unless the card is named.
   for (const name of [...Object.keys(Staff), ...Hires]) {
     const keys = [`staff:${name}`]
-    bank.add(name, { account: await deployer.account(signer, keys, 1n), keys })
+    bank.add(name, { account: await deployer.account(signer, keys, 1n, zeroAddress), keys })
   }
   const atmKeys = ['machine:ATM 1']
-  bank.add('ATM', { account: await deployer.account(signer, atmKeys, 1n), keys: atmKeys })
+  bank.add('ATM', { account: await deployer.account(signer, atmKeys, 1n, zeroAddress), keys: atmKeys })
+  // A customer's account has the recovery module fixed in it.
   for (const name of Holders) {
     const keys = [`${name}:phone`, `${name}:card`]
-    bank.add(name, { account: await deployer.account(signer, keys, 1n), keys: keys.slice(0, 1) })
+    bank.add(name, { account: await deployer.account(signer, keys, 1n, recovery), keys: keys.slice(0, 1) })
   }
 
   // How movements into the modules count, set while the deployer is still the admin: not at all into
@@ -314,8 +324,8 @@ class Deployer {
     return receipt.contractAddress
   }
 
-  account(signer: Signer, keys: string[], threshold: bigint): Promise<Address> {
-    return this.deploy('MultiSignerAccount', [[signer.verifier], keys.map((k) => signer.signerBytes(k)), threshold])
+  account(signer: Signer, keys: string[], threshold: bigint, recovery: Address): Promise<Address> {
+    return this.deploy('MultiSignerAccount', [[signer.verifier], keys.map((k) => signer.signerBytes(k)), threshold, recovery])
   }
 
   async write<N extends ContractName, const F extends ContractFunctionName<AbiOf<N>, Write>>(
@@ -391,6 +401,8 @@ async function wire(deployer: Deployer, c: Contracts): Promise<void> {
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.ENFORCER, c.assisted, 0])
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.LIMIT_KEEPER, c.token, 0])
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.LIMIT_KEEPER, c.payments, 0])
+  await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.ENFORCER, c.disputes, 0])
+  await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.DISPUTE_HOLDER, c.disputes, 0])
   for (const role of administered) await deployer.write('AccessManager', c.manager, 'setRoleAdmin', [role, Roles.STAFF_ADMIN])
 }
 

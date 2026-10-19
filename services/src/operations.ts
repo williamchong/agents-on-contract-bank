@@ -208,6 +208,41 @@ export function decide(bank: Bank, approver: string, module: 'assisted' | 'cash'
   return bank.act(approver, 'branch', `${verdict} operation ${ref.slice(0, 10)}`, [bank.call(name, bank.contracts[module], verdict, [ref])])
 }
 
+// The account opening officer, after checking the customer's identity in person, proposes replacing the
+// lost devices and card with a new device; a supervisor approves it with `approveRecovery`.
+export function proposeRecovery(bank: Bank, customer: CustomerName, lost: string[], replacement: string, branch = 1n): Promise<Outcome> {
+  const c = bank.contracts
+  return bank.act('account opening officer', 'branch', `propose recovering ${customer}'s account`, [
+    bank.call('AccountRecovery', c.recovery, 'propose', [
+      bank.account(customer),
+      branch,
+      lost.map((k) => bank.signer.signerBytes(k)),
+      [bank.signer.signerBytes(replacement)],
+      keccak256(toBytes(`identity check of ${customer} at branch ${branch}`)),
+    ]),
+  ])
+}
+
+export function approveRecovery(bank: Bank, proposed: Outcome): Promise<Outcome> {
+  const id = eventArg<bigint>(proposed, 'RecoveryProposed', 'id')
+  return bank.act('supervisor', 'branch', `approve recovery ${id}`, [bank.call('AccountRecovery', bank.contracts.recovery, 'approve', [id])])
+}
+
+// Support opens a dispute for a customer, which freezes the recipient's money at once; back office proposes
+// the reversal and compliance approves it.
+export function openDispute(bank: Bank, customer: CustomerName, recipient: string, amount: bigint, operation: Hex): Promise<Outcome> {
+  return bank.act('support', 'support', `open ${customer}'s dispute of a transfer to ${recipient}`, [
+    bank.call('DisputeReversal', bank.contracts.disputes, 'open', [bank.account(customer), bank.account(recipient), amount, operation]),
+  ])
+}
+
+export async function reverseDispute(bank: Bank, id: bigint): Promise<Outcome> {
+  const c = bank.contracts
+  const proposed = await bank.act('back office', 'head office', `propose reversing dispute ${id}`, [bank.call('DisputeReversal', c.disputes, 'propose', [id])])
+  if (!proposed.ok) return proposed
+  return bank.act('compliance', 'head office', `approve reversing dispute ${id}`, [bank.call('DisputeReversal', c.disputes, 'approve', [id])])
+}
+
 // Head office
 
 export function compliance(

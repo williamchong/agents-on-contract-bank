@@ -23,11 +23,15 @@ import {
   eventArg,
   ledgerBalance,
   moveCash,
+  openDispute,
   payOut,
   places,
+  approveRecovery,
+  proposeRecovery,
   releasePayments,
   registerPayee,
   reportDispense,
+  reverseDispute,
   slipHash,
   submitAtmWithdrawal,
   supply,
@@ -223,6 +227,36 @@ export const presets: Preset[] = [
   // Adverse scenarios
 
   {
+    name: 'All devices lost',
+    kind: 'adverse',
+    control: "Recovery module: an account opening officer with a supervisor's approval, signer list only",
+    async run(ctx) {
+      const { bank } = ctx
+      const account = bank.account('Carol')
+      const balance = await balanceOf(bank, 'Carol')
+      const total = await supply(bank)
+      const isSigner = (key: string) => bank.read('MultiSignerAccount', account, 'isSigner', [bank.signer.signerBytes(key)])
+      const proposed = await proposeRecovery(bank, 'Carol', ['Carol:phone', 'Carol:card'], 'Carol:new phone')
+      const waited = proposed.ok && (await isSigner('Carol:phone')) && !(await isSigner('Carol:new phone'))
+      const recovered = proposed.ok ? await approveRecovery(bank, proposed) : proposed
+      const pay = (key: string) =>
+        bank.act('Carol', 'app', `pay from ${key}`, [bank.call('DepositToken', bank.contracts.token, 'transfer', [bank.account('Dave'), 1n])], [key])
+      const oldPhone = await pay('Carol:phone')
+      return [
+        check('the recovery waits for the supervisor', waited),
+        allowed('then goes through once approved', recovered),
+        check('the customer is notified through every contact: the recovery is on record', emitted(recovered, 'AccountRecovered')),
+        check('the old signers are gone', !(await isSigner('Carol:phone')) && !(await isSigner('Carol:card'))),
+        check('a new one is enrolled', await isSigner('Carol:new phone')),
+        refusedWith('the lost phone can no longer sign', oldPhone, 'InvalidExecutionSignature'),
+        check('the address and balance are unchanged', bank.account('Carol') === account && (await balanceOf(bank, 'Carol')) === balance),
+        check('no money moved', (await supply(bank)) === total),
+        ...(await invariants(bank)),
+      ]
+    },
+  },
+
+  {
     name: 'ATM fails to dispense',
     kind: 'adverse',
     control: 'ATM hold and confirmation',
@@ -374,7 +408,6 @@ export const presets: Preset[] = [
     name: 'Forged paper slip',
     kind: 'adverse',
     control: 'Second-person approval, then freeze and dispute reversal by forced transfer',
-    waitsFor: ['the freeze and the reversal of the disputed transfer (dispute reversal)'],
     async run(ctx) {
       const { bank } = ctx
       const amount = 8_000n * HKD
@@ -387,6 +420,12 @@ export const presets: Preset[] = [
       const waiting = ref !== undefined && (await operationOf(bank, 'assisted', ref)).status === OperationStatus.Waiting
       const fooled = ref ? await decide(bank, 'supervisor', 'assisted', ref, 'approve') : opened
       const record = ref ? await operationOf(bank, 'assisted', ref) : undefined
+      const left = (await balanceOf(bank, 'Alice')) === before - amount
+      // Alice is told, and disputes it: Dave's money is frozen, and the reversal waits for compliance.
+      const disputed = ref ? await openDispute(bank, 'Alice', 'Dave', amount, ref) : opened
+      const dispute = emitted(disputed, 'DisputeOpened') ? eventArg<bigint>(disputed, 'DisputeOpened', 'id') : undefined
+      const moveOn = await transfer(bank, 'Dave', 'Bob', (await balanceOf(bank, 'Dave')) - 1n)
+      const reversed = dispute !== undefined ? await reverseDispute(bank, dispute) : disputed
       return [
         check('the transfer waits for an approver', waiting),
         refusedWith('the teller alone cannot complete it', alone, 'NotApprover'),
@@ -402,7 +441,11 @@ export const presets: Preset[] = [
           "the customer is told at once: the operation's event names her",
           emitted(opened, 'OperationOpened') && isAddressEqual(eventArg<Address>(opened, 'OperationOpened', 'customer'), bank.account('Alice')),
         ),
-        check('the money left her account', (await balanceOf(bank, 'Alice')) === before - amount),
+        check('the money left her account', left),
+        allowed('her dispute freezes the money where it went', disputed),
+        refusedWith('the recipient cannot move it on', moveOn, 'ERC20InsufficientUnfrozenBalance'),
+        check('the reversal, approved by compliance, returns the money', emitted(reversed, 'DisputeReversed')),
+        check('the customer is whole again', (await balanceOf(bank, 'Alice')) === before),
         ...(await invariants(bank)),
       ]
     },

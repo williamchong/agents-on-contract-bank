@@ -6,11 +6,13 @@ import type { Abi, Hex } from 'viem'
 import type { AccessManager$Type } from '../../artifacts/@openzeppelin/contracts/access/manager/AccessManager.sol/artifacts.js'
 import type { TimelockController$Type } from '../../artifacts/@openzeppelin/contracts/governance/TimelockController.sol/artifacts.js'
 import type { ERC7913P256Verifier$Type } from '../../artifacts/@openzeppelin/contracts/utils/cryptography/verifiers/ERC7913P256Verifier.sol/artifacts.js'
+import type { AccountRecovery$Type } from '../../artifacts/contracts/core/AccountRecovery.sol/artifacts.js'
 import type { AssistedOperations$Type } from '../../artifacts/contracts/core/AssistedOperations.sol/artifacts.js'
 import type { Attestations$Type } from '../../artifacts/contracts/core/Attestations.sol/artifacts.js'
 import type { CashOperations$Type } from '../../artifacts/contracts/core/CashOperations.sol/artifacts.js'
 import type { CustomerLimits$Type } from '../../artifacts/contracts/core/CustomerLimits.sol/artifacts.js'
 import type { DepositToken$Type } from '../../artifacts/contracts/core/DepositToken.sol/artifacts.js'
+import type { DisputeReversal$Type } from '../../artifacts/contracts/core/DisputeReversal.sol/artifacts.js'
 import type { GeneralLedger$Type } from '../../artifacts/contracts/core/GeneralLedger.sol/artifacts.js'
 import type { HoldRegister$Type } from '../../artifacts/contracts/core/HoldRegister.sol/artifacts.js'
 import type { MultiSignerAccount$Type } from '../../artifacts/contracts/core/MultiSignerAccount.sol/artifacts.js'
@@ -22,11 +24,13 @@ interface Artifacts {
   AccessManager: AccessManager$Type
   TimelockController: TimelockController$Type
   ERC7913P256Verifier: ERC7913P256Verifier$Type
+  AccountRecovery: AccountRecovery$Type
   AssistedOperations: AssistedOperations$Type
   Attestations: Attestations$Type
   CashOperations: CashOperations$Type
   CustomerLimits: CustomerLimits$Type
   DepositToken: DepositToken$Type
+  DisputeReversal: DisputeReversal$Type
   GeneralLedger: GeneralLedger$Type
   HoldRegister: HoldRegister$Type
   MultiSignerAccount: MultiSignerAccount$Type
@@ -42,11 +46,13 @@ const sources: Record<ContractName, string> = {
   AccessManager: '@openzeppelin/contracts/access/manager/AccessManager.sol',
   TimelockController: '@openzeppelin/contracts/governance/TimelockController.sol',
   ERC7913P256Verifier: '@openzeppelin/contracts/utils/cryptography/verifiers/ERC7913P256Verifier.sol',
+  AccountRecovery: 'contracts/core/AccountRecovery.sol',
   AssistedOperations: 'contracts/core/AssistedOperations.sol',
   Attestations: 'contracts/core/Attestations.sol',
   CashOperations: 'contracts/core/CashOperations.sol',
   CustomerLimits: 'contracts/core/CustomerLimits.sol',
   DepositToken: 'contracts/core/DepositToken.sol',
+  DisputeReversal: 'contracts/core/DisputeReversal.sol',
   GeneralLedger: 'contracts/core/GeneralLedger.sol',
   HoldRegister: 'contracts/core/HoldRegister.sol',
   MultiSignerAccount: 'contracts/core/MultiSignerAccount.sol',
