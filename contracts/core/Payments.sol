@@ -219,9 +219,9 @@ contract Payments is EIP712, AccessManaged {
     /// screening threshold the payment joins the queue at once.
     function pay(uint256 amount, bytes32 payeeHash) external returns (bytes32 ref) {
         if (amount == 0) revert ZeroAmount();
-        bool unregistered = customerLimits.countPayment(msg.sender, payeeHash, amount);
+        (bool app, bool unregistered) = customerLimits.countPayment(msg.sender, payeeHash, amount);
         ref = keccak256(abi.encode(block.chainid, address(this), ++orderCount));
-        _counted[ref] = Counted(DailyLimit.today(), customerLimits.countsApp(msg.sender, address(this)), unregistered);
+        if (app || unregistered) _counted[ref] = Counted(DailyLimit.today(), app, unregistered);
         Status status = amount >= screeningThreshold ? Status.Screening : Status.Queued;
         _outgoing[ref] = Payment(msg.sender, amount, status);
         token.transferFrom(msg.sender, address(this), amount);
@@ -284,7 +284,9 @@ contract Payments is EIP712, AccessManaged {
 
     function _releaseLimits(bytes32 ref, Payment storage p) private {
         Counted memory c = _counted[ref];
-        if (c.app || c.unregistered) customerLimits.releasePayment(p.party, p.amount, c.day, c.app, c.unregistered);
+        if (!c.app && !c.unregistered) return;
+        delete _counted[ref];
+        customerLimits.releasePayment(p.party, p.amount, c.day, c.app, c.unregistered);
     }
 
     function _enqueue(bytes32 ref) private {

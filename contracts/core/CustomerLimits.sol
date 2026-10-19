@@ -110,11 +110,9 @@ contract CustomerLimits is AccessManaged {
     /// customer or `to` keeps its own channel's limit, and against the unregistered payee limit too
     /// when `to` is not on their register by address.
     function countMovement(address from, address to, uint256 amount) external restricted {
-        if (!enrolled[from]) return;
-        Channel channel = channelOf[to];
-        if (channel == Channel.Own) return;
+        if (!_countsApp(from, to)) return;
         _app.consume(_key(from), amount, appLimit(from));
-        if (channel == Channel.App) _countUnregistered(from, payeeOf(to), amount);
+        if (channelOf[to] == Channel.App) _countUnregistered(from, payeeOf(to), amount);
     }
 
     /// @dev The payee hash an account of the bank is registered under: its address.
@@ -124,16 +122,12 @@ contract CustomerLimits is AccessManaged {
 
     /// @dev Counts a payment out to `payee` against the payer's unregistered payee limit, unless the
     /// payee is on their register.
-    /// Returns whether it was counted there, so the payments module can give it back if the payment
-    /// comes back.
-    function countPayment(address payer, bytes32 payee, uint256 amount) external restricted returns (bool unregistered) {
-        return enrolled[payer] && _countUnregistered(payer, payee, amount);
-    }
-
-    /// @dev Whether a movement from `from` into `module` is counted against the app limit, as the token's
-    /// count does it, so a module can record what it took.
-    function countsApp(address from, address module) external view returns (bool) {
-        return enrolled[from] && channelOf[module] != Channel.Own;
+    /// Returns what the payment counts against: the app limit, which the token counts when the money moves
+    /// into the calling module, and the unregistered payee limit, so the module can give back what the
+    /// payment took if it comes back.
+    function countPayment(address payer, bytes32 payee, uint256 amount) external restricted returns (bool app, bool unregistered) {
+        app = _countsApp(payer, msg.sender);
+        unregistered = enrolled[payer] && _countUnregistered(payer, payee, amount);
     }
 
     /// @dev Gives back what a payment out counted on `day`, against the app limit and the unregistered
@@ -176,6 +170,12 @@ contract CustomerLimits is AccessManaged {
     }
 
     // Internal
+
+    /// @dev Whether a movement from `from` into `to` counts against the app limit: one an enrolled customer
+    /// starts, into anything but a module that keeps its own channel's limit.
+    function _countsApp(address from, address to) private view returns (bool) {
+        return enrolled[from] && channelOf[to] != Channel.Own;
+    }
 
     function _countUnregistered(address customer, bytes32 payee, uint256 amount) private returns (bool counted) {
         if (isPayee(customer, payee)) return false;
