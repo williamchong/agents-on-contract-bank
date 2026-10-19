@@ -16,7 +16,7 @@ Three things keep it a recognisable bank:
 flowchart TB
     subgraph L5[Dashboard]
         story[Story view]
-        map[Bank map]
+        map[Bank map, in 3D]
         balance[Balance sheet]
         reserve[Reserve panel]
         income[Income statement]
@@ -513,14 +513,14 @@ The dashboard has two views, matching the two kinds of [scenario](scenarios.md).
 | View | When | Shows |
 |---|---|---|
 | **Daily** | By default | Invariant strip, story view with its waiting strip, bank map, balance sheet, income statement, and the reserve panel once the stablecoin is in |
-| **Adverse** | While an adverse scenario runs | The same, with a scenario card pinned above the story view, the refusals and incidents it causes highlighted, and the panel it concerns brought forward |
+| **Adverse** | While an adverse scenario runs | The same, with a scenario card pinned above the story view, the refusals and incidents it causes highlighted, the panel it concerns brought forward, and the bank map turned to the building it concerns |
 
 - **Invariant strip.** Across the top of both views, the design's headline claims as of the latest block: the books balance; stablecoin outstanding is within the confirmed reserve. Each check appears with the milestone that brings it.
 - **Story view.** One plain sentence per event, including refusals and the reason. See [story lines](#story-lines).
 - **Under-the-hood toggle.** Signer, role check, transaction reference and the ledger entry posted for each line, linking to the block explorer on the public deployment. Selecting a line highlights the balance sheet rows its entry moved.
 - **Waiting strip.** Beside the story view, everything started and not yet finished: operations awaiting an approver, with who must approve next; ATM holds; payments queued or awaiting clearance; frozen credits and other named holds; funds in suspense; held redemptions; governance changes in their waiting period. An item leaves the strip with a story line when it completes, is refused or is reversed.
 - **Scenario card.** What is being attempted, which control should fire and the expected outcome, then pass or fail once the scenario ends.
-- **Bank map.** Branch, staff, devices and cash positions.
+- **Bank map.** The bank as a small live town in 3D: branch, staff, cash, customers and money on the move. See [bank map](#bank-map).
 - **Balance sheet.** Assets against deposits and equity, the capital and liquidity ratios against their minimums, and the age of each attested figure.
 - **Reserve panel.** Stablecoin outstanding against confirmed reserve, the buffer, funds in transit and funds due back to the bank, time since the custodian's last confirmation, held redemptions, governance changes in their waiting period.
 - **Income statement.** Loan interest as it is collected, securities and reserve yield and fees against savings interest and loan loss charges.
@@ -535,6 +535,32 @@ Each line says who acted, for whom, what, how much, and through which channel an
 | **Refused** | Who attempted what, and the rule that stopped it | "The ATM refused customer A's withdrawal of 6,000: over the 5,000 daily ATM limit." | The signer and the check that failed. There is no transaction; the submission service reported it. |
 | **Waiting** | What is held, and for whom or what | "Customer A's payment of 80,000 is waiting for compliance." | The operation's reference and the approvals so far |
 | **Operator** | What the operator commanded, marked apart from bank events | "Operator: started the scenario forged paper slip." | The command as sent to the control service |
+
+### Bank map
+
+The bank drawn as a small town in simple 3D shapes, in the manner of a city-building game, so an audience sees where money is while the story view says why. It is a live model of the bank, not a game: it keeps no state of its own and draws only what the contracts report.
+
+| In the town | In the bank | Moves on |
+|---|---|---|
+| Head office, with a balance on its roof | The general ledger; the balance stays level while the books balance | Each ledger entry posted |
+| Water tower | The settlement account; the water level is its balance | Entries that move the settlement account |
+| Vault, branch and ATM | Cash in the vault, the teller's drawer and the ATM | Cash entries and counts |
+| Houses | Customers, sized by balance, with a padlock for each named hold | Token transfers; holds placed and lifted |
+| Figures | Staff and machines, each marked with its role | Roles granted and revoked |
+| Clearing house, on the road out of town | Other banks, through the clearing system | Credit advices, payments sent, rejections |
+| Post office, with a gate and a queue lane | The payments module | Payments ordered, queued and released |
+| Compliance yard and suspense lot, beside the post office | Payments waiting for compliance, and payments with no beneficiary | Each payment's status |
+| Custodian | Liquid securities | Treasury's entries and the custodian's statements |
+| Town hall, with a clock | Governance; the clock counts down each decision's time lock | Decisions scheduled and carried out |
+
+Later milestones add buildings as their contracts arrive: the lending office at milestone 3, the reserve vault at the custodian at milestone 4, and the AI agents as figures acting on their own at milestone 5.
+
+- **Money moves as vans along roads.** A payment in drives from the clearing house to the post office and on to the house, or parks in the compliance yard or the suspense lot. Payments out wait in the queue lane and leave only while the water tower covers them; a rejection drives back.
+- **A refusal is a barrier.** It drops where the attempt was made, with the rule that stopped it. Refusals are not on chain, so they come from the submission service, as the story view's do.
+- **A twin, not an animation.** Each frame is the chain at a block. Time controls move it as they move block time, so a jump to the end of the day shows time locks opening and queues draining. Vans move between two blocks' states; nothing appears that the chain did not report.
+- **From the contracts first, then the indexer.** A first look subscribes to the contracts' events and reads their balances directly, so it runs before the indexer exists. Once the indexer is built, the map reads the same feed as the story view.
+- **Selecting.** A building or a van shows its story lines, and under the hood the ledger entry and transaction behind them.
+- **Simple shapes.** Low-poly shapes under a fixed isometric camera, running offline on a laptop.
 
 ### Control panel
 
@@ -561,7 +587,7 @@ test/        one file per module; compat holds the open questions' tests
 services/    signer, gateways, submission, indexer, scheduler, control,
              simulators, personal data store
 agents/      personas, tool definitions, scripted actors
-dashboard/   web app
+dashboard/   web app, with the bank map scene
 deploy/      local chain and testnet deployment
 docs/        this folder
 ```

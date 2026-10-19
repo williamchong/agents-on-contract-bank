@@ -30,7 +30,7 @@ The bank at work, with the controls passing quietly. A daily run loops through e
 
 ## Adverse scenarios
 
-Each one is aimed at a control in the [controls table](architecture.md#controls). While it runs, the dashboard pins a [scenario card](architecture.md#dashboard) naming the control and the expected outcome.
+Each one is aimed at a control in the [controls table](architecture.md#controls). While it runs, the dashboard pins a [scenario card](architecture.md#dashboard) naming the control and the expected outcome, and the [bank map](architecture.md#bank-map) turns to the building concerned.
 
 ### Customer mishap
 
@@ -77,11 +77,11 @@ The [five-minute pitch](plan.md#1-the-five-minute-pitch) as a preset. It runs th
 
 | # | Beat | Runs | The presenter points at | The claim | Milestone |
 |---|---|---|---|---|---|
-| 1 | **An ordinary day** | Counter and ATM day | The story view and the waiting strip: cash in, an ATM withdrawal, a paper slip waiting for the supervisor | It reads like a bank, in plain sentences | 2 |
+| 1 | **An ordinary day** | Counter and ATM day | The story view and the waiting strip: cash in, an ATM withdrawal, a paper slip waiting for the supervisor; on the bank map, money moving between the houses, the branch and the ATM | It reads like a bank, in plain sentences | 2 |
 | 2 | **Books that cannot disagree** | One cash deposit from the same routine, opened under the hood | The ledger entry it posted, the two balance sheet rows it highlights, and the invariant strip | The token and the ledger entry are one transaction | 2 |
-| 3 | **Try to break it** | Red team | One refusal after another, each with its reason | The chain decides; an agent's instructions are not the control | 2 |
+| 3 | **Try to break it** | Red team | One refusal after another, each with its reason, and a barrier dropping on the bank map for each | The chain decides; an agent's instructions are not the control | 2 |
 | 4 | **Fraud, with a way back** | Forged paper slip | The scenario card, the transfer waiting for an approver, the freeze, the reversal waiting for compliance, then the pass | No member of staff acts alone, and a wrong is reversed on the record | 2 |
-| 5 | **Money creation and stress** | Lending stopped by the capital ratio, then run on deposits | The capital ratio falling to its minimum and the refused drawdown; the payment queue growing, then draining as treasury sells securities | Lending creates money only within limits; a bank can be solvent and still run short | 3 |
+| 5 | **Money creation and stress** | Lending stopped by the capital ratio, then run on deposits | The capital ratio falling to its minimum and the refused drawdown; the payment queue growing, then draining as treasury sells securities, seen on the bank map as the water tower emptying and vans queueing at the post office gate | Lending creates money only within limits; a bank can be solvent and still run short | 3 |
 | 6 | **Anyone can check the bank** | No preset: any story line under the hood, then the same kind of transaction on the public deployment's block explorer | The signer, role check and transaction; the same checks on a public chain the bank does not run | The bank cannot rewrite its history, and anyone can check it without the bank's help | 6 |
 
 - **It grows with the milestones.** The tour runs the beats the current milestone has reached, so it is four beats long at milestone 2.
