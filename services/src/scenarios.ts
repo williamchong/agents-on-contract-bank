@@ -2,12 +2,13 @@
 // criteria in docs/scenarios.md. A preset whose routine needs a contract still to come runs the part
 // that exists and lists the rest in `waitsFor`, so the score never claims more than was run.
 
-import { keccak256, toBytes, type Hex } from 'viem'
+import { isAddressEqual, keccak256, toBytes, type Address, type Hex } from 'viem'
 import { grantThroughBranch, Settings, Staff, type Bank } from './bank.ts'
-import { HKD, Ledger, Opening, PaymentStatus, vault } from './books.ts'
+import { HKD, Ledger, OperationStatus, Opening, PaymentStatus, vault } from './books.ts'
 import { advance } from './chain.ts'
 import type { Clearing } from './clearing.ts'
 import {
+  authorise,
   balanceOf,
   booksBalance,
   cashAt,
@@ -16,7 +17,9 @@ import {
   compliance,
   countCash,
   customerTotal,
+  decide,
   emitted,
+  operationOf,
   eventArg,
   ledgerBalance,
   moveCash,
@@ -24,8 +27,11 @@ import {
   places,
   releasePayments,
   reportDispense,
+  slipHash,
+  submitAtmWithdrawal,
   supply,
   transfer,
+  transferAtCounter,
   withdrawAtAtm,
 } from './operations.ts'
 import type { Outcome } from './submission.ts'
@@ -100,7 +106,6 @@ export const presets: Preset[] = [
   {
     name: 'Counter and ATM day',
     kind: 'routine',
-    waitsFor: ['a transfer on a paper slip waiting for the supervisor (assisted operations)', 'a card transfer at the counter (assisted operations)'],
     async run(ctx) {
       const { bank } = ctx
       const { drawer } = places(bank)
@@ -110,6 +115,15 @@ export const presets: Preset[] = [
       const ref = refOf(held, 'WithdrawalHeld')
       const dispensed = ref ? await reportDispense(bank, ref, true) : held
       const app = await transfer(bank, 'Carol', 'Dave', 500n * HKD)
+      // On a paper slip even a small transfer waits for the supervisor.
+      const slip = await transferAtCounter(bank, 'Alice', 'Bob', 1_200n * HKD, { slip: "Alice's signed slip, 1,200 to Bob" })
+      const slipRef = refOf(slip, 'OperationOpened')
+      const slipWaited = slipRef !== undefined && (await bank.read('AssistedOperations', bank.contracts.assisted, 'nextApproverRole', [slipRef])) === Staff.supervisor
+      const slipApproved = slipRef ? await decide(bank, 'supervisor', 'assisted', slipRef, 'approve') : slip
+      // A larger transfer by card climbs the approval ladder to the supervisor too.
+      const card = await transferAtCounter(bank, 'Bob', 'Carol', 60_000n * HKD, { card: true })
+      const cardRef = refOf(card, 'OperationOpened')
+      const cardApproved = cardRef ? await decide(bank, 'supervisor', 'assisted', cardRef, 'approve') : card
       const toVault = await moveCash(bank, drawer, vault(), 40_000n * HKD, 'move surplus drawer cash to the vault')
       // The custodian counts what is really in the drawer: what it opened with, the deposit, less the move.
       const count = await countCash(bank, drawer, Opening.drawer + 2_000n * HKD - 40_000n * HKD, "the teller's drawer")
@@ -118,6 +132,9 @@ export const presets: Preset[] = [
         allowed('cash paid in at the counter', deposit),
         allowed('cash withdrawn at the ATM', dispensed),
         allowed('a transfer from the app', app),
+        check('the paper slip waits for the supervisor', slipWaited),
+        check('and goes through once approved', emitted(slipApproved, 'OperationCarriedOut')),
+        check('a larger card transfer climbs the ladder', emitted(cardApproved, 'OperationCarriedOut')),
         allowed('drawer cash moved to the vault under dual control', toVault),
         check("the teller's drawer counts as booked", matched(count, 'CashCounted') === true),
         check('cash moved with deposits on the ledger', (await ledgerBalance(bank, Ledger.Cash)) === cashBefore + 1_000n * HKD),
@@ -349,6 +366,85 @@ export const presets: Preset[] = [
   },
 
   {
+    name: 'Forged paper slip',
+    kind: 'adverse',
+    control: 'Second-person approval, then freeze and dispute reversal by forced transfer',
+    waitsFor: ['the freeze and the reversal of the disputed transfer (dispute reversal)'],
+    async run(ctx) {
+      const { bank } = ctx
+      const amount = 8_000n * HKD
+      const before = await balanceOf(bank, 'Alice')
+      // The teller makes up a slip Alice never signed, paying an accomplice.
+      const slip = 'a slip Alice never signed'
+      const opened = await transferAtCounter(bank, 'Alice', 'Dave', amount, { slip })
+      const ref = refOf(opened, 'OperationOpened')
+      const alone = ref ? await decide(bank, 'teller', 'assisted', ref, 'approve') : opened
+      const waiting = ref !== undefined && (await operationOf(bank, 'assisted', ref)).status === OperationStatus.Waiting
+      const fooled = ref ? await decide(bank, 'supervisor', 'assisted', ref, 'approve') : opened
+      const record = ref ? await operationOf(bank, 'assisted', ref) : undefined
+      return [
+        check('the transfer waits for an approver', waiting),
+        refusedWith('the teller alone cannot complete it', alone, 'NotApprover'),
+        allowed('it goes through only once a supervisor approves', fooled),
+        check(
+          'the teller, approver and slip hash are on record',
+          record !== undefined &&
+            isAddressEqual(record.teller, bank.account('teller')) &&
+            isAddressEqual(record.approvers[0], bank.account('supervisor')) &&
+            record.slipHash === slipHash(slip),
+        ),
+        check(
+          "the customer is told at once: the operation's event names her",
+          emitted(opened, 'OperationOpened') && isAddressEqual(eventArg<Address>(opened, 'OperationOpened', 'customer'), bank.account('Alice')),
+        ),
+        check('the money left her account', (await balanceOf(bank, 'Alice')) === before - amount),
+        ...(await invariants(bank)),
+      ]
+    },
+  },
+
+  {
+    name: 'Red team',
+    kind: 'adverse',
+    control: 'Access manager, branch scoping, approval logic, one-use numbers, allow-list',
+    waitsFor: ['exceeding the app limit, and paying an unregistered payee above the small limit (payee register and channel limits)'],
+    async run(ctx) {
+      const { bank } = ctx
+      const c = bank.contracts
+      // A card authorisation Alice used once, at the ATM, to be replayed.
+      const card = await authoriseOnce(ctx)
+      const total = (await customerTotal(bank)) + (await supply(bank))
+      const stranger = '0x00000000000000000000000000000000000bad00' as const
+      // Its own teller role is at branch 2: it opens a paper operation there and tries to approve it itself.
+      const own = await transferAtCounter(bank, 'Bob', 'Carol', 100n * HKD, { slip: 'red team slip' }, 'red team', 2n)
+      const ownRef = refOf(own, 'OperationOpened')
+      const approveOwn = ownRef ? await decide(bank, 'red team', 'assisted', ownRef, 'approve') : own
+      // Its own operation is cancelled again, so the money it moved goes back.
+      if (ownRef) await bank.act('red team', 'branch', 'cancel it again', [bank.call('AssistedOperations', c.assisted, 'cancel', [ownRef])])
+      const forced = await bank.act('red team', 'branch', 'call the forced transfer directly', [
+        bank.call('DepositToken', c.token, 'forcedTransfer', [bank.account('Alice'), bank.account('red team'), 100n * HKD]),
+      ])
+      const atOtherBranch = await bank.act('red team', 'branch', 'take cash in at branch 1 with a teller role for branch 2', [
+        bank.call('CashOperations', c.cash, 'deposit', [1n, bank.account('Alice'), 100n * HKD]),
+      ])
+      const replay = await submitAtmWithdrawal(bank, 'Alice', card)
+      const notOnboarded = await bank.act('Alice', 'app', 'send money to an account that is not onboarded', [
+        bank.call('DepositToken', c.token, 'transfer', [stranger, 100n * HKD]),
+      ])
+      return [
+        // It holds no approving role, so the ladder refuses it before it could approve its own.
+        refusedWith('approving its own operation is refused', approveOwn, 'NotApprover'),
+        refusedWith('calling the forced transfer directly is refused', forced, 'AccessManagedUnauthorized'),
+        refusedWith('acting at this branch with a teller role for another is refused', atOtherBranch, 'NotTeller'),
+        refusedWith('replaying a used authorisation is refused, naming the one-use number', replay, 'InvalidAccountNonce'),
+        refusedWith('sending to an account that is not onboarded is refused, naming the allow-list', notOnboarded, 'ERC20UserRestricted'),
+        check('no balance changes', (await customerTotal(bank)) + (await supply(bank)) === total),
+        ...(await invariants(bank)),
+      ]
+    },
+  },
+
+  {
     name: 'Ledger mismatch',
     kind: 'adverse',
     control: "The attested figures contract's comparison with the ledger; reconciliation by finance",
@@ -373,6 +469,17 @@ export const presets: Preset[] = [
     },
   },
 ]
+
+// Alice withdraws once at the ATM, which uses her card's authorisation, and the authorisation is kept to
+// be replayed.
+async function authoriseOnce(ctx: Context) {
+  const { bank } = ctx
+  const card = await authorise(bank, 'Alice', { module: 'cash', purpose: 'ATM_WITHDRAWAL', branch: 1n, recipient: bank.account('ATM') }, 100n * HKD)
+  const used = await submitAtmWithdrawal(bank, 'Alice', card)
+  const ref = refOf(used, 'WithdrawalHeld')
+  if (ref) await reportDispense(bank, ref, true)
+  return card
+}
 
 function moduleHolds(bank: Bank): Promise<bigint> {
   return bank.read('DepositToken', bank.contracts.token, 'balanceOf', [bank.contracts.payments])

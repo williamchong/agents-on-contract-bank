@@ -41,12 +41,14 @@ export function report(results: Result[]): string {
   const out: string[] = []
   for (const r of results) {
     const label = r.preset.kind === 'adverse' ? 'scenario' : 'routine'
-    out.push(`${r.passed ? 'PASS' : 'FAIL'}  ${label}: ${r.preset.name}${r.preset.control ? ` (${r.preset.control})` : ''}`)
+    const verdict = !r.passed ? 'FAIL' : r.preset.waitsFor?.length ? 'PASS (partial)' : 'PASS'
+    out.push(`${verdict}  ${label}: ${r.preset.name}${r.preset.control ? ` (${r.preset.control})` : ''}`)
     if (r.error) out.push(`      error: ${r.error}`)
     for (const c of r.checks) out.push(`      ${c.pass ? '✔' : '✘'} ${c.name}${c.pass || !c.detail ? '' : `: ${c.detail}`}`)
     for (const w of r.preset.waitsFor ?? []) out.push(`      … waits for ${w}`)
   }
   const passed = results.filter((r) => r.passed).length
-  out.push('', `${passed} of ${results.length} presets passed`)
+  const partial = results.filter((r) => r.passed && r.preset.waitsFor?.length).length
+  out.push('', `${passed} of ${results.length} presets passed, ${partial} of them in part`)
   return out.join('\n')
 }

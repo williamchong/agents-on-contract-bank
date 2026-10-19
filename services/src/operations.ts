@@ -1,7 +1,7 @@
 // What each scripted actor can do, through its own account and the channel it acts from. AI agents get the
 // same operations as tools at milestone 5; see docs/roles.md.
 
-import { keccak256, numberToHex, toBytes, type Hex } from 'viem'
+import { keccak256, numberToHex, toBytes, type Address, type Hex } from 'viem'
 import type { Bank } from './bank.ts'
 import { atm, drawer, Holders, Ledger, vault, type CustomerName, type Location } from './books.ts'
 import type { Outcome } from './submission.ts'
@@ -69,16 +69,31 @@ export function payOut(bank: Bank, from: CustomerName, payee: string, amount: bi
   ])
 }
 
-// The customer's card, after the PIN, authorises a transfer to the cash module, and the ATM submits it.
-export async function withdrawAtAtm(bank: Bank, customer: CustomerName, amount: bigint, branch = 1n): Promise<Outcome> {
+// What a customer's authorisation is for: the module that will hold the money, the purpose, the branch
+// and who is paid. The module derives its one-use number's key from it, so a teller or an ATM cannot use
+// the authorisation for anything else.
+export interface Intent {
+  module: 'cash' | 'assisted'
+  purpose: 'ATM_WITHDRAWAL' | 'COUNTER_WITHDRAWAL' | 'TRANSFER'
+  branch: bigint
+  recipient: Address
+}
+
+// The customer's card, after the PIN, or their phone authorises a transfer of `amount` into the module for
+// `intent`, under the next one-use number for that intent; a teller or an ATM submits it.
+export async function authorise(bank: Bank, customer: CustomerName, intent: Intent, amount: bigint, device: 'card' | 'phone' = 'card') {
   const c = bank.contracts
   const account = bank.account(customer)
-  // The card's authorisations use their own key in the token's keyed one-use numbers.
-  const cardKey = 1n
-  const next = await bank.read('DepositToken', c.token, 'nonces', [account, cardKey])
-  const nonce = numberToHex((cardKey << 64n) | next, { size: 32 })
+  const module = c[intent.module]
+  const purpose =
+    intent.purpose === 'TRANSFER'
+      ? await bank.read('AssistedOperations', module, 'TRANSFER', [])
+      : await bank.read('CashOperations', module, intent.purpose, [])
+  const key = await bank.read('CashOperations', module, 'intentKey', [purpose, intent.branch, intent.recipient])
+  const next = await bank.read('DepositToken', c.token, 'nonces', [account, key])
+  const nonce = numberToHex((key << 64n) | next, { size: 32 })
   const validBefore = (await bank.now()) + 3600n
-  const signature = bank.signer.signForAccount(account, [`${customer}:card`], {
+  const signature = bank.signer.signForAccount(account, [`${customer}:${device}`], {
     domain: { name: 'Deposit HKD', version: '1', chainId: bank.chain.chainId, verifyingContract: c.token },
     types: {
       ReceiveWithAuthorization: [
@@ -91,10 +106,22 @@ export async function withdrawAtAtm(bank: Bank, customer: CustomerName, amount: 
       ],
     },
     primaryType: 'ReceiveWithAuthorization',
-    message: { from: account, to: c.cash, value: amount, validAfter: 0n, validBefore, nonce },
+    message: { from: account, to: module, value: amount, validAfter: 0n, validBefore, nonce },
   })
-  return bank.act('ATM', 'atm', `withdraw ${amount} for ${customer} by card`, [
-    bank.call('CashOperations', c.cash, 'withdrawAtAtm', [branch, { customer: account, amount, validAfter: 0n, validBefore, nonce, signature }]),
+  return { customer: account, amount, validAfter: 0n, validBefore, nonce, signature }
+}
+
+export type CardAuthorisation = Awaited<ReturnType<typeof authorise>>
+
+export async function withdrawAtAtm(bank: Bank, customer: CustomerName, amount: bigint, branch = 1n): Promise<Outcome> {
+  const intent = { module: 'cash', purpose: 'ATM_WITHDRAWAL', branch, recipient: bank.account('ATM') } as const
+  return submitAtmWithdrawal(bank, customer, await authorise(bank, customer, intent, amount), branch)
+}
+
+// The ATM submits a card authorisation it was given, which a replay attempt reuses.
+export function submitAtmWithdrawal(bank: Bank, customer: CustomerName, card: CardAuthorisation, branch = 1n): Promise<Outcome> {
+  return bank.act('ATM', 'atm', `withdraw ${card.amount} for ${customer} by card`, [
+    bank.call('CashOperations', bank.contracts.cash, 'withdrawAtAtm', [branch, card]),
   ])
 }
 
@@ -119,7 +146,7 @@ async function underDualControl(bank: Bank, action: string, call: ReturnType<Ban
   const proposed = await bank.act('vault custodian', 'branch', `record: ${action}`, [call])
   if (!proposed.ok) return proposed
   const id = eventArg<bigint>(proposed, 'OrderProposed', 'id')
-  return bank.act('supervisor', 'branch', `confirm: ${action}`, [bank.call('CashOperations', bank.contracts.cash, 'approve', [id])])
+  return bank.act('supervisor', 'branch', `confirm: ${action}`, [bank.call('CashOperations', bank.contracts.cash, 'confirmOrder', [id])])
 }
 
 export function moveCash(bank: Bank, from: Location, to: Location, amount: bigint, action: string): Promise<Outcome> {
@@ -128,6 +155,50 @@ export function moveCash(bank: Bank, from: Location, to: Location, amount: bigin
 
 export function countCash(bank: Bank, at: Location, counted: bigint, what: string): Promise<Outcome> {
   return underDualControl(bank, `count ${what}`, bank.call('CashOperations', bank.contracts.cash, 'proposeCount', [at, counted]))
+}
+
+// A teller's transfer for a customer: on the customer's card at the counter, or on a signed paper slip,
+// whose scan's hash is recorded. It waits for the approvers the branch approval ladder names.
+export async function transferAtCounter(
+  bank: Bank,
+  customer: CustomerName,
+  to: string,
+  amount: bigint,
+  by: { card: true } | { slip: string },
+  teller = 'teller',
+  branch = 1n,
+): Promise<Outcome> {
+  const c = bank.contracts
+  if ('card' in by) {
+    const card = await authorise(bank, customer, { module: 'assisted', purpose: 'TRANSFER', branch, recipient: bank.account(to) }, amount)
+    return bank.act(teller, 'branch', `transfer ${amount} from ${customer} to ${to} on their card`, [
+      bank.call('AssistedOperations', c.assisted, 'transfer', [branch, bank.account(to), card]),
+    ])
+  }
+  return bank.act(teller, 'branch', `transfer ${amount} from ${customer} to ${to} on a paper slip`, [
+    bank.call('AssistedOperations', c.assisted, 'transferOnPaper', [branch, bank.account(customer), bank.account(to), amount, slipHash(by.slip)]),
+  ])
+}
+
+export async function withdrawAtCounter(bank: Bank, customer: CustomerName, amount: bigint, slip: string, teller = 'teller', branch = 1n): Promise<Outcome> {
+  return bank.act(teller, 'branch', `pay out ${amount} in cash to ${customer} on a paper slip`, [
+    bank.call('CashOperations', bank.contracts.cash, 'withdrawAtCounterOnPaper', [branch, bank.account(customer), amount, slipHash(slip)]),
+  ])
+}
+
+// The hash of a scanned slip, which is all the chain keeps of it.
+export function slipHash(slip: string): Hex {
+  return keccak256(toBytes(slip))
+}
+
+export function operationOf(bank: Bank, module: 'assisted' | 'cash', ref: Hex) {
+  return bank.read('AssistedOperations', bank.contracts[module], 'operation', [ref])
+}
+
+// An approver on the ladder approves or refuses an operation waiting in `module`.
+export function decide(bank: Bank, approver: string, module: 'assisted' | 'cash', ref: Hex, verdict: 'approve' | 'refuse'): Promise<Outcome> {
+  const name = module === 'assisted' ? 'AssistedOperations' : 'CashOperations'
+  return bank.act(approver, 'branch', `${verdict} operation ${ref.slice(0, 10)}`, [bank.call(name, bank.contracts[module], verdict, [ref])])
 }
 
 // Head office

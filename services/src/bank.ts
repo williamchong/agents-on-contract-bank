@@ -42,6 +42,8 @@ export const Settings = {
   atmLimit: 5_000n * HKD,
   cashReportThreshold: 100_000n * HKD,
   dispenseTimeout: 120n,
+  // The branch approval ladder's steps.
+  ladder: { first: 50_000n * HKD, second: 500_000n * HKD },
 } as const
 
 // The partners' identifiers in the key register, as contracts/core/PartnerKeys.sol derives them, and the
@@ -71,6 +73,7 @@ export interface Contracts {
   payments: Address
   attestations: Address
   cash: Address
+  assisted: Address
 }
 
 // The account a party acts from, and the keys that sign for it unless others are named.
@@ -193,6 +196,7 @@ const contractNames: Record<keyof Contracts, string> = {
   payments: 'Payments',
   attestations: 'Attestations',
   cash: 'CashOperations',
+  assisted: 'AssistedOperations',
 }
 
 // A short reference as a ledger entry or message carries it, such as "opening".
@@ -227,8 +231,24 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
       cashReport: Settings.cashReportThreshold,
       dispenseTimeout: Settings.dispenseTimeout,
     },
+    Settings.ladder,
   ])
-  const contracts: Contracts = { verifier, officers, timelock, manager, token, ledger, staffRoles, holds, partnerKeys, payments, attestations, cash }
+  const assisted = await deployer.deploy('AssistedOperations', [manager, token, Settings.ladder])
+  const contracts: Contracts = {
+    verifier,
+    officers,
+    timelock,
+    manager,
+    token,
+    ledger,
+    staffRoles,
+    holds,
+    partnerKeys,
+    payments,
+    attestations,
+    cash,
+    assisted,
+  }
   const bank = new Bank(chain, signer, timeline, contracts)
   bank.add('governance officers', { account: officers, keys: officerKeys.slice(0, Number(Settings.governanceThreshold)) })
 
@@ -249,6 +269,7 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
   for (const name of Holders) await deployer.write('DepositToken', token, 'allowUser', [bank.account(name)])
   await deployer.write('DepositToken', token, 'allowUser', [payments])
   await deployer.write('DepositToken', token, 'allowUser', [cash])
+  await deployer.write('DepositToken', token, 'allowUser', [assisted])
   await deployer.write('AccessManager', manager, 'grantRole', [Roles.ADMIN, timelock, 0])
   await deployer.write('AccessManager', manager, 'grantRole', [Roles.GOVERNANCE, timelock, 0])
   await deployer.write('AccessManager', manager, 'renounceRole', [Roles.ADMIN, chain.relayer])
@@ -324,6 +345,8 @@ const wiring: [keyof Contracts, ContractName, string, bigint][] = [
   ['cash', 'CashOperations', 'withdrawAtAtm', Roles.ATM],
   ['cash', 'CashOperations', 'confirmDispense', Roles.ATM],
   ['cash', 'CashOperations', 'reportFailure', Roles.ATM],
+  ['cash', 'CashOperations', 'setLadder', Roles.GOVERNANCE],
+  ['assisted', 'AssistedOperations', 'setLadder', Roles.GOVERNANCE],
 ]
 
 // Every staff and machine role, for each branch, which the staff roles module administers.
@@ -344,6 +367,8 @@ async function wire(deployer: Deployer, c: Contracts): Promise<void> {
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.FREEZER, c.holds, 0])
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.BOOKKEEPER, c.payments, 0])
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.BOOKKEEPER, c.cash, 0])
+  await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.ENFORCER, c.cash, 0])
+  await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.ENFORCER, c.assisted, 0])
   for (const role of administered) await deployer.write('AccessManager', c.manager, 'setRoleAdmin', [role, Roles.STAFF_ADMIN])
 }
 

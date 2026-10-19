@@ -12,7 +12,7 @@ export const OPENING_SETTLEMENT = 1_000_000n * HKD
 
 interface Deployment {
   chainId: number
-  contracts: { token: Address; ledger: Address; cash: Address; payments: Address }
+  contracts: { token: Address; ledger: Address; cash: Address; payments: Address; assisted: Address }
   customers: Record<string, Address>
   cash: { vault: Hex; drawer: Hex; atm: Hex }
 }
@@ -23,6 +23,8 @@ export interface BankState {
   settlement: bigint
   cash: { vault: bigint; drawer: bigint; atm: bigint }
   inPayments: bigint
+  // Customers' money held at the branch for operations waiting for their approvers.
+  awaitingApproval: bigint
   booksBalance: boolean
 }
 
@@ -33,6 +35,7 @@ const abi = parseAbi([
   'function balanceOf(address) view returns (uint256)',
   'function balances() view returns (int256[])',
   'function cashAt(bytes32) view returns (uint256)',
+  'function waitingTotal() view returns (uint256)',
 ])
 
 export function useBank(rpcUrl = 'http://localhost:8545') {
@@ -49,13 +52,16 @@ export function useBank(rpcUrl = 'http://localhost:8545') {
     const balanceOf = (address: Address) => client.readContract({ address: d.contracts.token, abi, functionName: 'balanceOf', args: [address], blockNumber })
     const cashAt = (id: Hex) => client.readContract({ address: d.contracts.cash, abi, functionName: 'cashAt', args: [id], blockNumber })
     const names = Object.keys(d.customers).filter((n) => n !== 'other customers')
-    const [balances, ledger, vault, drawer, atm, inPayments] = await Promise.all([
+    const waiting = (address: Address) => client.readContract({ address, abi, functionName: 'waitingTotal', blockNumber })
+    const [balances, ledger, vault, drawer, atm, inPayments, assistedWaiting, cashWaiting] = await Promise.all([
       Promise.all(names.map((n) => balanceOf(d.customers[n]!))),
       client.readContract({ address: d.contracts.ledger, abi, functionName: 'balances', blockNumber }),
       cashAt(d.cash.vault),
       cashAt(d.cash.drawer),
       cashAt(d.cash.atm),
       balanceOf(d.contracts.payments),
+      waiting(d.contracts.assisted),
+      waiting(d.contracts.cash),
     ])
     return {
       block: blockNumber,
@@ -63,6 +69,7 @@ export function useBank(rpcUrl = 'http://localhost:8545') {
       settlement: ledger[SETTLEMENT]!,
       cash: { vault, drawer, atm },
       inPayments,
+      awaitingApproval: assistedWaiting + cashWaiting,
       booksBalance: ledger.reduce((a, b) => a + b, 0n) === 0n,
     }
   }

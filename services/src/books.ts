@@ -43,6 +43,9 @@ export function atm(machine: Address, branch = 1n): Location {
 // Payments.Status, in its order.
 export const PaymentStatus = { None: 0, Credited: 1, Screening: 2, Suspense: 3, Cleared: 4, Queued: 5, Sent: 6, Returned: 7, Rejected: 8 } as const
 
+// BranchApprovals.Status, in its order.
+export const OperationStatus = { None: 0, Waiting: 1, CarriedOut: 2, Refused: 3, Cancelled: 4 } as const
+
 export const Customers = ['Alice', 'Bob', 'Carol', 'Dave'] as const
 export type CustomerName = (typeof Customers)[number]
 // Every holder on the opening balance sheet: the four customers the story follows, and the rest together.

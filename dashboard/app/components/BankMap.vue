@@ -25,7 +25,9 @@ const figures = computed((): Record<string, string> => {
     'head-office': s.booksBalance ? 'Books balance' : 'Books do not balance',
     'water-tower': hkd(s.settlement),
     vault: hkd(s.cash.vault),
-    branch: `${hkd(s.cash.drawer)} in the drawer`,
+    branch: s.awaitingApproval
+      ? `${hkd(s.cash.drawer)} in the drawer, ${hkd(s.awaitingApproval)} awaiting approval`
+      : `${hkd(s.cash.drawer)} in the drawer`,
     atm: hkd(s.cash.atm),
     'post-office': s.inPayments ? `${hkd(s.inPayments)} waiting` : 'Nothing waiting',
   }

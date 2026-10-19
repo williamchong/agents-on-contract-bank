@@ -6,6 +6,7 @@ import type { Abi, Hex } from 'viem'
 import type { AccessManager$Type } from '../../artifacts/@openzeppelin/contracts/access/manager/AccessManager.sol/artifacts.js'
 import type { TimelockController$Type } from '../../artifacts/@openzeppelin/contracts/governance/TimelockController.sol/artifacts.js'
 import type { ERC7913P256Verifier$Type } from '../../artifacts/@openzeppelin/contracts/utils/cryptography/verifiers/ERC7913P256Verifier.sol/artifacts.js'
+import type { AssistedOperations$Type } from '../../artifacts/contracts/core/AssistedOperations.sol/artifacts.js'
 import type { Attestations$Type } from '../../artifacts/contracts/core/Attestations.sol/artifacts.js'
 import type { CashOperations$Type } from '../../artifacts/contracts/core/CashOperations.sol/artifacts.js'
 import type { DepositToken$Type } from '../../artifacts/contracts/core/DepositToken.sol/artifacts.js'
@@ -20,6 +21,7 @@ interface Artifacts {
   AccessManager: AccessManager$Type
   TimelockController: TimelockController$Type
   ERC7913P256Verifier: ERC7913P256Verifier$Type
+  AssistedOperations: AssistedOperations$Type
   Attestations: Attestations$Type
   CashOperations: CashOperations$Type
   DepositToken: DepositToken$Type
@@ -38,6 +40,7 @@ const sources: Record<ContractName, string> = {
   AccessManager: '@openzeppelin/contracts/access/manager/AccessManager.sol',
   TimelockController: '@openzeppelin/contracts/governance/TimelockController.sol',
   ERC7913P256Verifier: '@openzeppelin/contracts/utils/cryptography/verifiers/ERC7913P256Verifier.sol',
+  AssistedOperations: 'contracts/core/AssistedOperations.sol',
   Attestations: 'contracts/core/Attestations.sol',
   CashOperations: 'contracts/core/CashOperations.sol',
   DepositToken: 'contracts/core/DepositToken.sol',
