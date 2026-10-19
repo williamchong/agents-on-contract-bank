@@ -75,6 +75,7 @@ Each role the contracts check is a number in the access manager. Contracts, test
 | 33 | Freezer: set frozen amounts | Hold register | Governance, at deployment or upgrade |
 | 34 | Issuer: create and destroy stablecoin | Conversion module | Governance, at deployment or upgrade |
 | 35 | Staff admin: grant and revoke staff and machine roles | Staff roles module | Governance, at deployment or upgrade |
+| 36 | Limit keeper: count a customer's movements against their daily limits | Deposit token and payments module | Governance, at deployment or upgrade |
 | 100 × branch + 1 | Teller | Staff | Branch manager of that branch, with IT security's approval |
 | 100 × branch + 2 | Supervisor | Staff | Branch manager of that branch, with IT security's approval |
 | 100 × branch + 3 | Branch manager | Staff | Governance |
