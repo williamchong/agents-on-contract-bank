@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {AccessManaged} from "@openzeppelin/contracts/access/manager/AccessManaged.sol";
-import {IAccessManager} from "@openzeppelin/contracts/access/manager/IAccessManager.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {BranchApprovals} from "./BranchApprovals.sol";
 import {DailyLimit} from "./DailyLimit.sol";
-import {DepositToken} from "./DepositToken.sol";
 import {GeneralLedger} from "./GeneralLedger.sol";
 import {Roles} from "./Roles.sol";
 
@@ -18,13 +16,18 @@ import {Roles} from "./Roles.sol";
 /// and settled at that machine's next count. Moving cash, banking the surplus and counting are each
 /// recorded by the branch's vault custodian and confirmed by another person, a supervisor of the
 /// branch, as a bank keeps cash under dual control. A count that differs posts nothing and marks the
-/// place's figure unmatched. See open question 17 in docs/plan.md.
-contract CashOperations is AccessManaged {
+/// place's figure unmatched. A withdrawal at the counter climbs the branch approval ladder, and is
+/// paid out of the teller's drawer once approved. See open questions 17 and 19 in docs/plan.md.
+contract CashOperations is BranchApprovals {
     using DailyLimit for DailyLimit.Limiter;
     using SafeCast for uint256;
     using SafeCast for int256;
 
     bytes32 public constant ATM_CHANNEL = "atm";
+    /// @dev The purposes a customer's authorisation is given for: a withdrawal at one ATM, or at the
+    /// counter of one branch.
+    bytes32 public constant ATM_WITHDRAWAL = "atm withdrawal";
+    bytes32 public constant COUNTER_WITHDRAWAL = "counter withdrawal";
 
     enum Place {
         Vault,
@@ -44,17 +47,6 @@ contract CashOperations is AccessManaged {
         uint256 atm;
         uint256 cashReport;
         uint256 dispenseTimeout;
-    }
-
-    /// @dev A customer's card authorisation of an EIP-3009 transfer to this module, as the ATM
-    /// submits it.
-    struct CardAuthorisation {
-        address customer;
-        uint256 amount;
-        uint256 validAfter;
-        uint256 validBefore;
-        bytes32 nonce;
-        bytes signature;
     }
 
     enum WithdrawalStatus {
@@ -98,11 +90,9 @@ contract CashOperations is AccessManaged {
     }
 
     GeneralLedger public immutable ledger;
-    DepositToken public immutable token;
 
     Limits public limits;
     bool public opened;
-    uint256 public operationCount;
     uint256 public orderCount;
     mapping(bytes32 location => uint256) public cashAt;
     /// @dev ATM withdrawals held and not yet confirmed, failed or settled, per machine.
@@ -115,7 +105,7 @@ contract CashOperations is AccessManaged {
 
     event CashOpened(bytes32 indexed location, uint256 amount);
     event CashDeposited(bytes32 indexed ref, address indexed customer, address indexed teller, bytes32 location, uint256 amount);
-    /// @dev Compliance is told of a cash deposit at or above the cash report threshold.
+    /// @dev Compliance is told of cash paid in or out at the counter at or above the cash report threshold.
     event CashReported(bytes32 indexed ref, address indexed customer, uint256 amount);
     event WithdrawalHeld(bytes32 indexed ref, address indexed customer, address indexed atm, uint256 amount);
     event WithdrawalDispensed(bytes32 indexed ref, address indexed customer, uint256 amount, bool atCount);
@@ -139,7 +129,6 @@ contract CashOperations is AccessManaged {
     error OpeningMismatch(uint256 split, int256 ledgerCash);
     error InvalidLocation(Location location);
     error OtherBranch(uint64 branch, uint64 otherBranch);
-    error NotTeller(address caller, uint64 branch);
     error NotCustodian(address caller, uint64 branch);
     error NotSupervisor(address caller, uint64 branch);
     error NotMaker(address caller, uint256 id);
@@ -151,11 +140,14 @@ contract CashOperations is AccessManaged {
     error NotItsAtm(bytes32 ref, address caller);
     error DispenseTimedOut(bytes32 ref);
     error DispenseInProgress(bytes32 ref);
-    error ZeroAmount();
 
-    constructor(address manager, GeneralLedger ledger_, Limits memory limits_) AccessManaged(manager) {
+    constructor(
+        address manager,
+        GeneralLedger ledger_,
+        Limits memory limits_,
+        Ladder memory ladder_
+    ) BranchApprovals(manager, ledger_.token(), ladder_) {
         ledger = ledger_;
-        token = ledger_.token();
         limits = limits_;
     }
 
@@ -218,7 +210,7 @@ contract CashOperations is AccessManaged {
     /// against it. Refused over the drawer limit; at or above the cash report threshold compliance is
     /// told, and the deposit still goes through.
     function deposit(uint64 branch, address customer, uint256 amount) external returns (bytes32 ref) {
-        if (!_has(Roles.atBranch(branch, Roles.TELLER), msg.sender)) revert NotTeller(msg.sender, branch);
+        _requireTeller(branch);
         if (amount == 0) revert ZeroAmount();
         bytes32 drawer = locationId(Location(Place.Drawer, branch, msg.sender));
         uint256 inDrawer = cashAt[drawer];
@@ -253,15 +245,7 @@ contract CashOperations is AccessManaged {
             card.amount
         );
         _held[atm].push(ref);
-        token.receiveWithAuthorization(
-            card.customer,
-            address(this),
-            card.amount,
-            card.validAfter,
-            card.validBefore,
-            card.nonce,
-            card.signature
-        );
+        _receive(card, intentKey(ATM_WITHDRAWAL, branch, msg.sender));
         emit WithdrawalHeld(ref, card.customer, msg.sender, card.amount);
     }
 
@@ -273,6 +257,38 @@ contract CashOperations is AccessManaged {
     /// @dev The ATM failed to dispense: the amount goes back to the customer, and back on their limit.
     function reportFailure(bytes32 ref) external restricted {
         _return(_heldBy(ref), ref, false);
+    }
+
+    /// @dev A teller of `branch` opens a withdrawal at the counter on the customer's device or card. It
+    /// is paid out of the teller's drawer once the approvers the ladder names have approved, and
+    /// compliance is told of one at or above the cash report threshold.
+    function withdrawAtCounter(uint64 branch, CardAuthorisation calldata authorisation) external returns (bytes32 ref) {
+        _checkDrawer(branch, authorisation.amount);
+        ref = _openSigned(branch, COUNTER_WITHDRAWAL, address(0), authorisation);
+        _reportCash(ref, authorisation.customer, authorisation.amount);
+    }
+
+    /// @dev A teller of `branch` opens a withdrawal at the counter on the customer's signed paper slip.
+    function withdrawAtCounterOnPaper(uint64 branch, address customer, uint256 amount, bytes32 slipHash) external returns (bytes32 ref) {
+        _checkDrawer(branch, amount);
+        ref = _openOnPaper(branch, customer, address(0), amount, slipHash);
+        _reportCash(ref, customer, amount);
+    }
+
+    /// @dev The teller's drawer must hold the cash when the withdrawal opens, and again when it is paid.
+    function _checkDrawer(uint64 branch, uint256 amount) private view {
+        _checkFree(locationId(Location(Place.Drawer, branch, msg.sender)), amount);
+    }
+
+    function _reportCash(bytes32 ref, address customer, uint256 amount) private {
+        if (amount >= limits.cashReport) emit CashReported(ref, customer, amount);
+    }
+
+    /// @dev Pays the withdrawal out of the drawer of the teller who opened it, which must hold the cash.
+    function _carryOut(bytes32 ref, Operation storage op) internal override {
+        bytes32 drawer = locationId(Location(Place.Drawer, op.branch, op.teller));
+        _take(drawer, op.amount);
+        ledger.postWithBurn(address(this), op.amount, _cash(-_signed(op.amount)), ref);
     }
 
     // Under dual control
@@ -295,7 +311,7 @@ contract CashOperations is AccessManaged {
     }
 
     /// @dev A supervisor of the order's branch, other than its maker, confirms it and it takes effect.
-    function approve(uint256 id) external {
+    function confirmOrder(uint256 id) external {
         Order memory o = _orders[id];
         if (o.kind == OrderKind.None) revert NoSuchOrder(id);
         if (msg.sender == o.maker) revert ApproverIsMaker(msg.sender);
@@ -320,7 +336,7 @@ contract CashOperations is AccessManaged {
         }
     }
 
-    function cancel(uint256 id) external {
+    function cancelOrder(uint256 id) external {
         Order storage o = _orders[id];
         if (o.kind == OrderKind.None) revert NoSuchOrder(id);
         if (o.maker != msg.sender) revert NotMaker(msg.sender, id);
@@ -417,10 +433,6 @@ contract CashOperations is AccessManaged {
         return locationId(l);
     }
 
-    function _nextRef() private returns (bytes32) {
-        return keccak256(abi.encode(block.chainid, address(this), ++operationCount));
-    }
-
     function _atmKey(address customer) private pure returns (bytes32) {
         return keccak256(abi.encode(customer, ATM_CHANNEL));
     }
@@ -432,9 +444,5 @@ contract CashOperations is AccessManaged {
     function _cash(int128 amount) private pure returns (GeneralLedger.Line[] memory lines) {
         lines = new GeneralLedger.Line[](1);
         lines[0] = GeneralLedger.Line(GeneralLedger.Account.Cash, amount);
-    }
-
-    function _has(uint64 role, address account) private view returns (bool member) {
-        (member, ) = IAccessManager(authority()).hasRole(role, account);
     }
 }

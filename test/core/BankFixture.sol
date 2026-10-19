@@ -7,6 +7,7 @@ import {TimelockController} from "@openzeppelin/contracts/governance/TimelockCon
 import {ERC7579Utils} from "@openzeppelin/contracts/account/utils/draft-ERC7579Utils.sol";
 import {Execution} from "@openzeppelin/contracts/interfaces/draft-IERC7579.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {ERC7739Utils} from "@openzeppelin/contracts/utils/cryptography/draft-ERC7739Utils.sol";
 import {IERC5267} from "@openzeppelin/contracts/interfaces/IERC5267.sol";
 import {P256} from "@openzeppelin/contracts/utils/cryptography/P256.sol";
 import {ERC7913P256Verifier} from "@openzeppelin/contracts/utils/cryptography/verifiers/ERC7913P256Verifier.sol";
@@ -20,13 +21,16 @@ import {PartnerKeys, Partners} from "../../contracts/core/PartnerKeys.sol";
 import {Payments} from "../../contracts/core/Payments.sol";
 import {Attestations} from "../../contracts/core/Attestations.sol";
 import {CashOperations} from "../../contracts/core/CashOperations.sol";
+import {BranchApprovals} from "../../contracts/core/BranchApprovals.sol";
+import {AssistedOperations} from "../../contracts/core/AssistedOperations.sol";
 
 /// @dev Deploys the bank as docs/roles.md describes it: governance is a time lock behind the
 /// officers' multi-signer account, holding the admin and governance roles, the staff roles module
 /// administers every staff and machine role, the hold register sets every frozen amount, the
 /// partner key register holds the keys the clearing system and the custodian sign with, the
 /// payments module holds money in waiting, attested figures check the partners' statements
-/// against the ledger, and the cash module keeps the cash. The test contract deploys and wires the
+/// against the ledger, the cash module keeps the cash, and the assisted operations module holds
+/// transfers through a teller while they climb the approval ladder. The test contract deploys and wires the
 /// contracts, hands the admin role to governance and gives up its own, and governance then posts
 /// the opening balance sheet in docs/scenarios.md and splits its cash as docs/roles.md does.
 abstract contract BankFixture is Test {
@@ -43,6 +47,8 @@ abstract contract BankFixture is Test {
     uint256 constant ATM_LIMIT = 5_000 * HKD;
     uint256 constant CASH_REPORT_THRESHOLD = 100_000 * HKD;
     uint256 constant DISPENSE_TIMEOUT = 2 minutes;
+    uint256 constant LADDER_FIRST = 50_000 * HKD;
+    uint256 constant LADDER_SECOND = 500_000 * HKD;
 
     AccessManager manager;
     DepositToken token;
@@ -53,6 +59,7 @@ abstract contract BankFixture is Test {
     Payments payments;
     Attestations attestations;
     CashOperations cash;
+    AssistedOperations assisted;
     ERC7913P256Verifier p256;
     MultiSignerAccount officers;
     TimelockController timelock;
@@ -96,8 +103,10 @@ abstract contract BankFixture is Test {
         cash = new CashOperations(
             address(manager),
             ledger,
-            CashOperations.Limits(DRAWER_LIMIT, ATM_LIMIT, CASH_REPORT_THRESHOLD, DISPENSE_TIMEOUT)
+            CashOperations.Limits(DRAWER_LIMIT, ATM_LIMIT, CASH_REPORT_THRESHOLD, DISPENSE_TIMEOUT),
+            BranchApprovals.Ladder(LADDER_FIRST, LADDER_SECOND)
         );
+        assisted = new AssistedOperations(address(manager), token, BranchApprovals.Ladder(LADDER_FIRST, LADDER_SECOND));
         teller1 = _staff("teller1");
 
         _wire(address(token), token.mint.selector, Roles.LEDGER);
@@ -123,12 +132,16 @@ abstract contract BankFixture is Test {
         _wire(address(cash), cash.withdrawAtAtm.selector, Roles.ATM);
         _wire(address(cash), cash.confirmDispense.selector, Roles.ATM);
         _wire(address(cash), cash.reportFailure.selector, Roles.ATM);
+        _wire(address(cash), cash.setLadder.selector, Roles.GOVERNANCE);
+        _wire(address(assisted), assisted.setLadder.selector, Roles.GOVERNANCE);
 
         manager.grantRole(Roles.LEDGER, address(ledger), 0);
         manager.grantRole(Roles.STAFF_ADMIN, address(staffRoles), 0);
         manager.grantRole(Roles.FREEZER, address(holds), 0);
         manager.grantRole(Roles.BOOKKEEPER, address(payments), 0);
         manager.grantRole(Roles.BOOKKEEPER, address(cash), 0);
+        manager.grantRole(Roles.ENFORCER, address(cash), 0);
+        manager.grantRole(Roles.ENFORCER, address(assisted), 0);
         manager.grantRole(Roles.BOOKKEEPER, treasury, 0);
         uint64[] memory staff = _staffAdministered();
         for (uint256 i = 0; i < staff.length; ++i) manager.setRoleAdmin(staff[i], Roles.STAFF_ADMIN);
@@ -139,6 +152,7 @@ abstract contract BankFixture is Test {
         token.allowUser(pending);
         token.allowUser(address(payments));
         token.allowUser(address(cash));
+        token.allowUser(address(assisted));
 
         manager.grantRole(Roles.ADMIN, governance, 0);
         manager.grantRole(Roles.GOVERNANCE, governance, 0);
@@ -236,6 +250,52 @@ abstract contract BankFixture is Test {
         (bytes32 r, bytes32 s) = vm.signP256(key, digest);
         if (uint256(s) > P256.N / 2) s = bytes32(P256.N - uint256(s));
         return abi.encodePacked(r, s);
+    }
+
+    /// @dev A card's authorisation of `amount` from `customer` to `module`, for the intent whose key is
+    /// `key`, under the next one-use number for that intent, valid for an hour.
+    function _cardAuthorisation(
+        uint256 cardKey,
+        address customer,
+        address module,
+        uint192 key,
+        uint256 amount
+    ) internal view returns (BranchApprovals.CardAuthorisation memory) {
+        bytes32 nonce = bytes32((uint256(key) << 64) | token.nonces(customer, key));
+        return
+            BranchApprovals.CardAuthorisation(
+                customer,
+                amount,
+                0,
+                block.timestamp + 1 hours,
+                nonce,
+                _cardSignature(cardKey, customer, module, amount, nonce)
+            );
+    }
+
+    /// @dev A card's P-256 signature over the token's authorisation of a transfer of `amount` from
+    /// `account` to `to`, valid for an hour, nested under ERC-7739 for the account that checks it.
+    function _cardSignature(uint256 key, address account, address to, uint256 amount, bytes32 nonce) internal view returns (bytes memory) {
+        string memory receiveType = "ReceiveWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)";
+        bytes32 contents = keccak256(
+            abi.encode(keccak256(bytes(receiveType)), account, to, amount, 0, block.timestamp + 1 hours, nonce)
+        );
+        bytes32 typehash = keccak256(
+            abi.encodePacked(
+                "TypedDataSign(ReceiveWithAuthorization contents,string name,string version,uint256 chainId,address verifyingContract,bytes32 salt)",
+                receiveType
+            )
+        );
+        bytes memory accountDomain = abi.encode(keccak256("MultiSignerAccount"), keccak256("1"), block.chainid, account, bytes32(0));
+        bytes32 digest = MessageHashUtils.toTypedDataHash(
+            _separator(address(token)),
+            keccak256(abi.encodePacked(typehash, contents, accountDomain))
+        );
+        uint256[] memory keys = new uint256[](1);
+        keys[0] = key;
+        bytes[] memory sigs = new bytes[](1);
+        sigs[0] = _signP256(key, digest);
+        return ERC7739Utils.encodeTypedDataSig(abi.encode(_signers(keys), sigs), _separator(address(token)), contents, receiveType);
     }
 
     /// @dev The EIP-712 domain separator of `signedFor`, from its own ERC-5267 description.

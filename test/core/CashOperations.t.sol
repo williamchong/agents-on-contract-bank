@@ -6,13 +6,12 @@ import {Vm} from "forge-std/Vm.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {ERC3009} from "@openzeppelin/contracts/token/ERC20/extensions/draft-ERC3009.sol";
 import {ERC20Freezable} from "@openzeppelin/community-contracts/contracts/token/ERC20/extensions/ERC20Freezable.sol";
-import {ERC7739Utils} from "@openzeppelin/contracts/utils/cryptography/draft-ERC7739Utils.sol";
-import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {Roles} from "../../contracts/core/Roles.sol";
 import {DailyLimit} from "../../contracts/core/DailyLimit.sol";
 import {GeneralLedger} from "../../contracts/core/GeneralLedger.sol";
 import {MultiSignerAccount} from "../../contracts/core/MultiSignerAccount.sol";
 import {CashOperations} from "../../contracts/core/CashOperations.sol";
+import {BranchApprovals} from "../../contracts/core/BranchApprovals.sol";
 import {BankFixture} from "./BankFixture.sol";
 
 /// @dev Checks the cash module against the cash rows of the permission matrix in docs/roles.md, the
@@ -22,8 +21,6 @@ import {BankFixture} from "./BankFixture.sol";
 /// midnight Hong Kong time, and moves, banking and counts under dual control. The module's split of
 /// the cash always sums to the ledger's cash account, and the books balance after every step.
 contract CashOperationsTest is BankFixture {
-    string constant RECEIVE_TYPE =
-        "ReceiveWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)";
     uint64 constant TELLER_1 = 101;
     uint64 constant SUPERVISOR_1 = 102;
     uint64 constant CUSTODIAN_1 = 104;
@@ -135,11 +132,11 @@ contract CashOperationsTest is BankFixture {
 
     function test_Deposit_RefusedWithoutTheBranchsTellerRole() public {
         vm.prank(stranger);
-        vm.expectRevert(abi.encodeWithSelector(CashOperations.NotTeller.selector, stranger, 1));
+        vm.expectRevert(abi.encodeWithSelector(BranchApprovals.NotTeller.selector, stranger, 1));
         cash.deposit(1, alice, HKD);
         // A teller of the other branch cannot act at this one.
         vm.prank(teller2);
-        vm.expectRevert(abi.encodeWithSelector(CashOperations.NotTeller.selector, teller2, 1));
+        vm.expectRevert(abi.encodeWithSelector(BranchApprovals.NotTeller.selector, teller2, 1));
         cash.deposit(1, alice, HKD);
     }
 
@@ -217,7 +214,7 @@ contract CashOperationsTest is BankFixture {
     function test_Atm_RefusedOverTheDailyLimit() public {
         _withdraw(WITHDRAWAL);
         bytes32 key = keccak256(abi.encode(address(carol), cash.ATM_CHANNEL()));
-        CashOperations.CardAuthorisation memory card = _card(WITHDRAWAL, bytes32(uint256(1)));
+        BranchApprovals.CardAuthorisation memory card = _card(WITHDRAWAL, bytes32(uint256(1)));
         vm.prank(atm1);
         vm.expectRevert(
             abi.encodeWithSelector(DailyLimit.DailyLimitExceeded.selector, key, WITHDRAWAL, ATM_LIMIT - WITHDRAWAL)
@@ -245,7 +242,7 @@ contract CashOperationsTest is BankFixture {
     }
 
     function test_Atm_UsedAuthorisationRefused() public {
-        CashOperations.CardAuthorisation memory card = _card(1_000 * HKD, 0);
+        BranchApprovals.CardAuthorisation memory card = _card(1_000 * HKD, 0);
         _withdrawWith(card);
         vm.prank(atm1);
         vm.expectRevert();
@@ -253,10 +250,18 @@ contract CashOperationsTest is BankFixture {
     }
 
     function test_Atm_AnotherCardsSignatureRefused() public {
-        CashOperations.CardAuthorisation memory card = _card(WITHDRAWAL, 0);
-        card.signature = _cardSignature(_key("stolen card"), address(carol), WITHDRAWAL, 0);
+        BranchApprovals.CardAuthorisation memory card = _card(WITHDRAWAL, 0);
+        card.signature = _cardSignature(_key("stolen card"), address(carol), address(cash), WITHDRAWAL, card.nonce);
         vm.prank(atm1);
         vm.expectRevert(ERC3009.ERC3009InvalidSignature.selector);
+        cash.withdrawAtAtm(1, card);
+    }
+
+    function test_Atm_AuthorisationForOneAtmRefusedAtAnother() public {
+        _approved(_proposeMove(_vault(1), _atm(1, atm2), 10_000 * HKD));
+        BranchApprovals.CardAuthorisation memory card = _card(WITHDRAWAL, 0);
+        vm.prank(atm2);
+        vm.expectRevert(abi.encodeWithSelector(BranchApprovals.AuthorisedForAnotherIntent.selector, card.nonce));
         cash.withdrawAtAtm(1, card);
     }
 
@@ -267,14 +272,14 @@ contract CashOperationsTest is BankFixture {
         vm.prank(compliance);
         holds.place(address(carol), balance, Roles.COMPLIANCE, "suspicious activity");
 
-        CashOperations.CardAuthorisation memory card = _card(WITHDRAWAL, 0);
+        BranchApprovals.CardAuthorisation memory card = _card(WITHDRAWAL, 0);
         vm.prank(atm1);
         vm.expectRevert(abi.encodeWithSelector(ERC20Freezable.ERC20InsufficientUnfrozenBalance.selector, address(carol), WITHDRAWAL, 0));
         cash.withdrawAtAtm(1, card);
     }
 
     function test_Atm_RefusedBeyondWhatTheMachineHolds() public {
-        CashOperations.CardAuthorisation memory card = _card(WITHDRAWAL, 0);
+        BranchApprovals.CardAuthorisation memory card = _card(WITHDRAWAL, 0);
         bytes32 empty = _id(_atm(1, atm2));
         vm.prank(atm2);
         vm.expectRevert(abi.encodeWithSelector(CashOperations.InsufficientCash.selector, empty, 0, WITHDRAWAL));
@@ -359,7 +364,7 @@ contract CashOperationsTest is BankFixture {
         uint256 id = _proposeCount(_atm(1, atm1), 200_000 * HKD - WITHDRAWAL);
         vm.prank(supervisor1);
         vm.expectRevert(abi.encodeWithSelector(CashOperations.DispenseInProgress.selector, ref));
-        cash.approve(id);
+        cash.confirmOrder(id);
         vm.prank(atm1);
         cash.confirmDispense(ref);
         _approved(id);
@@ -413,7 +418,7 @@ contract CashOperationsTest is BankFixture {
         vm.expectRevert(
             abi.encodeWithSelector(CashOperations.InsufficientCash.selector, atm, 200_000 * HKD - WITHDRAWAL, 200_000 * HKD)
         );
-        cash.approve(id);
+        cash.confirmOrder(id);
     }
 
     function test_Move_NotBetweenBranches() public {
@@ -441,10 +446,10 @@ contract CashOperationsTest is BankFixture {
         uint256 id = _proposeBanking(HKD);
         vm.prank(supervisor2);
         vm.expectRevert(abi.encodeWithSelector(CashOperations.NotSupervisor.selector, supervisor2, 1));
-        cash.approve(id);
+        cash.confirmOrder(id);
         vm.prank(teller1);
         vm.expectRevert(abi.encodeWithSelector(CashOperations.NotSupervisor.selector, teller1, 1));
-        cash.approve(id);
+        cash.confirmOrder(id);
     }
 
     function test_DualControl_MakerCannotApprove() public {
@@ -453,7 +458,7 @@ contract CashOperationsTest is BankFixture {
         uint256 id = _proposeBanking(HKD);
         vm.prank(custodian);
         vm.expectRevert(abi.encodeWithSelector(CashOperations.ApproverIsMaker.selector, custodian));
-        cash.approve(id);
+        cash.confirmOrder(id);
     }
 
     function test_DualControl_RefusedIfTheMakerLostTheRole() public {
@@ -462,7 +467,7 @@ contract CashOperationsTest is BankFixture {
         manager.revokeRole(CUSTODIAN_1, custodian);
         vm.prank(supervisor1);
         vm.expectRevert(abi.encodeWithSelector(CashOperations.NotCustodian.selector, custodian, 1));
-        cash.approve(id);
+        cash.confirmOrder(id);
     }
 
     function test_DualControl_ApprovedOnce() public {
@@ -470,19 +475,19 @@ contract CashOperationsTest is BankFixture {
         _approved(id);
         vm.prank(supervisor1);
         vm.expectRevert(abi.encodeWithSelector(CashOperations.NoSuchOrder.selector, id));
-        cash.approve(id);
+        cash.confirmOrder(id);
     }
 
     function test_DualControl_MakerCancels() public {
         uint256 id = _proposeBanking(HKD);
         vm.prank(supervisor1);
         vm.expectRevert(abi.encodeWithSelector(CashOperations.NotMaker.selector, supervisor1, id));
-        cash.cancel(id);
+        cash.cancelOrder(id);
         vm.prank(custodian);
-        cash.cancel(id);
+        cash.cancelOrder(id);
         vm.prank(supervisor1);
         vm.expectRevert(abi.encodeWithSelector(CashOperations.NoSuchOrder.selector, id));
-        cash.approve(id);
+        cash.confirmOrder(id);
     }
 
     function test_Location_VaultHasNoHolderAndOthersDo() public {
@@ -523,7 +528,7 @@ contract CashOperationsTest is BankFixture {
         return _withdrawWith(_card(amount, 0));
     }
 
-    function _withdrawWith(CashOperations.CardAuthorisation memory card) private returns (bytes32) {
+    function _withdrawWith(BranchApprovals.CardAuthorisation memory card) private returns (bytes32) {
         vm.prank(atm1);
         return cash.withdrawAtAtm(1, card);
     }
@@ -549,7 +554,7 @@ contract CashOperationsTest is BankFixture {
 
     function _approved(uint256 id) private {
         vm.prank(supervisor1);
-        cash.approve(id);
+        cash.confirmOrder(id);
     }
 
     function _id(CashOperations.Location memory l) private view returns (bytes32) {
@@ -576,42 +581,15 @@ contract CashOperationsTest is BankFixture {
 
     // The card
 
-    /// @dev Carol's card authorises a transfer of `amount` to the cash module, valid for an hour.
-    function _card(uint256 amount, bytes32 nonce) private view returns (CashOperations.CardAuthorisation memory) {
-        return
-            CashOperations.CardAuthorisation(
-                address(carol),
-                amount,
-                0,
-                block.timestamp + 1 hours,
-                nonce,
-                _cardSignature(cardKey, address(carol), amount, nonce)
-            );
+    /// @dev Carol's card authorises a withdrawal of `amount` at ATM 1, under the one-use number `seq`
+    /// for that intent.
+    function _card(uint256 amount, bytes32 seq) private view returns (BranchApprovals.CardAuthorisation memory a) {
+        uint192 key = cash.intentKey(cash.ATM_WITHDRAWAL(), 1, atm1);
+        a = _cardAuthorisation(cardKey, address(carol), address(cash), key, amount);
+        a.nonce = bytes32((uint256(key) << 64) | uint256(seq));
+        a.signature = _cardSignature(cardKey, address(carol), address(cash), amount, a.nonce);
     }
 
-    /// @dev The card's P-256 signature over the token's authorisation, nested under ERC-7739 for the
-    /// account that checks it.
-    function _cardSignature(uint256 key, address account, uint256 amount, bytes32 nonce) private view returns (bytes memory) {
-        bytes32 contents = keccak256(
-            abi.encode(keccak256(bytes(RECEIVE_TYPE)), account, address(cash), amount, 0, block.timestamp + 1 hours, nonce)
-        );
-        bytes32 typehash = keccak256(
-            abi.encodePacked(
-                "TypedDataSign(ReceiveWithAuthorization contents,string name,string version,uint256 chainId,address verifyingContract,bytes32 salt)",
-                RECEIVE_TYPE
-            )
-        );
-        bytes memory accountDomain = abi.encode(keccak256("MultiSignerAccount"), keccak256("1"), block.chainid, account, bytes32(0));
-        bytes32 digest = MessageHashUtils.toTypedDataHash(
-            _separator(address(token)),
-            keccak256(abi.encodePacked(typehash, contents, accountDomain))
-        );
-        uint256[] memory keys = new uint256[](1);
-        keys[0] = key;
-        bytes[] memory sigs = new bytes[](1);
-        sigs[0] = _signP256(key, digest);
-        return ERC7739Utils.encodeTypedDataSig(abi.encode(_signers(keys), sigs), _separator(address(token)), contents, RECEIVE_TYPE);
-    }
 
 }
 
