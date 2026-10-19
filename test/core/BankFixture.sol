@@ -26,6 +26,7 @@ import {AssistedOperations} from "../../contracts/core/AssistedOperations.sol";
 import {CustomerLimits} from "../../contracts/core/CustomerLimits.sol";
 import {AccountRecovery} from "../../contracts/core/AccountRecovery.sol";
 import {DisputeReversal} from "../../contracts/core/DisputeReversal.sol";
+import {IncidentLog} from "../../contracts/core/IncidentLog.sol";
 
 /// @dev Deploys the bank as docs/roles.md describes it: governance is a time lock behind the
 /// officers' multi-signer account, holding the admin and governance roles, the staff roles module
@@ -34,7 +35,8 @@ import {DisputeReversal} from "../../contracts/core/DisputeReversal.sol";
 /// payments module holds money in waiting, attested figures check the partners' statements
 /// against the ledger, the cash module keeps the cash, and the assisted operations module holds
 /// transfers through a teller while they climb the approval ladder, the recovery module is fixed in
-/// customers' accounts, and the dispute reversal module freezes and reverses disputed transfers. The test contract deploys and wires the
+/// customers' accounts, the dispute reversal module freezes and reverses disputed transfers, and finance
+/// reports incidents to the regulator in the incident log. The test contract deploys and wires the
 /// contracts, hands the admin role to governance and gives up its own, and governance then posts
 /// the opening balance sheet in docs/scenarios.md and splits its cash as docs/roles.md does.
 abstract contract BankFixture is Test {
@@ -70,6 +72,7 @@ abstract contract BankFixture is Test {
     AssistedOperations assisted;
     AccountRecovery recovery;
     DisputeReversal disputes;
+    IncidentLog incidents;
     ERC7913P256Verifier p256;
     MultiSignerAccount officers;
     TimelockController timelock;
@@ -116,6 +119,7 @@ abstract contract BankFixture is Test {
         attestations = new Attestations(address(manager), ledger, partnerKeys, STATEMENT_MAX_AGE);
         recovery = new AccountRecovery(manager);
         disputes = new DisputeReversal(manager, token, holds);
+        incidents = new IncidentLog(address(manager));
         cash = new CashOperations(
             address(manager),
             ledger,
@@ -160,6 +164,7 @@ abstract contract BankFixture is Test {
         _wire(address(limits), limits.enrol.selector, Roles.GOVERNANCE);
         _wire(address(limits), limits.setChannel.selector, Roles.GOVERNANCE);
         _wire(address(limits), limits.setLimits.selector, Roles.GOVERNANCE);
+        _wire(address(incidents), incidents.report.selector, Roles.FINANCE);
 
         manager.grantRole(Roles.LEDGER, address(ledger), 0);
         manager.grantRole(Roles.STAFF_ADMIN, address(staffRoles), 0);
