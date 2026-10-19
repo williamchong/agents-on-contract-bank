@@ -83,7 +83,7 @@ contract RolesTest is BankFixture {
     }
 
     function test_GovernanceAndContractRoles_AdministeredByGovernance() public view {
-        uint64[8] memory governed = [uint64(1), 30, 31, 32, 33, 34, 35, 36];
+        uint64[9] memory governed = [uint64(1), 30, 31, 32, 33, 34, 35, 36, 37];
         for (uint256 i = 0; i < governed.length; ++i) {
             assertEq(manager.getRoleAdmin(governed[i]), Roles.ADMIN, vm.toString(governed[i]));
         }
