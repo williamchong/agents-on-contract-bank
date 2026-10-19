@@ -12,6 +12,7 @@ import {Attestations} from "../../contracts/core/Attestations.sol";
 import {CashOperations} from "../../contracts/core/CashOperations.sol";
 import {BranchApprovals} from "../../contracts/core/BranchApprovals.sol";
 import {AssistedOperations} from "../../contracts/core/AssistedOperations.sol";
+import {CustomerLimits} from "../../contracts/core/CustomerLimits.sol";
 import {BankFixture} from "./BankFixture.sol";
 
 /// @dev Checks every restricted function is wired to the role docs/roles.md gives it, and that
@@ -82,7 +83,7 @@ contract RolesTest is BankFixture {
     }
 
     function test_GovernanceAndContractRoles_AdministeredByGovernance() public view {
-        uint64[7] memory governed = [uint64(1), 30, 31, 32, 33, 34, 35];
+        uint64[8] memory governed = [uint64(1), 30, 31, 32, 33, 34, 35, 36];
         for (uint256 i = 0; i < governed.length; ++i) {
             assertEq(manager.getRoleAdmin(governed[i]), Roles.ADMIN, vm.toString(governed[i]));
         }
@@ -123,7 +124,7 @@ contract RolesTest is BankFixture {
     function _expected() private view returns (Wire[] memory w) {
         GeneralLedger.Line[] memory none = new GeneralLedger.Line[](0);
         BranchApprovals.CardAuthorisation memory card;
-        w = new Wire[](26);
+        w = new Wire[](31);
         w[0] = Wire(address(token), abi.encodeCall(DepositToken.mint, (alice, 1)), Roles.LEDGER);
         w[1] = Wire(address(token), abi.encodeCall(DepositToken.burn, (alice, 1)), Roles.LEDGER);
         w[2] = Wire(address(token), abi.encodeCall(DepositToken.forcedTransfer, (alice, bob, 1)), Roles.ENFORCER);
@@ -158,5 +159,10 @@ contract RolesTest is BankFixture {
         w[23] = Wire(address(cash), abi.encodeCall(CashOperations.reportFailure, (bytes32(0))), Roles.ATM);
         w[24] = Wire(address(cash), abi.encodeCall(BranchApprovals.setLadder, (BranchApprovals.Ladder(0, 0))), Roles.GOVERNANCE);
         w[25] = Wire(address(assisted), abi.encodeCall(BranchApprovals.setLadder, (BranchApprovals.Ladder(0, 0))), Roles.GOVERNANCE);
+        w[26] = Wire(address(limits), abi.encodeCall(CustomerLimits.countMovement, (alice, bob, 1)), Roles.LIMIT_KEEPER);
+        w[27] = Wire(address(limits), abi.encodeCall(CustomerLimits.countPayment, (alice, bytes32(0), 1)), Roles.LIMIT_KEEPER);
+        w[28] = Wire(address(limits), abi.encodeCall(CustomerLimits.enrol, (alice)), Roles.GOVERNANCE);
+        w[29] = Wire(address(limits), abi.encodeCall(CustomerLimits.setChannel, (alice, CustomerLimits.Channel.Own)), Roles.GOVERNANCE);
+        w[30] = Wire(address(limits), abi.encodeCall(CustomerLimits.setLimits, (CustomerLimits.Limits(0, 0, 0))), Roles.GOVERNANCE);
     }
 }
