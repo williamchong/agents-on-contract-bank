@@ -2,6 +2,7 @@
 pragma solidity ^0.8.27;
 
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {AccountRecovery} from "./AccountRecovery.sol";
 import {BranchApprovals} from "./BranchApprovals.sol";
 import {DailyLimit} from "./DailyLimit.sol";
 import {GeneralLedger} from "./GeneralLedger.sol";
@@ -145,8 +146,9 @@ contract CashOperations is BranchApprovals {
         address manager,
         GeneralLedger ledger_,
         Limits memory limits_,
+        AccountRecovery recovery_,
         Ladder memory ladder_
-    ) BranchApprovals(manager, ledger_.token(), ladder_) {
+    ) BranchApprovals(manager, ledger_.token(), recovery_, ladder_) {
         ledger = ledger_;
         limits = limits_;
     }

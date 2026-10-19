@@ -24,6 +24,8 @@ import {CashOperations} from "../../contracts/core/CashOperations.sol";
 import {BranchApprovals} from "../../contracts/core/BranchApprovals.sol";
 import {AssistedOperations} from "../../contracts/core/AssistedOperations.sol";
 import {CustomerLimits} from "../../contracts/core/CustomerLimits.sol";
+import {AccountRecovery} from "../../contracts/core/AccountRecovery.sol";
+import {DisputeReversal} from "../../contracts/core/DisputeReversal.sol";
 
 /// @dev Deploys the bank as docs/roles.md describes it: governance is a time lock behind the
 /// officers' multi-signer account, holding the admin and governance roles, the staff roles module
@@ -31,7 +33,8 @@ import {CustomerLimits} from "../../contracts/core/CustomerLimits.sol";
 /// partner key register holds the keys the clearing system and the custodian sign with, the
 /// payments module holds money in waiting, attested figures check the partners' statements
 /// against the ledger, the cash module keeps the cash, and the assisted operations module holds
-/// transfers through a teller while they climb the approval ladder. The test contract deploys and wires the
+/// transfers through a teller while they climb the approval ladder, the recovery module is fixed in
+/// customers' accounts, and the dispute reversal module freezes and reverses disputed transfers. The test contract deploys and wires the
 /// contracts, hands the admin role to governance and gives up its own, and governance then posts
 /// the opening balance sheet in docs/scenarios.md and splits its cash as docs/roles.md does.
 abstract contract BankFixture is Test {
@@ -65,6 +68,8 @@ abstract contract BankFixture is Test {
     Attestations attestations;
     CashOperations cash;
     AssistedOperations assisted;
+    AccountRecovery recovery;
+    DisputeReversal disputes;
     ERC7913P256Verifier p256;
     MultiSignerAccount officers;
     TimelockController timelock;
@@ -90,7 +95,7 @@ abstract contract BankFixture is Test {
     function setUp() public virtual {
         officerKeys = [uint256(0x0F1), 0x0F2, 0x0F3, 0x0F4];
         p256 = new ERC7913P256Verifier();
-        officers = new MultiSignerAccount(_verifiers(), _signers(officerKeys), GOVERNANCE_THRESHOLD);
+        officers = new MultiSignerAccount(_verifiers(), _signers(officerKeys), GOVERNANCE_THRESHOLD, address(0));
         address[] memory proposers = new address[](1);
         proposers[0] = address(officers);
         // Anyone may carry out a decision once its delay has passed.
@@ -109,13 +114,16 @@ abstract contract BankFixture is Test {
         partnerKeys = new PartnerKeys(address(manager));
         payments = new Payments(address(manager), ledger, partnerKeys, SCREENING_THRESHOLD);
         attestations = new Attestations(address(manager), ledger, partnerKeys, STATEMENT_MAX_AGE);
+        recovery = new AccountRecovery(manager);
+        disputes = new DisputeReversal(manager, token, holds);
         cash = new CashOperations(
             address(manager),
             ledger,
             CashOperations.Limits(DRAWER_LIMIT, ATM_LIMIT, CASH_REPORT_THRESHOLD, DISPENSE_TIMEOUT),
+            recovery,
             BranchApprovals.Ladder(LADDER_FIRST, LADDER_SECOND)
         );
-        assisted = new AssistedOperations(address(manager), token, BranchApprovals.Ladder(LADDER_FIRST, LADDER_SECOND));
+        assisted = new AssistedOperations(address(manager), token, recovery, BranchApprovals.Ladder(LADDER_FIRST, LADDER_SECOND));
         teller1 = _staff("teller1");
         // How movements into the modules count, set while the deployer is still the admin.
         limits.setChannel(address(cash), CustomerLimits.Channel.Own);
@@ -162,6 +170,8 @@ abstract contract BankFixture is Test {
         manager.grantRole(Roles.ENFORCER, address(assisted), 0);
         manager.grantRole(Roles.LIMIT_KEEPER, address(token), 0);
         manager.grantRole(Roles.LIMIT_KEEPER, address(payments), 0);
+        manager.grantRole(Roles.ENFORCER, address(disputes), 0);
+        manager.grantRole(Roles.DISPUTE_HOLDER, address(disputes), 0);
         manager.grantRole(Roles.BOOKKEEPER, treasury, 0);
         uint64[] memory staff = _staffAdministered();
         for (uint256 i = 0; i < staff.length; ++i) manager.setRoleAdmin(staff[i], Roles.STAFF_ADMIN);
@@ -223,7 +233,7 @@ abstract contract BankFixture is Test {
     function _staff(string memory name) internal returns (address) {
         uint256[] memory keys = new uint256[](1);
         keys[0] = _key(name);
-        return address(new MultiSignerAccount(_verifiers(), _signers(keys), 1));
+        return address(new MultiSignerAccount(_verifiers(), _signers(keys), 1, address(0)));
     }
 
     /// @dev Grants a role governance grants, as governance through the staff roles module.

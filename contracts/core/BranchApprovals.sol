@@ -3,6 +3,7 @@ pragma solidity ^0.8.27;
 
 import {AccessManaged} from "@openzeppelin/contracts/access/manager/AccessManaged.sol";
 import {IAccessManager} from "@openzeppelin/contracts/access/manager/IAccessManager.sol";
+import {AccountRecovery} from "./AccountRecovery.sol";
 import {DepositToken} from "./DepositToken.sol";
 import {Roles} from "./Roles.sol";
 
@@ -14,7 +15,8 @@ import {Roles} from "./Roles.sol";
 /// branch, then its branch manager, then compliance. Each approver differs from the teller and every
 /// earlier one. The last approval carries the operation out; the approver due next may refuse it and
 /// the teller may cancel it, which gives the money back. The teller, the approvers and the slip's hash
-/// stay on record. See open question 19 in docs/plan.md.
+/// stay on record. Staff who recovered a customer's account are refused as the teller or an approver of
+/// that customer's operations. See open questions 19 and 21 in docs/plan.md.
 abstract contract BranchApprovals is AccessManaged {
     /// @dev The customer's own signature, from a device or a card, or a teller's attestation to an
     /// in-person check on paper.
@@ -66,6 +68,7 @@ abstract contract BranchApprovals is AccessManaged {
     }
 
     DepositToken public immutable token;
+    AccountRecovery public immutable recovery;
 
     Ladder public ladder;
     uint256 public operationCount;
@@ -99,11 +102,13 @@ abstract contract BranchApprovals is AccessManaged {
     error InsufficientUnfrozen(address customer, uint256 available, uint256 amount);
     error AuthorisedForAnotherIntent(bytes32 nonce);
     error InvalidLadder(Ladder ladder);
+    error RecoveredTheAccount(address staff, address customer);
     error NoSlip();
     error ZeroAmount();
 
-    constructor(address manager, DepositToken token_, Ladder memory ladder_) AccessManaged(manager) {
+    constructor(address manager, DepositToken token_, AccountRecovery recovery_, Ladder memory ladder_) AccessManaged(manager) {
         token = token_;
+        recovery = recovery_;
         _setLadder(ladder_);
     }
 
@@ -222,6 +227,7 @@ abstract contract BranchApprovals is AccessManaged {
         bytes32 slipHash
     ) private returns (bytes32 ref) {
         if (amount == 0) revert ZeroAmount();
+        _checkNotRecoveredBy(customer);
         ref = _nextRef();
         uint8 required = approversRequired(amount, authorisation);
         Operation storage op = _operations[ref];
@@ -253,7 +259,14 @@ abstract contract BranchApprovals is AccessManaged {
         role = _approverRole(op.branch, approved);
         if (!_has(role, msg.sender)) revert NotApprover(msg.sender, role);
         if (msg.sender == op.teller) revert TellerCannotApprove(msg.sender, ref);
+        _checkNotRecoveredBy(op.customer);
         for (uint256 i = 0; i < approved; ++i) if (op.approvers[i] == msg.sender) revert AlreadyApproved(msg.sender, ref);
+    }
+
+    /// @dev Staff who recovered this customer's account may not act for them at the branch, so a signer
+    /// they enrolled cannot be used by them.
+    function _checkNotRecoveredBy(address customer) private view {
+        if (recovery.involved(customer, msg.sender)) revert RecoveredTheAccount(msg.sender, customer);
     }
 
     /// @dev The ladder's approvers in order: a supervisor of the branch, its branch manager, compliance.

@@ -28,21 +28,29 @@ abstract contract KeyTypes {
 /// @dev A party's account: signers with a threshold, of the key types fixed at deployment. Staff
 /// and the governance officers act from one. Its own calls are an ERC-7821 batch its signers sign
 /// with a one-use number, which the submission service relays; signer changes are calls to itself
-/// in such a batch. See docs/standards.md. KeyTypes comes before MultiSignerERC7913 so the accepted
-/// verifiers are set before the initial signers are checked.
+/// in such a batch. A customer's account is deployed with the bank's recovery module fixed in it, the one
+/// other contract that may change its signers, and only its signers. See docs/standards.md and open
+/// question 21 in docs/plan.md. KeyTypes comes before MultiSignerERC7913 so the accepted verifiers are
+/// set before the initial signers are checked.
 contract MultiSignerAccount is Account, EIP712, ERC7739, ERC7821, KeyTypes, MultiSignerERC7913 {
     bytes32 private constant EXECUTE_TYPEHASH = keccak256("Execute(bytes executionData,uint256 nonce)");
 
+    /// @dev The recovery module, or zero for an account no module may recover, such as staff's.
+    address public immutable recovery;
     /// @dev The one-use number the next signed batch must carry.
     uint256 public executionNonce;
 
     error InvalidExecutionSignature();
+    error NotRecovery(address caller);
 
     constructor(
         address[] memory verifiers,
         bytes[] memory signers,
-        uint64 threshold_
-    ) EIP712("MultiSignerAccount", "1") KeyTypes(verifiers) MultiSignerERC7913(signers, threshold_) {}
+        uint64 threshold_,
+        address recovery_
+    ) EIP712("MultiSignerAccount", "1") KeyTypes(verifiers) MultiSignerERC7913(signers, threshold_) {
+        recovery = recovery_;
+    }
 
     /// @dev Runs a batch of calls in ERC-7821's batch encoding, signed by enough of the signers.
     function executeSigned(bytes calldata executionData, bytes calldata signature) external {
@@ -57,6 +65,14 @@ contract MultiSignerAccount is Account, EIP712, ERC7739, ERC7821, KeyTypes, Mult
 
     function removeSigners(bytes[] memory signers) public onlyEntryPointOrSelf {
         _removeSigners(signers);
+    }
+
+    /// @dev The recovery module removes signers and enrols new ones; it can do nothing else.
+    function recoverSigners(bytes[] memory removed, bytes[] memory added) external {
+        if (msg.sender != recovery) revert NotRecovery(msg.sender);
+        // Enrolled first, so the threshold stays reachable when every lost signer is removed.
+        if (added.length != 0) _addSigners(added);
+        if (removed.length != 0) _removeSigners(removed);
     }
 
     function setThreshold(uint64 threshold_) public onlyEntryPointOrSelf {

@@ -9,7 +9,9 @@ import {Roles} from "./Roles.sol";
 
 /// @dev The register of named holds, holding the freezer role: an account's frozen amount is the
 /// sum of its open holds. Support, compliance or a supervisor places a hold; a compliance hold is
-/// lifted only by compliance, and any other by a supervisor or compliance. Who may call is decided
+/// lifted only by compliance, and any other by a supervisor or compliance. The dispute reversal module
+/// places and lifts holds of its own, which only it lifts, when compliance approves or rejects the
+/// dispute, so a dispute can never lose its hold while it is still open. Who may call is decided
 /// here, not by the access manager, because who lifts depends on who placed. See the access
 /// manager roles in docs/roles.md.
 contract HoldRegister {
@@ -67,7 +69,7 @@ contract HoldRegister {
         uint64 asRole,
         string calldata reason
     ) external returns (uint256 id) {
-        bool fits = asRole == Roles.SUPPORT || asRole == Roles.COMPLIANCE || _isSupervisor(asRole);
+        bool fits = asRole == Roles.SUPPORT || asRole == Roles.COMPLIANCE || asRole == Roles.DISPUTE_HOLDER || _isSupervisor(asRole);
         if (!fits || !_has(asRole, msg.sender)) revert NotPlacer(msg.sender, asRole);
         if (amount == 0) revert ZeroAmount();
         if (token.getRestriction(account) == ERC20Restricted.Restriction.DEFAULT) {
@@ -82,13 +84,12 @@ contract HoldRegister {
         emit Placed(id, account, asRole, amount, msg.sender, reason);
     }
 
-    /// @dev Lifts a hold as the holder of `asRole`: compliance for a compliance hold, a supervisor
-    /// or compliance for any other.
+    /// @dev Lifts a hold as the holder of `asRole`: the dispute reversal module its own and only it,
+    /// compliance any other, and a supervisor any other but compliance's.
     function lift(uint256 id, uint64 asRole) external {
         Hold memory h = _holds[id];
         if (h.placer == address(0)) revert NoSuchHold(id);
-        bool fits = asRole == Roles.COMPLIANCE || (h.role != Roles.COMPLIANCE && _isSupervisor(asRole));
-        if (!fits || !_has(asRole, msg.sender)) revert NotLifter(msg.sender, asRole, id);
+        if (!_mayLift(h.role, asRole) || !_has(asRole, msg.sender)) revert NotLifter(msg.sender, asRole, id);
 
         delete _holds[id];
         _open[h.account].remove(id);
@@ -101,6 +102,12 @@ contract HoldRegister {
     /// account's deposit tokens do not cover.
     function _apply(address account) private {
         token.setFrozenTokens(account, heldOf[account]);
+    }
+
+    function _mayLift(uint64 placedAs, uint64 asRole) private pure returns (bool) {
+        if (placedAs == Roles.DISPUTE_HOLDER) return asRole == Roles.DISPUTE_HOLDER;
+        if (asRole == Roles.COMPLIANCE) return true;
+        return placedAs != Roles.COMPLIANCE && _isSupervisor(asRole);
     }
 
     /// @dev A supervisor of any branch, until accounts record their home branch.

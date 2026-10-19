@@ -177,7 +177,7 @@ contract StaffRolesTest is BankFixture {
         keys[0] = officerKeys[2];
         address[] memory verifiers = new address[](1);
         verifiers[0] = address(p256);
-        address officer = address(new MultiSignerAccount(verifiers, _signers(keys), 1));
+        address officer = address(new MultiSignerAccount(verifiers, _signers(keys), 1, address(0)));
 
         vm.prank(governance);
         vm.expectRevert(abi.encodeWithSelector(StaffRoles.GovernanceSigner.selector, officer));

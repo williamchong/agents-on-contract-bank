@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
+import {AccountRecovery} from "./AccountRecovery.sol";
 import {BranchApprovals} from "./BranchApprovals.sol";
 import {DepositToken} from "./DepositToken.sol";
 
@@ -16,7 +17,12 @@ contract AssistedOperations is BranchApprovals {
 
     error NotAdmitted(address account);
 
-    constructor(address manager, DepositToken token_, Ladder memory ladder_) BranchApprovals(manager, token_, ladder_) {}
+    constructor(
+        address manager,
+        DepositToken token_,
+        AccountRecovery recovery_,
+        Ladder memory ladder_
+    ) BranchApprovals(manager, token_, recovery_, ladder_) {}
 
     /// @dev A teller of `branch` transfers money for a customer to `to` on the customer's device or
     /// card, whose authorisation names this transfer's intent.

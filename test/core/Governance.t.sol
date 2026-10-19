@@ -105,7 +105,7 @@ contract GovernanceTest is BankFixture {
         address[] memory verifiers = new address[](1);
         verifiers[0] = address(p256);
         vm.expectRevert(abi.encodeWithSelector(KeyTypes.KeyTypeRefused.selector, plain[0]));
-        new MultiSignerAccount(verifiers, plain, 1);
+        new MultiSignerAccount(verifiers, plain, 1, address(0));
     }
 
     function test_SignersChangeOnlyByTheAccount() public {

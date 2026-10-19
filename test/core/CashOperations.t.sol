@@ -60,7 +60,7 @@ contract CashOperationsTest is BankFixture {
 
         uint256[] memory keys = new uint256[](1);
         keys[0] = cardKey;
-        carol = new MultiSignerAccount(_verifiers(), _signers(keys), 1);
+        carol = new MultiSignerAccount(_verifiers(), _signers(keys), 1, address(recovery));
         vm.prank(governance);
         token.allowUser(address(carol));
         vm.prank(alice);
