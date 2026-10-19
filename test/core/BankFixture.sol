@@ -15,16 +15,18 @@ import {GeneralLedger} from "../../contracts/core/GeneralLedger.sol";
 import {MultiSignerAccount} from "../../contracts/core/MultiSignerAccount.sol";
 import {StaffRoles} from "../../contracts/core/StaffRoles.sol";
 import {HoldRegister} from "../../contracts/core/HoldRegister.sol";
-import {PartnerKeys} from "../../contracts/core/PartnerKeys.sol";
+import {PartnerKeys, Partners} from "../../contracts/core/PartnerKeys.sol";
 import {Payments} from "../../contracts/core/Payments.sol";
+import {Attestations} from "../../contracts/core/Attestations.sol";
 
 /// @dev Deploys the bank as docs/roles.md describes it: governance is a time lock behind the
 /// officers' multi-signer account, holding the admin and governance roles, the staff roles module
-/// administers every staff and machine role, the hold register sets every frozen amount, and the
-/// partner key register holds the keys partners sign with, among them the clearing system's, and
-/// the payments module holds money in waiting. The test contract deploys and wires the
-/// contracts, hands the admin role to governance and gives up its own, and governance then posts
-/// the opening balance sheet in docs/scenarios.md.
+/// administers every staff and machine role, the hold register sets every frozen amount, the
+/// partner key register holds the keys the clearing system and the custodian sign with, the
+/// payments module holds money in waiting, and attested figures check the partners' statements
+/// against the ledger. The test contract deploys and wires the contracts, hands the admin role to
+/// governance and gives up its own, and governance then posts the opening balance sheet in
+/// docs/scenarios.md.
 abstract contract BankFixture is Test {
     /// @dev One Hong Kong dollar, in the token's cents.
     uint256 constant HKD = 100;
@@ -32,7 +34,9 @@ abstract contract BankFixture is Test {
     uint64 constant GOVERNANCE_THRESHOLD = 3;
     uint64 constant BRANCHES = 2;
     uint256 constant SCREENING_THRESHOLD = 50_000 * HKD;
-    bytes32 constant CLEARING = keccak256("clearing");
+    bytes32 constant CLEARING = Partners.CLEARING;
+    bytes32 constant CUSTODIAN = Partners.CUSTODIAN;
+    uint256 constant STATEMENT_MAX_AGE = 2 days;
 
     AccessManager manager;
     DepositToken token;
@@ -41,6 +45,7 @@ abstract contract BankFixture is Test {
     HoldRegister holds;
     PartnerKeys partnerKeys;
     Payments payments;
+    Attestations attestations;
     ERC7913P256Verifier p256;
     MultiSignerAccount officers;
     TimelockController timelock;
@@ -49,6 +54,7 @@ abstract contract BankFixture is Test {
 
     uint256[] officerKeys;
     uint256 clearingKey = _key("clearing");
+    uint256 custodianKey = _key("custodian");
 
     address alice = makeAddr("alice");
     address bob = makeAddr("bob");
@@ -56,6 +62,8 @@ abstract contract BankFixture is Test {
     address otherCustomers = makeAddr("otherCustomers");
     /// @dev A bank-owned account, such as pending withdrawals.
     address pending = makeAddr("pending");
+    /// @dev Stands in for treasury's own module, still to come, holding the bookkeeper role.
+    address treasury = makeAddr("treasury");
 
     function setUp() public virtual {
         officerKeys = [uint256(0x0F1), 0x0F2, 0x0F3, 0x0F4];
@@ -74,6 +82,7 @@ abstract contract BankFixture is Test {
         holds = new HoldRegister(manager, token);
         partnerKeys = new PartnerKeys(address(manager));
         payments = new Payments(address(manager), ledger, partnerKeys, SCREENING_THRESHOLD);
+        attestations = new Attestations(address(manager), ledger, partnerKeys, STATEMENT_MAX_AGE);
 
         _wire(address(token), token.mint.selector, Roles.LEDGER);
         _wire(address(token), token.burn.selector, Roles.LEDGER);
@@ -92,11 +101,13 @@ abstract contract BankFixture is Test {
         _wire(address(payments), payments.clearOutgoing.selector, Roles.COMPLIANCE);
         _wire(address(payments), payments.returnOutgoing.selector, Roles.COMPLIANCE);
         _wire(address(payments), payments.setScreeningThreshold.selector, Roles.GOVERNANCE);
+        _wire(address(attestations), attestations.setMaxAge.selector, Roles.GOVERNANCE);
 
         manager.grantRole(Roles.LEDGER, address(ledger), 0);
         manager.grantRole(Roles.STAFF_ADMIN, address(staffRoles), 0);
         manager.grantRole(Roles.FREEZER, address(holds), 0);
         manager.grantRole(Roles.BOOKKEEPER, address(payments), 0);
+        manager.grantRole(Roles.BOOKKEEPER, treasury, 0);
         uint64[] memory staff = _staffAdministered();
         for (uint256 i = 0; i < staff.length; ++i) manager.setRoleAdmin(staff[i], Roles.STAFF_ADMIN);
 
@@ -112,6 +123,7 @@ abstract contract BankFixture is Test {
 
         _govern(address(ledger), _openingCall());
         _govern(address(partnerKeys), abi.encodeCall(PartnerKeys.setKey, (CLEARING, _signer(clearingKey))));
+        _govern(address(partnerKeys), abi.encodeCall(PartnerKeys.setKey, (CUSTODIAN, _signer(custodianKey))));
     }
 
     // Governance
@@ -262,6 +274,15 @@ abstract contract BankFixture is Test {
 
     function _holds(uint64 role, address account) internal view returns (bool member) {
         (member, ) = manager.hasRole(role, account);
+    }
+
+    /// @dev Moves the settlement account against securities, as treasury selling or buying them.
+    function _moveSettlement(int256 amount) internal {
+        GeneralLedger.Line[] memory lines = new GeneralLedger.Line[](2);
+        lines[0] = GeneralLedger.Line(GeneralLedger.Account.Settlement, int128(amount));
+        lines[1] = GeneralLedger.Line(GeneralLedger.Account.Securities, -int128(amount));
+        vm.prank(treasury);
+        ledger.post(lines, "treasury");
     }
 
     function _assertBooksBalance() internal view {

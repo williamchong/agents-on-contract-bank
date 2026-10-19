@@ -6,7 +6,7 @@ import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {DepositToken} from "./DepositToken.sol";
 import {GeneralLedger} from "./GeneralLedger.sol";
-import {PartnerKeys} from "./PartnerKeys.sol";
+import {PartnerKeys, Partners} from "./PartnerKeys.sol";
 
 /// @dev The payments module: payments in by the clearing system's signed credit advice, payments out
 /// by the payer's own call, and the money in waiting between. It is a bank-owned account on the
@@ -22,7 +22,6 @@ contract Payments is EIP712, AccessManaged {
     using SafeCast for uint256;
     using SafeCast for int256;
 
-    bytes32 public constant CLEARING = keccak256("clearing");
     bytes3 public constant HKD = "HKD";
 
     enum Status {
@@ -298,6 +297,6 @@ contract Payments is EIP712, AccessManaged {
     }
 
     function _checkSignature(bytes32 digest, bytes calldata signature) private view {
-        if (!partners.verify(CLEARING, digest, signature)) revert InvalidPartnerSignature();
+        if (!partners.verify(Partners.CLEARING, digest, signature)) revert InvalidPartnerSignature();
     }
 }

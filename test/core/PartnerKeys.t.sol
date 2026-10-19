@@ -14,10 +14,10 @@ import {BankFixture} from "./BankFixture.sol";
 /// docs/roles.md: governance registers and replaces a key after its delay, IT security revokes one
 /// at once, and a partner's signature verifies only under its current key.
 contract PartnerKeysTest is BankFixture {
-    bytes32 constant CUSTODIAN = keccak256("custodian");
+    bytes32 constant NEW_PARTNER = keccak256("new partner");
     bytes32 constant DIGEST = keccak256("credit advice");
 
-    uint256 custodianKey = _key("custodian");
+    uint256 newPartnerKey = _key("new partner");
     address itSecurity;
     address support;
     address branchManager;
@@ -35,7 +35,7 @@ contract PartnerKeysTest is BankFixture {
     // Registering
 
     function test_SetKey_TakesEffectAfterGovernanceDelay() public {
-        bytes memory data = abi.encodeCall(PartnerKeys.setKey, (CUSTODIAN, _signer(custodianKey)));
+        bytes memory data = abi.encodeCall(PartnerKeys.setKey, (NEW_PARTNER, _signer(newPartnerKey)));
         bytes32 salt = _schedule(address(partnerKeys), data, _quorum());
 
         vm.warp(block.timestamp + GOVERNANCE_DELAY - 1);
@@ -51,24 +51,24 @@ contract PartnerKeysTest is BankFixture {
 
         vm.warp(block.timestamp + 1);
         timelock.execute(address(partnerKeys), 0, data, bytes32(0), salt);
-        assertTrue(partnerKeys.verify(CUSTODIAN, DIGEST, _signP256(custodianKey, DIGEST)));
+        assertTrue(partnerKeys.verify(NEW_PARTNER, DIGEST, _signP256(newPartnerKey, DIGEST)));
     }
 
     function test_SetKey_RecordsTheKey() public {
-        bytes memory signer = _signer(custodianKey);
-        bytes memory data = abi.encodeCall(PartnerKeys.setKey, (CUSTODIAN, signer));
+        bytes memory signer = _signer(newPartnerKey);
+        bytes memory data = abi.encodeCall(PartnerKeys.setKey, (NEW_PARTNER, signer));
         bytes32 salt = _schedule(address(partnerKeys), data, _quorum());
         vm.expectEmit(address(partnerKeys));
-        emit PartnerKeys.KeySet(CUSTODIAN, signer);
+        emit PartnerKeys.KeySet(NEW_PARTNER, signer);
         _execute(address(partnerKeys), data, salt);
-        assertEq(partnerKeys.keyOf(CUSTODIAN), signer);
+        assertEq(partnerKeys.keyOf(NEW_PARTNER), signer);
     }
 
     function test_SetKey_ItSecurityAloneRefused() public {
-        bytes memory signer = _signer(custodianKey);
+        bytes memory signer = _signer(newPartnerKey);
         vm.prank(itSecurity);
         vm.expectRevert(abi.encodeWithSelector(IAccessManaged.AccessManagedUnauthorized.selector, itSecurity));
-        partnerKeys.setKey(CUSTODIAN, signer);
+        partnerKeys.setKey(NEW_PARTNER, signer);
     }
 
     function test_SetKey_ReplacedKeyRefused() public {
@@ -135,18 +135,18 @@ contract PartnerKeysTest is BankFixture {
     }
 
     function test_Verify_UnregisteredPartnerRefused() public view {
-        assertFalse(partnerKeys.verify(CUSTODIAN, DIGEST, _signP256(clearingKey, DIGEST)));
+        assertFalse(partnerKeys.verify(NEW_PARTNER, DIGEST, _signP256(clearingKey, DIGEST)));
     }
 
     function test_Verify_RsaPartner() public {
         ERC7913RSAVerifier rsa = new ERC7913RSAVerifier();
-        _setKey(CUSTODIAN, abi.encodePacked(address(rsa), abi.encode(RsaVector.E, RsaVector.N)));
+        _setKey(NEW_PARTNER, abi.encodePacked(address(rsa), abi.encode(RsaVector.E, RsaVector.N)));
 
-        assertTrue(partnerKeys.verify(CUSTODIAN, RsaVector.DIGEST, RsaVector.SIG));
+        assertTrue(partnerKeys.verify(NEW_PARTNER, RsaVector.DIGEST, RsaVector.SIG));
         bytes memory flipped = RsaVector.SIG;
         flipped[255] ^= 0x01;
-        assertFalse(partnerKeys.verify(CUSTODIAN, RsaVector.DIGEST, flipped));
-        assertFalse(partnerKeys.verify(CUSTODIAN, DIGEST, RsaVector.SIG));
+        assertFalse(partnerKeys.verify(NEW_PARTNER, RsaVector.DIGEST, flipped));
+        assertFalse(partnerKeys.verify(NEW_PARTNER, DIGEST, RsaVector.SIG));
     }
 
     // Helpers
@@ -158,7 +158,7 @@ contract PartnerKeysTest is BankFixture {
     /// @dev Governance's decision is carried out by the time lock, which reverts with the
     /// register's own error.
     function _expectSetKeyRefused(bytes memory signer) private {
-        bytes memory data = abi.encodeCall(PartnerKeys.setKey, (CUSTODIAN, signer));
+        bytes memory data = abi.encodeCall(PartnerKeys.setKey, (NEW_PARTNER, signer));
         bytes32 salt = _schedule(address(partnerKeys), data, _quorum());
         vm.expectRevert(abi.encodeWithSelector(PartnerKeys.NotAVerifierKey.selector, signer));
         _execute(address(partnerKeys), data, salt);

@@ -4,7 +4,13 @@ pragma solidity ^0.8.27;
 import {AccessManaged} from "@openzeppelin/contracts/access/manager/AccessManaged.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
-/// @dev The register of partners' signing keys, which the payments module and the ledger's attested
+/// @dev The partners whose keys the register holds, by the identifier their keys are registered under.
+library Partners {
+    bytes32 internal constant CLEARING = keccak256("clearing");
+    bytes32 internal constant CUSTODIAN = keccak256("custodian");
+}
+
+/// @dev The register of partners' signing keys, which the payments module and the attested
 /// figures check against. Each key is kept in ERC-7913 form, a verifier's address followed by the
 /// key, so a partner signing with P-256 or RSA is registered the same way and no partner needs an
 /// account on the chain. Plain Ethereum keys are refused: no clearing system holds one. Governance

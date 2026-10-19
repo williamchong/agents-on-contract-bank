@@ -23,7 +23,6 @@ contract PaymentsTest is BankFixture {
     bytes4 constant REASON = "AC04";
 
     address compliance;
-    address treasury = makeAddr("treasury");
     address adapter = makeAddr("adapter");
     address stranger = makeAddr("stranger");
     bytes32 payee = keccak256("payee at another bank");
@@ -35,11 +34,6 @@ contract PaymentsTest is BankFixture {
         super.setUp();
         compliance = _staff("compliance");
         _grantStaff(compliance, Roles.COMPLIANCE);
-        // Treasury's own module is still to come; a bookkeeper stands in for it to move the
-        // settlement account against securities.
-        vm.prank(governance);
-        manager.grantRole(Roles.BOOKKEEPER, treasury, 0);
-
         handler = new PaymentsHandler(payments, token, compliance, clearingKey, [alice, bob, stranger]);
         targetContract(address(handler));
     }
@@ -430,15 +424,6 @@ contract PaymentsTest is BankFixture {
     ) private view returns (Payments.PaymentRejection memory m, bytes memory sig) {
         m = Payments.PaymentRejection(ref, amount, REASON, keccak256("pacs.004"));
         sig = _signP256(clearingKey, payments.hashPaymentRejection(m));
-    }
-
-    /// @dev Moves the settlement account against securities, as treasury selling or buying them.
-    function _moveSettlement(int256 amount) private {
-        GeneralLedger.Line[] memory lines = new GeneralLedger.Line[](2);
-        lines[0] = GeneralLedger.Line(GeneralLedger.Account.Settlement, int128(amount));
-        lines[1] = GeneralLedger.Line(GeneralLedger.Account.Securities, -int128(amount));
-        vm.prank(treasury);
-        ledger.post(lines, "treasury");
     }
 
     function _settlement() private view returns (int256) {
