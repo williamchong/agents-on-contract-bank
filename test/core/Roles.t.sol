@@ -10,6 +10,8 @@ import {PartnerKeys} from "../../contracts/core/PartnerKeys.sol";
 import {Payments} from "../../contracts/core/Payments.sol";
 import {Attestations} from "../../contracts/core/Attestations.sol";
 import {CashOperations} from "../../contracts/core/CashOperations.sol";
+import {BranchApprovals} from "../../contracts/core/BranchApprovals.sol";
+import {AssistedOperations} from "../../contracts/core/AssistedOperations.sol";
 import {BankFixture} from "./BankFixture.sol";
 
 /// @dev Checks every restricted function is wired to the role docs/roles.md gives it, and that
@@ -51,6 +53,18 @@ contract RolesTest is BankFixture {
         assertTrue(isLedger);
         (bool isGovernance, ) = manager.hasRole(Roles.LEDGER, address(this));
         assertFalse(isGovernance);
+    }
+
+    /// @dev Only the modules docs/roles.md names may move money without the holder's signature.
+    function test_OnlyTheNamedModulesForceTransfers() public view {
+        (bool isAssisted, ) = manager.hasRole(Roles.ENFORCER, address(assisted));
+        (bool isCash, ) = manager.hasRole(Roles.ENFORCER, address(cash));
+        (bool isGovernance, ) = manager.hasRole(Roles.ENFORCER, governance);
+        (bool isPayments, ) = manager.hasRole(Roles.ENFORCER, address(payments));
+        assertTrue(isAssisted);
+        assertTrue(isCash);
+        assertFalse(isGovernance);
+        assertFalse(isPayments);
     }
 
     function test_StaffAndMachineRoles_AdministeredByTheModule() public view {
@@ -108,8 +122,8 @@ contract RolesTest is BankFixture {
     /// to the allow-list stays with the admin until the onboarding module is wired to it.
     function _expected() private view returns (Wire[] memory w) {
         GeneralLedger.Line[] memory none = new GeneralLedger.Line[](0);
-        CashOperations.CardAuthorisation memory card;
-        w = new Wire[](24);
+        BranchApprovals.CardAuthorisation memory card;
+        w = new Wire[](26);
         w[0] = Wire(address(token), abi.encodeCall(DepositToken.mint, (alice, 1)), Roles.LEDGER);
         w[1] = Wire(address(token), abi.encodeCall(DepositToken.burn, (alice, 1)), Roles.LEDGER);
         w[2] = Wire(address(token), abi.encodeCall(DepositToken.forcedTransfer, (alice, bob, 1)), Roles.ENFORCER);
@@ -142,5 +156,7 @@ contract RolesTest is BankFixture {
         w[21] = Wire(address(cash), abi.encodeCall(CashOperations.withdrawAtAtm, (1, card)), Roles.ATM);
         w[22] = Wire(address(cash), abi.encodeCall(CashOperations.confirmDispense, (bytes32(0))), Roles.ATM);
         w[23] = Wire(address(cash), abi.encodeCall(CashOperations.reportFailure, (bytes32(0))), Roles.ATM);
+        w[24] = Wire(address(cash), abi.encodeCall(BranchApprovals.setLadder, (BranchApprovals.Ladder(0, 0))), Roles.GOVERNANCE);
+        w[25] = Wire(address(assisted), abi.encodeCall(BranchApprovals.setLadder, (BranchApprovals.Ladder(0, 0))), Roles.GOVERNANCE);
     }
 }
