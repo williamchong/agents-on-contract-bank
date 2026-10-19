@@ -125,7 +125,7 @@ contract RolesTest is BankFixture {
     function _expected() private view returns (Wire[] memory w) {
         GeneralLedger.Line[] memory none = new GeneralLedger.Line[](0);
         BranchApprovals.CardAuthorisation memory card;
-        w = new Wire[](32);
+        w = new Wire[](33);
         w[0] = Wire(address(token), abi.encodeCall(DepositToken.mint, (alice, 1)), Roles.LEDGER);
         w[1] = Wire(address(token), abi.encodeCall(DepositToken.burn, (alice, 1)), Roles.LEDGER);
         w[2] = Wire(address(token), abi.encodeCall(DepositToken.forcedTransfer, (alice, bob, 1)), Roles.ENFORCER);
@@ -166,5 +166,6 @@ contract RolesTest is BankFixture {
         w[29] = Wire(address(limits), abi.encodeCall(CustomerLimits.setChannel, (alice, CustomerLimits.Channel.Own)), Roles.GOVERNANCE);
         w[30] = Wire(address(limits), abi.encodeCall(CustomerLimits.setLimits, (CustomerLimits.Limits(0, 0, 0))), Roles.GOVERNANCE);
         w[31] = Wire(address(incidents), abi.encodeCall(IncidentLog.report, (bytes32(0), bytes32(0), bytes32(0))), Roles.FINANCE);
+        w[32] = Wire(address(limits), abi.encodeCall(CustomerLimits.releasePayment, (alice, 1, 0, false, false)), Roles.LIMIT_KEEPER);
     }
 }
