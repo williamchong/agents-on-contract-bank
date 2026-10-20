@@ -457,7 +457,7 @@ Payments run through a simulated clearing system in which the bank holds a settl
 
 | Flow | Steps |
 |---|---|
-| **Payment out** | Customer authorises → payee's name checked with the receiving bank → funds moved to the payments module → branch approvals if sent through a teller → screened; compliance clears any at or above the threshold → released: tokens destroyed from the module, settlement account debited, message sent → receiving bank confirms or rejects |
+| **Payment out** | Customer authorises → payee's name checked with the receiving bank → if sent through a teller, funds held in the assisted operations module while the branch approvals are given → funds moved to the payments module in the customer's name → screened; compliance clears any at or above the threshold → released: tokens destroyed from the module, settlement account debited, message sent → receiving bank confirms or rejects |
 | **Payment out rejected** | The clearing system's signed rejection is relayed and checked → the funds return to the settlement account → tokens re-created for the customer |
 | **Payment out, settlement account short** | The payment queues in the module, in order → treasury funds the account → anyone triggers the release, which takes the queue's head and chooses nothing |
 | **Payment in** | Clearing system credits the settlement account and sends a signed credit advice → adapter relays it → the payments module checks the clearing system's signature over the reference, amount, currency, creditor account, settlement time and the message's hash, and that the reference is new → beneficiary matched → screened → tokens created. The payer can be anyone; no registration is needed. |

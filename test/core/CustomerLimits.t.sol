@@ -281,11 +281,6 @@ contract CustomerLimitsTest is BankFixture {
         payments.release(10);
     }
 
-    function _rejectPayment(bytes32 ref, uint256 amount) private {
-        Payments.PaymentRejection memory m = Payments.PaymentRejection(ref, amount, "AC04", keccak256("pacs.004"));
-        payments.rejectPayment(m, _signP256(clearingKey, payments.hashPaymentRejection(m)));
-    }
-
     function _key(address customer) private pure returns (bytes32) {
         return bytes32(uint256(uint160(customer)));
     }

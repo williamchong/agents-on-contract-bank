@@ -8,19 +8,22 @@ import {MultiSignerAccount} from "../../contracts/core/MultiSignerAccount.sol";
 import {BranchApprovals} from "../../contracts/core/BranchApprovals.sol";
 import {AssistedOperations} from "../../contracts/core/AssistedOperations.sol";
 import {CashOperations} from "../../contracts/core/CashOperations.sol";
+import {Payments} from "../../contracts/core/Payments.sol";
 import {BankFixture} from "./BankFixture.sol";
 
 /// @dev Checks operations through a teller against the branch approval ladder in docs/roles.md and the
 /// paper instruction flow in docs/architecture.md: the money is held while approvers are due, they
 /// approve in order and each differs from the teller and every earlier one, a paper instruction never
-/// takes more than the unfrozen balance, and refusal or cancellation gives the money back. Transfers
-/// go through the assisted operations module and withdrawals at the counter through the cash module.
+/// takes more than the unfrozen balance, and refusal or cancellation gives the money back. Transfers and
+/// payments out go through the assisted operations module and withdrawals at the counter through the
+/// cash module.
 contract AssistedOperationsTest is BankFixture {
     uint64 constant TELLER_1 = 101;
     uint64 constant SUPERVISOR_1 = 102;
     uint64 constant MANAGER_1 = 103;
     uint64 constant TELLER_2 = 201;
     bytes32 constant SLIP = keccak256("scan of a signed paper slip");
+    bytes32 constant PAYEE = keccak256("a payee at another bank");
 
     address supervisor;
     address branchManager;
@@ -265,6 +268,16 @@ contract AssistedOperationsTest is BankFixture {
         assisted.transferOnPaper(1, alice, stranger, HKD, SLIP);
     }
 
+    /// @dev A payment out goes through pay, which records it; a transfer to the payments module would not.
+    function test_Scope_RecipientIsNoBankModule() public {
+        vm.startPrank(teller1);
+        vm.expectRevert(abi.encodeWithSelector(AssistedOperations.NotAdmitted.selector, address(payments)));
+        assisted.transferOnPaper(1, alice, address(payments), HKD, SLIP);
+        vm.expectRevert(abi.encodeWithSelector(AssistedOperations.NotAdmitted.selector, address(assisted)));
+        assisted.transferOnPaper(1, alice, address(assisted), HKD, SLIP);
+        vm.stopPrank();
+    }
+
     function test_Scope_CustomerBlockedBeforeTheLastApproval() public {
         bytes32 ref = _transferOnPaper(alice, 5_000 * HKD);
         vm.prank(compliance);
@@ -281,6 +294,95 @@ contract AssistedOperationsTest is BankFixture {
         vm.prank(supervisor);
         vm.expectRevert(abi.encodeWithSelector(BranchApprovals.NotTeller.selector, teller1, 1));
         assisted.approve(ref);
+    }
+
+    // Payments out through a teller
+
+    function test_Payment_SmallSignedQueuedInTheCustomersName() public {
+        bytes32 ref = _paySigned(PAYEE, 1_000 * HKD);
+        assertEq(uint8(assisted.operation(ref).status), uint8(BranchApprovals.Status.CarriedOut));
+        Payments.Payment memory p = payments.outgoing(_lastPayment());
+        assertEq(p.party, address(carol), "the customer is the payer, not the module");
+        assertEq(p.amount, 1_000 * HKD);
+        assertEq(uint8(p.status), uint8(Payments.Status.Queued));
+        assertEq(token.balanceOf(address(assisted)), 0);
+        assertEq(token.allowance(address(assisted), address(payments)), 0);
+    }
+
+    function test_Payment_HandedOverUnderItsReference() public {
+        BranchApprovals.CardAuthorisation memory a = _paymentAuthorisation(PAYEE, 1_000 * HKD);
+        vm.expectEmit(false, false, false, false, address(assisted));
+        emit AssistedOperations.PaymentHandedOver(bytes32(0), bytes32(0));
+        vm.prank(teller1);
+        assisted.pay(1, PAYEE, a);
+    }
+
+    /// @dev The ladder first, then screening: the supervisor approves, and compliance still clears or
+    /// stops a payment at or above the screening threshold. One stopped goes back to the customer.
+    function test_Payment_LargerClimbsTheLadderThenWaitsForCompliance() public {
+        uint256 before = token.balanceOf(address(carol));
+        bytes32 ref = _paySigned(PAYEE, 60_000 * HKD);
+        assertEq(payments.orderCount(), 0, "nothing reaches the payments module before the supervisor");
+
+        _approve(supervisor, ref);
+        bytes32 paymentRef = _lastPayment();
+        assertEq(uint8(payments.outgoing(paymentRef).status), uint8(Payments.Status.Screening));
+
+        vm.prank(compliance);
+        payments.returnOutgoing(paymentRef);
+        assertEq(token.balanceOf(address(carol)), before);
+        assertEq(token.balanceOf(address(payments)), 0);
+    }
+
+    function test_Payment_RejectedComesBackToTheCustomer() public {
+        uint256 before = token.balanceOf(alice);
+        bytes32 ref = _payOnPaper(alice, 5_000 * HKD);
+        _approve(supervisor, ref);
+        bytes32 paymentRef = _lastPayment();
+        payments.release(1);
+        assertEq(token.balanceOf(alice), before - 5_000 * HKD);
+
+        _rejectPayment(paymentRef, 5_000 * HKD);
+        assertEq(token.balanceOf(alice), before);
+        assertEq(token.balanceOf(address(assisted)), 0);
+        _assertBooksBalance();
+    }
+
+    /// @dev The customer authorised a payment to one payee; the teller cannot send it to another.
+    function test_Payment_CannotBeRedirected() public {
+        BranchApprovals.CardAuthorisation memory a = _paymentAuthorisation(PAYEE, 1_000 * HKD);
+        vm.prank(teller1);
+        vm.expectRevert(abi.encodeWithSelector(BranchApprovals.AuthorisedForAnotherIntent.selector, a.nonce));
+        assisted.pay(1, keccak256("someone else at another bank"), a);
+    }
+
+    /// @dev Nor can an authorisation of a transfer to Bob be paid out to another bank.
+    function test_Payment_TransferAuthorisationIsNotAPayment() public {
+        BranchApprovals.CardAuthorisation memory a = _authorisation(1_000 * HKD);
+        vm.prank(teller1);
+        vm.expectRevert(abi.encodeWithSelector(BranchApprovals.AuthorisedForAnotherIntent.selector, a.nonce));
+        assisted.pay(1, PAYEE, a);
+    }
+
+    function test_Payment_NeedsAPayee() public {
+        vm.prank(teller1);
+        vm.expectRevert(AssistedOperations.NoPayee.selector);
+        assisted.payOnPaper(1, alice, 0, HKD, SLIP);
+    }
+
+    /// @dev The branch's channel is its ladder: a payment through a teller counts against neither the
+    /// app limit nor the unregistered payee limit, so it can go beyond both.
+    function test_Payment_NotCountedAgainstTheCustomersLimits() public {
+        vm.prank(governance);
+        limits.enrol(alice);
+        bytes32 ref = _payOnPaper(alice, APP_LIMIT * 2);
+        _approve(supervisor, ref);
+        assertEq(payments.outgoing(_lastPayment()).amount, APP_LIMIT * 2);
+
+        vm.startPrank(alice);
+        token.approve(address(payments), UNREGISTERED_PAYEE_LIMIT);
+        payments.pay(UNREGISTERED_PAYEE_LIMIT, PAYEE);
+        vm.stopPrank();
     }
 
     // Withdrawals at the counter
@@ -359,6 +461,34 @@ contract AssistedOperationsTest is BankFixture {
     function _transferOnPaper(address customer, uint256 amount) private returns (bytes32) {
         vm.prank(teller1);
         return assisted.transferOnPaper(1, customer, bob, amount, SLIP);
+    }
+
+    function _paySigned(bytes32 payee, uint256 amount) private returns (bytes32) {
+        BranchApprovals.CardAuthorisation memory a = _paymentAuthorisation(payee, amount);
+        vm.prank(teller1);
+        return assisted.pay(1, payee, a);
+    }
+
+    function _payOnPaper(address customer, uint256 amount) private returns (bytes32) {
+        vm.prank(teller1);
+        return assisted.payOnPaper(1, customer, PAYEE, amount, SLIP);
+    }
+
+    /// @dev The payments module's reference for the payment out it took last.
+    function _lastPayment() private view returns (bytes32) {
+        return keccak256(abi.encode(block.chainid, address(payments), payments.orderCount()));
+    }
+
+    /// @dev Carol's card authorises a payment of `amount` to `payee` through a teller at branch 1.
+    function _paymentAuthorisation(bytes32 payee, uint256 amount) private view returns (BranchApprovals.CardAuthorisation memory) {
+        return
+            _cardAuthorisation(
+                cardKey,
+                address(carol),
+                address(assisted),
+                assisted.intentKey(assisted.paymentPurpose(payee), 1, address(payments)),
+                amount
+            );
     }
 
     function _approve(address by, bytes32 ref) private {

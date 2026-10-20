@@ -266,14 +266,14 @@ contract CashOperations is BranchApprovals {
     /// compliance is told of one at or above the cash report threshold.
     function withdrawAtCounter(uint64 branch, CardAuthorisation calldata authorisation) external returns (bytes32 ref) {
         _checkDrawer(branch, authorisation.amount);
-        ref = _openSigned(branch, COUNTER_WITHDRAWAL, address(0), authorisation);
+        ref = _openSigned(branch, COUNTER_WITHDRAWAL, address(0), 0, authorisation);
         _reportCash(ref, authorisation.customer, authorisation.amount);
     }
 
     /// @dev A teller of `branch` opens a withdrawal at the counter on the customer's signed paper slip.
     function withdrawAtCounterOnPaper(uint64 branch, address customer, uint256 amount, bytes32 slipHash) external returns (bytes32 ref) {
         _checkDrawer(branch, amount);
-        ref = _openOnPaper(branch, customer, address(0), amount, slipHash);
+        ref = _openOnPaper(branch, customer, address(0), 0, amount, slipHash);
         _reportCash(ref, customer, amount);
     }
 

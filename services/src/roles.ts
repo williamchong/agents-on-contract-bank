@@ -23,6 +23,7 @@ export const Roles = {
   STAFF_ADMIN: 35n,
   LIMIT_KEEPER: 36n,
   DISPUTE_HOLDER: 37n,
+  PAYMENT_ORIGINATOR: 38n,
 } as const
 
 export const BranchRole = {

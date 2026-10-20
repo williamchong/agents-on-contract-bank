@@ -27,6 +27,7 @@ library Roles {
     uint64 internal constant STAFF_ADMIN = 35;
     uint64 internal constant LIMIT_KEEPER = 36;
     uint64 internal constant DISPUTE_HOLDER = 37;
+    uint64 internal constant PAYMENT_ORIGINATOR = 38;
 
     /// @dev Branch roles, numbered 100 × branch plus one of these.
     uint64 internal constant TELLER = 1;

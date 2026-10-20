@@ -34,8 +34,8 @@ import {IncidentLog} from "../../contracts/core/IncidentLog.sol";
 /// partner key register holds the keys the clearing system and the custodian sign with, the
 /// payments module holds money in waiting, attested figures check the partners' statements
 /// against the ledger, the cash module keeps the cash, and the assisted operations module holds
-/// transfers through a teller while they climb the approval ladder, the recovery module is fixed in
-/// customers' accounts, the dispute reversal module freezes and reverses disputed transfers, and finance
+/// transfers and payments out through a teller while they climb the approval ladder, the recovery
+/// module is fixed in customers' accounts, the dispute reversal module freezes and reverses disputed transfers, and finance
 /// reports incidents to the regulator in the incident log. The test contract deploys and wires the
 /// contracts, hands the admin role to governance and gives up its own, and governance then posts
 /// the opening balance sheet in docs/scenarios.md and splits its cash as docs/roles.md does.
@@ -127,7 +127,7 @@ abstract contract BankFixture is Test {
             recovery,
             BranchApprovals.Ladder(LADDER_FIRST, LADDER_SECOND)
         );
-        assisted = new AssistedOperations(address(manager), token, recovery, BranchApprovals.Ladder(LADDER_FIRST, LADDER_SECOND));
+        assisted = new AssistedOperations(address(manager), token, recovery, payments, BranchApprovals.Ladder(LADDER_FIRST, LADDER_SECOND));
         teller1 = _staff("teller1");
         // How movements into the modules count, set while the deployer is still the admin.
         limits.setChannel(address(cash), CustomerLimits.Channel.Own);
@@ -151,6 +151,7 @@ abstract contract BankFixture is Test {
         _wire(address(payments), payments.clearOutgoing.selector, Roles.COMPLIANCE);
         _wire(address(payments), payments.returnOutgoing.selector, Roles.COMPLIANCE);
         _wire(address(payments), payments.setScreeningThreshold.selector, Roles.GOVERNANCE);
+        _wire(address(payments), payments.payFor.selector, Roles.PAYMENT_ORIGINATOR);
         _wire(address(attestations), attestations.setMaxAge.selector, Roles.GOVERNANCE);
         _wire(address(cash), cash.openCash.selector, Roles.GOVERNANCE);
         _wire(address(cash), cash.setLimits.selector, Roles.GOVERNANCE);
@@ -174,6 +175,7 @@ abstract contract BankFixture is Test {
         manager.grantRole(Roles.BOOKKEEPER, address(cash), 0);
         manager.grantRole(Roles.ENFORCER, address(cash), 0);
         manager.grantRole(Roles.ENFORCER, address(assisted), 0);
+        manager.grantRole(Roles.PAYMENT_ORIGINATOR, address(assisted), 0);
         manager.grantRole(Roles.LIMIT_KEEPER, address(token), 0);
         manager.grantRole(Roles.LIMIT_KEEPER, address(payments), 0);
         manager.grantRole(Roles.ENFORCER, address(disputes), 0);
@@ -286,6 +288,12 @@ abstract contract BankFixture is Test {
         (bytes32 r, bytes32 s) = vm.signP256(key, digest);
         if (uint256(s) > P256.N / 2) s = bytes32(P256.N - uint256(s));
         return abi.encodePacked(r, s);
+    }
+
+    /// @dev The receiving bank rejects payment out `ref`, as the clearing system signs it.
+    function _rejectPayment(bytes32 ref, uint256 amount) internal {
+        Payments.PaymentRejection memory m = Payments.PaymentRejection(ref, amount, "AC04", keccak256("pacs.004"));
+        payments.rejectPayment(m, _signP256(clearingKey, payments.hashPaymentRejection(m)));
     }
 
     /// @dev A card's authorisation of `amount` from `customer` to `module`, for the intent whose key is

@@ -307,7 +307,7 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
     recovery,
     Settings.ladder,
   ])
-  const assisted = await deployer.deploy('AssistedOperations', [manager, token, recovery, Settings.ladder])
+  const assisted = await deployer.deploy('AssistedOperations', [manager, token, recovery, payments, Settings.ladder])
   const contracts: Contracts = {
     verifier,
     officers,
@@ -423,6 +423,7 @@ const wiring: [keyof Contracts, ContractName, string, bigint][] = [
   ['payments', 'Payments', 'clearOutgoing', Roles.COMPLIANCE],
   ['payments', 'Payments', 'returnOutgoing', Roles.COMPLIANCE],
   ['payments', 'Payments', 'setScreeningThreshold', Roles.GOVERNANCE],
+  ['payments', 'Payments', 'payFor', Roles.PAYMENT_ORIGINATOR],
   ['attestations', 'Attestations', 'setMaxAge', Roles.GOVERNANCE],
   ['cash', 'CashOperations', 'openCash', Roles.GOVERNANCE],
   ['cash', 'CashOperations', 'setLimits', Roles.GOVERNANCE],
@@ -460,6 +461,7 @@ async function wire(deployer: Deployer, c: Contracts): Promise<void> {
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.BOOKKEEPER, c.cash, 0])
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.ENFORCER, c.cash, 0])
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.ENFORCER, c.assisted, 0])
+  await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.PAYMENT_ORIGINATOR, c.assisted, 0])
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.LIMIT_KEEPER, c.token, 0])
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.LIMIT_KEEPER, c.payments, 0])
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.ENFORCER, c.disputes, 0])

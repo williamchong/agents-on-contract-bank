@@ -11,9 +11,9 @@ import {CustomerLimits} from "./CustomerLimits.sol";
 import {DailyLimit} from "./DailyLimit.sol";
 
 /// @dev The payments module: payments in by the clearing system's signed credit advice, payments out
-/// by the payer's own call, and the money in waiting between. It is a bank-owned account on the
-/// allow-list holding the bookkeeper role, and keeps each amount it holds against its payment's
-/// reference, so the amount can only reach that payment's beneficiary, go back where it came from,
+/// by the payer's own call or through a teller, and the money in waiting between. It is a bank-owned
+/// account on the allow-list holding the bookkeeper role, and keeps each amount it holds against its
+/// payment's reference, so the amount can only reach that payment's beneficiary, go back where it came from,
 /// or leave through the clearing system. Screening on chain is a single threshold: a payment at or
 /// above it waits here for compliance. Every step moves the settlement account and deposits
 /// together, or moves tokens between the module and a customer, so the books balance throughout.
@@ -218,15 +218,17 @@ contract Payments is EIP712, AccessManaged {
     /// their unregistered payee limit, and the movement itself against their app limit. Below the
     /// screening threshold the payment joins the queue at once.
     function pay(uint256 amount, bytes32 payeeHash) external returns (bytes32 ref) {
-        if (amount == 0) revert ZeroAmount();
         (bool app, bool unregistered) = customerLimits.countPayment(msg.sender, payeeHash, amount);
-        ref = keccak256(abi.encode(block.chainid, address(this), ++orderCount));
+        ref = _order(msg.sender, amount, payeeHash);
         if (app || unregistered) _counted[ref] = Counted(DailyLimit.today(), app, unregistered);
-        Status status = amount >= screeningThreshold ? Status.Screening : Status.Queued;
-        _outgoing[ref] = Payment(msg.sender, amount, status);
-        token.transferFrom(msg.sender, address(this), amount);
-        emit PaymentOrdered(ref, msg.sender, amount, payeeHash, status);
-        if (status == Status.Queued) _enqueue(ref);
+    }
+
+    /// @dev A module that holds a customer's money for a payment a teller opened, and has seen it through
+    /// the branch approval ladder, sends it out for them: the amount comes from the module, which has
+    /// approved it, and the customer is recorded as the payer, so a payment stopped or rejected goes back
+    /// to them. Nothing counts against their daily limits, as the branch's channel is its ladder.
+    function payFor(address payer, uint256 amount, bytes32 payeeHash) external restricted returns (bytes32 ref) {
+        ref = _order(payer, amount, payeeHash);
     }
 
     /// @dev Compliance lets a screened payment out join the queue.
@@ -281,6 +283,18 @@ contract Payments is EIP712, AccessManaged {
     }
 
     // Internal
+
+    /// @dev Takes `amount` from the caller for `payer`'s payment out, and queues it below the screening
+    /// threshold.
+    function _order(address payer, uint256 amount, bytes32 payeeHash) private returns (bytes32 ref) {
+        if (amount == 0) revert ZeroAmount();
+        ref = keccak256(abi.encode(block.chainid, address(this), ++orderCount));
+        Status status = amount >= screeningThreshold ? Status.Screening : Status.Queued;
+        _outgoing[ref] = Payment(payer, amount, status);
+        token.transferFrom(msg.sender, address(this), amount);
+        emit PaymentOrdered(ref, payer, amount, payeeHash, status);
+        if (status == Status.Queued) _enqueue(ref);
+    }
 
     function _releaseLimits(bytes32 ref, Payment storage p) private {
         Counted memory c = _counted[ref];

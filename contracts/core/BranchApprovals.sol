@@ -55,6 +55,8 @@ abstract contract BranchApprovals is AccessManaged {
         address customer;
         /// @dev Who receives the money, for a module that pays it to someone; zero otherwise.
         address recipient;
+        /// @dev The hash of the payee's details, for a payment out to another bank; zero otherwise.
+        bytes32 payee;
         uint256 amount;
         bytes32 slipHash;
         address[3] approvers;
@@ -179,11 +181,12 @@ abstract contract BranchApprovals is AccessManaged {
         uint64 branch,
         bytes32 purpose,
         address recipient,
+        bytes32 payee,
         CardAuthorisation calldata a
     ) internal returns (bytes32 ref) {
         _requireTeller(branch);
         _receive(a, intentKey(purpose, branch, recipient));
-        ref = _open(branch, a.customer, recipient, a.amount, Authorisation.Signed, 0);
+        ref = _open(branch, a.customer, recipient, payee, a.amount, Authorisation.Signed, 0);
     }
 
     /// @dev Opens an operation paying `recipient` on a paper instruction, moving no more than the
@@ -192,6 +195,7 @@ abstract contract BranchApprovals is AccessManaged {
         uint64 branch,
         address customer,
         address recipient,
+        bytes32 payee,
         uint256 amount,
         bytes32 slipHash
     ) internal returns (bytes32 ref) {
@@ -201,7 +205,7 @@ abstract contract BranchApprovals is AccessManaged {
         uint256 unfrozen = token.available(customer);
         if (amount > unfrozen) revert InsufficientUnfrozen(customer, unfrozen, amount);
         token.forcedTransfer(customer, address(this), amount);
-        ref = _open(branch, customer, recipient, amount, Authorisation.Paper, slipHash);
+        ref = _open(branch, customer, recipient, payee, amount, Authorisation.Paper, slipHash);
     }
 
     /// @dev Moves a customer's authorised amount into the module, checking the authorisation was given
@@ -222,6 +226,7 @@ abstract contract BranchApprovals is AccessManaged {
         uint64 branch,
         address customer,
         address recipient,
+        bytes32 payee,
         uint256 amount,
         Authorisation authorisation,
         bytes32 slipHash
@@ -232,7 +237,7 @@ abstract contract BranchApprovals is AccessManaged {
         uint8 required = approversRequired(amount, authorisation);
         Operation storage op = _operations[ref];
         (op.teller, op.branch, op.authorisation, op.required, op.status) = (msg.sender, branch, authorisation, required, Status.Waiting);
-        (op.customer, op.recipient, op.amount, op.slipHash) = (customer, recipient, amount, slipHash);
+        (op.customer, op.recipient, op.payee, op.amount, op.slipHash) = (customer, recipient, payee, amount, slipHash);
         waitingTotal += amount;
         emit OperationOpened(ref, customer, msg.sender, branch, amount, authorisation, slipHash, required);
         if (required == 0) _finish(ref, op);
