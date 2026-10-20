@@ -63,7 +63,7 @@ export function transfer(bank: Bank, from: CustomerName, to: string, amount: big
 // The customer registers a payee from their phone; it counts as registered once the waiting period ends.
 export function registerPayee(bank: Bank, customer: CustomerName, payee: string): Promise<Outcome> {
   return bank.act(customer, 'app', `register ${payee} as a payee`, [
-    bank.call('CustomerLimits', bank.contracts.limits, 'registerPayee', [keccak256(toBytes(payee))]),
+    bank.call('CustomerLimits', bank.contracts.limits, 'registerPayee', [payeeHash(payee)]),
   ])
 }
 
@@ -73,18 +73,29 @@ export function payOut(bank: Bank, from: CustomerName, payee: string, amount: bi
   const c = bank.contracts
   return bank.act(from, 'app', `pay ${hkd(amount)} to ${payee}`, [
     bank.call('DepositToken', c.token, 'approve', [c.payments, amount]),
-    bank.call('Payments', c.payments, 'pay', [amount, keccak256(toBytes(payee))]),
+    bank.call('Payments', c.payments, 'pay', [amount, payeeHash(payee)]),
   ])
+}
+
+// The hash of a payee's details, which is all the chain keeps of them.
+export function payeeHash(payee: string): Hex {
+  return keccak256(toBytes(payee))
 }
 
 // What a customer's authorisation is for: the module that will hold the money, the purpose, the branch
 // and who is paid. The module derives its one-use number's key from it, so a teller or an ATM cannot use
-// the authorisation for anything else.
+// the authorisation for anything else. A payment out names its payee's hash in its purpose.
 export interface Intent {
   module: 'cash' | 'assisted'
-  purpose: 'ATM_WITHDRAWAL' | 'COUNTER_WITHDRAWAL' | 'TRANSFER'
+  purpose: 'ATM_WITHDRAWAL' | 'COUNTER_WITHDRAWAL' | 'TRANSFER' | { payee: Hex }
   branch: bigint
   recipient: Address
+}
+
+function purposeOf(bank: Bank, module: Address, purpose: Intent['purpose']): Promise<Hex> {
+  if (typeof purpose === 'object') return bank.read('AssistedOperations', module, 'paymentPurpose', [purpose.payee])
+  if (purpose === 'TRANSFER') return bank.read('AssistedOperations', module, 'TRANSFER', [])
+  return bank.read('CashOperations', module, purpose, [])
 }
 
 // The customer's card, after the PIN, or their phone authorises a transfer of `amount` into the module for
@@ -93,10 +104,7 @@ export async function authorise(bank: Bank, customer: CustomerName, intent: Inte
   const c = bank.contracts
   const account = bank.account(customer)
   const module = c[intent.module]
-  const purpose =
-    intent.purpose === 'TRANSFER'
-      ? await bank.read('AssistedOperations', module, 'TRANSFER', [])
-      : await bank.read('CashOperations', module, intent.purpose, [])
+  const purpose = await purposeOf(bank, module, intent.purpose)
   const key = await bank.read('CashOperations', module, 'intentKey', [purpose, intent.branch, intent.recipient])
   const next = await bank.read('DepositToken', c.token, 'nonces', [account, key])
   const nonce = numberToHex((key << 64n) | next, { size: 32 })
@@ -186,6 +194,31 @@ export async function transferAtCounter(
   }
   return bank.act(teller, 'branch', `transfer ${hkd(amount)} from ${customer} to ${to} on a paper slip`, [
     bank.call('AssistedOperations', c.assisted, 'transferOnPaper', [branch, bank.account(customer), bank.account(to), amount, slipHash(by.slip)]),
+  ])
+}
+
+// A teller's payment for a customer to someone at another bank, on the customer's card at the counter or
+// on a signed paper slip. It waits for the approvers the branch approval ladder names, then reaches the
+// payments module in the customer's name, so a payment that comes back goes back to them.
+export async function payAtCounter(
+  bank: Bank,
+  customer: CustomerName,
+  payee: string,
+  amount: bigint,
+  by: { card: true } | { slip: string },
+  teller = 'teller',
+  branch = 1n,
+): Promise<Outcome> {
+  const c = bank.contracts
+  const hash = payeeHash(payee)
+  if ('card' in by) {
+    const card = await authorise(bank, customer, { module: 'assisted', purpose: { payee: hash }, branch, recipient: c.payments }, amount)
+    return bank.act(teller, 'branch', `pay ${hkd(amount)} from ${customer} to ${payee} on their card`, [
+      bank.call('AssistedOperations', c.assisted, 'pay', [branch, hash, card]),
+    ])
+  }
+  return bank.act(teller, 'branch', `pay ${hkd(amount)} from ${customer} to ${payee} on a paper slip`, [
+    bank.call('AssistedOperations', c.assisted, 'payOnPaper', [branch, bank.account(customer), hash, amount, slipHash(by.slip)]),
   ])
 }
 
