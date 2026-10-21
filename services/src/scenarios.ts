@@ -67,9 +67,10 @@ export type Panel = 'story' | 'waiting' | 'balance sheet'
 export interface Preset {
   name: string
   kind: 'routine' | 'adverse'
-  // For an adverse scenario, its group, the control that should fire, and the building on the bank map and
-  // the panel it concerns.
+  // For an adverse scenario, its group, what happens in plain words, the control that should fire, and the
+  // building on the bank map and the panel it concerns.
   group?: ScenarioGroup
+  summary?: string
   control?: string
   building?: string
   panel?: Panel
@@ -269,6 +270,7 @@ export const presets: Preset[] = [
     group: 'Customer mishap',
     building: 'branch',
     panel: 'waiting',
+    summary: 'A customer loses every device and their card, and the bank gives them their account back without letting anyone else in.',
     control: "Recovery module: an account opening officer with a supervisor's approval, signer list only",
     async run(ctx) {
       const { bank } = ctx
@@ -307,6 +309,7 @@ export const presets: Preset[] = [
     group: 'Customer mishap',
     building: 'atm',
     panel: 'waiting',
+    summary: 'The ATM takes a withdrawal but fails to pay out the cash, and the customer must not lose the money.',
     control: 'ATM hold and confirmation',
     async run(ctx) {
       const { bank } = ctx
@@ -347,6 +350,7 @@ export const presets: Preset[] = [
     group: 'Customer mishap',
     building: 'clearing-house',
     panel: 'balance sheet',
+    summary: 'Another bank rejects a payment a customer sent, and the money must come back to them.',
     control: "Payments module checks the clearing system's signed rejection",
     async run(ctx) {
       const { bank, clearing } = ctx
@@ -377,6 +381,7 @@ export const presets: Preset[] = [
     group: 'Customer mishap',
     building: 'suspense-lot',
     panel: 'waiting',
+    summary: 'Money arrives for an account the bank does not have, so it waits aside and then goes back to the sender.',
     control: 'Suspense account in the payments module',
     async run(ctx) {
       const { bank, clearing } = ctx
@@ -405,6 +410,7 @@ export const presets: Preset[] = [
     group: 'Fraud and attack',
     building: 'clearing-house',
     panel: 'story',
+    summary: 'Someone fakes a message from the clearing system saying money arrived, then replays a real one; neither may create money.',
     control: 'Signature check and unique reference in the payments module',
     async run(ctx) {
       const { bank, clearing } = ctx
@@ -433,6 +439,7 @@ export const presets: Preset[] = [
     group: 'Fraud and attack',
     building: 'compliance-yard',
     panel: 'waiting',
+    summary: 'A large payment arrives and waits for compliance to clear or return it before the customer can use it.',
     control: 'Screening in the payments module, compliance clearance',
     async run(ctx) {
       const { bank, clearing } = ctx
@@ -470,6 +477,7 @@ export const presets: Preset[] = [
     group: 'Fraud and attack',
     building: 'branch',
     panel: 'waiting',
+    summary: "A teller moves a customer's money on a slip the customer never signed; the customer disputes it and gets it back.",
     control: 'Second-person approval, then freeze and dispute reversal by forced transfer',
     async run(ctx) {
       const { bank } = ctx
@@ -525,6 +533,7 @@ export const presets: Preset[] = [
     group: 'Fraud and attack',
     building: 'branch',
     panel: 'story',
+    summary: 'An attacker tries one trick after another to exceed their role or steal money, and every attempt should be refused.',
     control: 'Access manager, branch scoping, approval logic, rate limiter, one-use numbers, allow-list, payee register',
     async run(ctx) {
       const { bank } = ctx
@@ -573,6 +582,7 @@ export const presets: Preset[] = [
     group: 'Operational incident',
     building: 'water-tower',
     panel: 'balance sheet',
+    summary: "An outside statement or a cash count disagrees with the bank's books, and the bank must notice and report it.",
     control: "The attested figures contract's comparison with the ledger; reconciliation by finance",
     async run(ctx) {
       const { bank, clearing } = ctx

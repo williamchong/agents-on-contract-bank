@@ -19,6 +19,8 @@ import { beats } from './tour.ts'
 export interface Card {
   title: string
   kind: 'routine' | 'adverse' | 'tour'
+  // What an adverse scenario attempts, in plain words.
+  summary?: string
   control?: string
   building?: string
   panel?: Panel
@@ -137,8 +139,8 @@ export class Control {
   runPreset(name: string, quiet = false): Promise<Card> {
     const preset = presets.find((p) => p.name === name)
     if (!preset) throw new Error(`No preset called ${name}`)
-    const { control, building, panel, waitsFor } = preset
-    const card: Card = { title: preset.name, kind: preset.kind, status: 'running', checks: [], ...{ control, building, panel, waitsFor } }
+    const { summary, control, building, panel, waitsFor } = preset
+    const card: Card = { title: preset.name, kind: preset.kind, status: 'running', checks: [], ...{ summary, control, building, panel, waitsFor } }
     return this.run(`run ${preset.kind === 'adverse' ? 'the scenario' : 'the routine'}: ${preset.name}`, card, (ctx) => preset.run(ctx), quiet)
   }
 
