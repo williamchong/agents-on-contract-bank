@@ -3,7 +3,7 @@
 // that exists and lists the rest in `waitsFor`, so the score never claims more than was run.
 
 import { isAddressEqual, keccak256, numberToHex, toBytes, type Address, type Hex } from 'viem'
-import { grantThroughBranch, Settings, Staff, type Bank } from './bank.ts'
+import { grantThroughBranch, Staff, type Bank } from './bank.ts'
 import { DisputeStatus, drawer, HKD, Ledger, OperationStatus, Opening, PaymentStatus, vault } from './books.ts'
 import { advance } from './chain.ts'
 import type { Clearing } from './clearing.ts'
@@ -184,7 +184,7 @@ export const presets: Preset[] = [
       // supplier is on her register already.
       const supplier = 'a supplier at another bank'
       const registered = await registerPayee(bank, 'Alice', supplier)
-      if (emitted(registered, 'PayeeRegistered')) await advance(bank.chain, Settings.payeeWait)
+      if (emitted(registered, 'PayeeRegistered')) await advance(bank.chain, bank.settings.payeeWait)
       const settlementBefore = await ledgerBalance(bank, Ledger.Settlement)
       const paid = await payOut(bank, 'Alice', supplier, 3_000n * HKD)
       const released = await releasePayments(bank)
@@ -326,7 +326,7 @@ export const presets: Preset[] = [
       // Second run: the ATM reports nothing; the amount stays pending and flagged until the next count.
       const second = await withdrawAtAtm(bank, 'Carol', amount)
       const secondRef = refOf(second, 'WithdrawalHeld')
-      await advance(bank.chain, Settings.dispenseTimeout + 1n)
+      await advance(bank.chain, bank.settings.dispenseTimeout + 1n)
       const pendingSecond = (await balanceOf(bank, 'Carol')) === before - amount
       const flagged = secondRef !== undefined && (await bank.read('CashOperations', bank.contracts.cash, 'isFlagged', [secondRef]))
       const count = await countCash(bank, atm, atmCash, 'ATM 1 at its refill')
@@ -559,8 +559,8 @@ export const presets: Preset[] = [
         bank.call('DepositToken', c.token, 'transfer', [stranger, 100n * HKD]),
       ])
       // With Alice's phone in hand: more than the app limit, then a stranger above the small limit.
-      const overAppLimit = await transfer(bank, 'Alice', 'Bob', Settings.appLimit + HKD)
-      const strangerPaid = await payOut(bank, 'Alice', "the red team's account at another bank", Settings.unregisteredPayeeLimit + HKD)
+      const overAppLimit = await transfer(bank, 'Alice', 'Bob', bank.settings.appLimit + HKD)
+      const strangerPaid = await payOut(bank, 'Alice', "the red team's account at another bank", bank.settings.unregisteredPayeeLimit + HKD)
       return [
         // It holds no approving role, so the ladder refuses it before it could approve its own.
         refusedWith('approving its own operation is refused', approveOwn, 'NotApprover'),

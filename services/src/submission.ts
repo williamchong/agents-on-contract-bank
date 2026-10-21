@@ -74,7 +74,7 @@ export class Submission {
   async submit(request: Request): Promise<Outcome> {
     if (this.pace) await new Promise((resolve) => setTimeout(resolve, this.pace))
     while (this.paused) await this.paused.done
-    const { client, wallet, relayer } = this.chain
+    const { client, wallet } = this.chain
     const refusal = await this.simulate(request)
     if (refusal) {
       const block = await client.getBlock()
@@ -93,7 +93,7 @@ export class Submission {
       return { ok: false, line, ...refusal }
     }
 
-    const hash = await wallet.sendTransaction({ account: relayer, chain: null, to: request.to, data: request.data })
+    const hash = await wallet.sendTransaction({ chain: null, to: request.to, data: request.data })
     const receipt = await client.waitForTransactionReceipt({ hash })
     if (receipt.status !== 'success') throw new Error(`${request.action} passed simulation but reverted in ${hash}`)
     const block = await client.getBlock({ blockNumber: receipt.blockNumber })

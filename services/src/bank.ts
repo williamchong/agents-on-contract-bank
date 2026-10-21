@@ -47,7 +47,12 @@ export const Settings = {
   payeeWait: 86_400n,
   // The branch approval ladder's steps.
   ladder: { first: 50_000n * HKD, second: 500_000n * HKD },
-} as const
+}
+export type BankSettings = typeof Settings
+
+// On a public chain, whose clock cannot be moved, the run waits out each time lock in real time, so the
+// governance time lock and the payee waiting period are ten minutes, as docs/roles.md gives them.
+export const PublicChainSettings: BankSettings = { ...Settings, governanceDelay: 600n, payeeWait: 600n }
 
 // The partners' identifiers in the key register, as contracts/core/PartnerKeys.sol derives them, and the
 // keys they sign with.
@@ -133,11 +138,13 @@ export class Bank {
   readonly submission: Submission
   readonly timeline: Timeline
   readonly contracts: Contracts
+  readonly settings: BankSettings
   private readonly parties = new Map<string, Party>()
   private readonly issued = new Map<string, number>()
 
-  constructor(chain: Chain, signer: Signer, timeline: Timeline, contracts: Contracts) {
+  constructor(chain: Chain, signer: Signer, timeline: Timeline, contracts: Contracts, settings: BankSettings) {
     this.chain = chain
+    this.settings = settings
     this.signer = signer
     this.timeline = timeline
     this.submission = new Submission(chain, timeline)
@@ -273,25 +280,26 @@ export function ref(text: string): Hex {
 // Deploying
 
 export async function deployBank(chain: Chain, timeline = new Timeline()): Promise<Bank> {
+  const settings = chain.local ? Settings : PublicChainSettings
   const deployer = new Deployer(chain)
   const verifier = await deployer.deploy('ERC7913P256Verifier', [])
   const signer = new Signer(verifier, chain.chainId)
 
   const officerKeys = Officers.map((o) => `officer:${o}`)
-  const officers = await deployer.account(signer, officerKeys, Settings.governanceThreshold, zeroAddress)
-  const timelock = await deployer.deploy('TimelockController', [Settings.governanceDelay, [officers], [zeroAddress], zeroAddress])
+  const officers = await deployer.account(signer, officerKeys, settings.governanceThreshold, zeroAddress)
+  const timelock = await deployer.deploy('TimelockController', [settings.governanceDelay, [officers], [zeroAddress], zeroAddress])
   const manager = await deployer.deploy('AccessManager', [chain.relayer])
   const limits = await deployer.deploy('CustomerLimits', [
     manager,
-    { app: Settings.appLimit, unregistered: Settings.unregisteredPayeeLimit, payeeWait: Settings.payeeWait },
+    { app: settings.appLimit, unregistered: settings.unregisteredPayeeLimit, payeeWait: settings.payeeWait },
   ])
   const token = await deployer.deploy('DepositToken', [manager, limits])
   const ledger = await deployer.deploy('GeneralLedger', [manager, token])
   const staffRoles = await deployer.deploy('StaffRoles', [manager, officers])
   const holds = await deployer.deploy('HoldRegister', [manager, token])
   const partnerKeys = await deployer.deploy('PartnerKeys', [manager])
-  const payments = await deployer.deploy('Payments', [manager, ledger, partnerKeys, Settings.screeningThreshold])
-  const attestations = await deployer.deploy('Attestations', [manager, ledger, partnerKeys, Settings.statementMaxAge])
+  const payments = await deployer.deploy('Payments', [manager, ledger, partnerKeys, settings.screeningThreshold])
+  const attestations = await deployer.deploy('Attestations', [manager, ledger, partnerKeys, settings.statementMaxAge])
   const recovery = await deployer.deploy('AccountRecovery', [manager])
   const disputes = await deployer.deploy('DisputeReversal', [manager, token, holds])
   const incidents = await deployer.deploy('IncidentLog', [manager])
@@ -299,15 +307,15 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
     manager,
     ledger,
     {
-      drawer: Settings.drawerLimit,
-      atm: Settings.atmLimit,
-      cashReport: Settings.cashReportThreshold,
-      dispenseTimeout: Settings.dispenseTimeout,
+      drawer: settings.drawerLimit,
+      atm: settings.atmLimit,
+      cashReport: settings.cashReportThreshold,
+      dispenseTimeout: settings.dispenseTimeout,
     },
     recovery,
-    Settings.ladder,
+    settings.ladder,
   ])
-  const assisted = await deployer.deploy('AssistedOperations', [manager, token, recovery, payments, Settings.ladder])
+  const assisted = await deployer.deploy('AssistedOperations', [manager, token, recovery, payments, settings.ladder])
   const contracts: Contracts = {
     verifier,
     officers,
@@ -327,8 +335,8 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
     disputes,
     incidents,
   }
-  const bank = new Bank(chain, signer, timeline, contracts)
-  bank.add('governance officers', { account: officers, keys: officerKeys.slice(0, Number(Settings.governanceThreshold)) })
+  const bank = new Bank(chain, signer, timeline, contracts, settings)
+  bank.add('governance officers', { account: officers, keys: officerKeys.slice(0, Number(settings.governanceThreshold)) })
 
   // Every party's account, each with its own keys: a staff token, a machine's module, or a customer's
   // phone and card. A customer signs with their phone unless the card is named.
@@ -375,7 +383,6 @@ class Deployer {
       abi: abiOf(name),
       bytecode: bytecodeOf(name),
       args,
-      account: this.chain.relayer,
       chain: null,
     } as never)
     const receipt = await this.chain.client.waitForTransactionReceipt({ hash })
@@ -394,7 +401,6 @@ class Deployer {
     args: ContractFunctionArgs<AbiOf<N>, Write, F>,
   ): Promise<void> {
     const hash = await this.chain.wallet.sendTransaction({
-      account: this.chain.relayer,
       chain: null,
       to: address,
       data: encodeFunctionData({ abi: abiOf(name), functionName, args } as never),
@@ -510,10 +516,10 @@ export async function govern(bank: Bank, by: string, action: string, calls: Call
   const payloads = calls.map((x) => x.data)
   const salt = numberToHex(await bank.read('MultiSignerAccount', c.officers, 'executionNonce', []), { size: 32 })
   const scheduled = await bank.act(by, 'admin', `schedule: ${action}`, [
-    bank.call('TimelockController', c.timelock, 'scheduleBatch', [targets, values, payloads, zeroHash, salt, Settings.governanceDelay]),
+    bank.call('TimelockController', c.timelock, 'scheduleBatch', [targets, values, payloads, zeroHash, salt, bank.settings.governanceDelay]),
   ])
   if (!scheduled.ok) throw new Error(`Governance could not schedule ${action}: ${scheduled.error}`)
-  await advance(bank.chain, Settings.governanceDelay)
+  await advance(bank.chain, bank.settings.governanceDelay)
   const done = await bank.relay(
     'anyone',
     'admin',
