@@ -583,17 +583,17 @@ Presets are scripted sequences of the same commands, so a run can be replayed id
 
 ### Playback
 
-The same dashboard, built as static files, plays back a recorded run with nothing else running: no chain, control service or keys. The recorder drives the control service's own commands, the guided tour's beats and then a business day of daily routines for each adverse scenario, and keeps the deployment, the story, the scenario cards and the bank's state at every block of the run, read at that block while the run happens. A playback bar across the top takes the control panel's place: play and pause, the chapter being played, the tour's beats and the adverse scenarios as a list to jump to and as marks on a scrubber across the story, and the speed. It starts by itself, after a short introduction of what the page is on a visitor's first visit; the introduction's words are also in the page's HTML for search engines and link previews. Playback moves one story line at a time, each held long enough at ×1 to read, longer for a longer sentence, so a time lock or a night passes as quickly as any other step; a jump starts the bank map's traffic again, with the lines passed over taken as history. See [open question 18](plan.md#open-questions).
+The same dashboard, built as static files, plays back a recorded run with nothing else running: no chain, control service or keys. The recorder drives the control service's own commands, the guided tour's beats and then a business day of daily routines for each adverse scenario, and keeps the deployment, the story, the scenario cards and the bank's state at every block of the run, read at that block while the run happens. A playback bar across the top takes the control panel's place: play and pause, the chapter being played, the tour's beats and the adverse scenarios as a list to jump to and as marks on a scrubber across the story, and the speed. It starts by itself, after a short introduction of what the page is on a visitor's first visit; the introduction's words are also in the page's HTML for search engines and link previews. Playback moves one story line at a time, each held long enough at ×1 to read, longer for a longer sentence, so a time lock or a night passes as quickly as any other step; a jump starts the bank map's traffic again, with the lines passed over taken as history. Each push to `master` records a run on Hardhat's in-process chain and publishes its playback to [GitHub Pages](https://williamchong.github.io/agents-on-contract-bank/). See [open question 18](plan.md#open-questions).
 
-## Repository layout (planned)
+## Repository layout
 
 ```
-contracts/   core, modules, governance; spike holds the contracts the open questions were tested on
-test/        one file per module; compat holds the open questions' tests
-services/    signer, gateways, submission, indexer, scheduler, control,
-             simulators, personal data store
-agents/      personas, tool definitions, scripted actors
-dashboard/   web app, with the bank map scene
-deploy/      local chain and testnet deployment
+contracts/   core holds the bank's contracts; spike holds the contracts the open questions were tested on
+test/        core holds the contracts' tests; compat holds the open questions' tests
+services/    signer, submission, clearing simulator, control, presets, the guided tour and the recorder's state
+scripts/     the local demo, the presets from the command line, the recorder and the chain probe
+dashboard/   web app, with the bank map scene and the playback
 docs/        this folder
 ```
+
+Planned: gateways, an indexer, a scheduler and the personal data store in `services/`, `agents/` for personas, tool definitions and the AI agents, and `deploy/` for the testnet deployment.
