@@ -62,7 +62,6 @@ const movedRows = computed(() => new Set(props.moved.map((i) => Accounts[i])))
 
 <template>
   <section v-if="sheet" aria-label="Balance sheet">
-    <h2>Balance sheet</h2>
     <div class="sides">
       <table>
         <caption>Assets</caption>
@@ -71,22 +70,22 @@ const movedRows = computed(() => new Set(props.moved.map((i) => Accounts[i])))
             {{ r.name }}
             <small v-if="r.attested">{{ r.attested.matched ? 'attested' : 'differs, attested' }} {{ r.attested.age }} ago</small>
           </th>
-          <td>{{ hkd(r.amount) }}</td>
+          <td class="money">{{ hkd(r.amount) }}</td>
         </tr>
         <tr class="total">
           <th scope="row">Total</th>
-          <td>{{ hkd(sheet.ratios.totalAssets) }}</td>
+          <td class="money">{{ hkd(sheet.ratios.totalAssets) }}</td>
         </tr>
       </table>
       <table>
         <caption>Liabilities and equity</caption>
         <tr v-for="r in sheet.liabilities" :key="r.name" :class="{ moved: movedRows.has(r.account) }">
           <th scope="row">{{ r.name }}</th>
-          <td>{{ hkd(r.amount) }}</td>
+          <td class="money">{{ hkd(r.amount) }}</td>
         </tr>
         <tr class="total">
           <th scope="row">Total</th>
-          <td>{{ hkd(sheet.ratios.totalLiabilities) }}</td>
+          <td class="money">{{ hkd(sheet.ratios.totalLiabilities) }}</td>
         </tr>
       </table>
     </div>
@@ -100,11 +99,6 @@ const movedRows = computed(() => new Set(props.moved.map((i) => Accounts[i])))
 </template>
 
 <style scoped>
-h2 {
-  margin: 0 0 6px;
-  font-size: 15px;
-}
-
 .sides {
   display: grid;
   grid-template-columns: 1fr 1fr;

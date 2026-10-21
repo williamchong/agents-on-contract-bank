@@ -18,7 +18,6 @@ const { state, error: chainError } = useBank(deployment)
         :paused="paused"
         :pace="pace"
         :daily="daily"
-        :style="{ order: 0 }"
         @command="command"
         @setting="setting"
       />

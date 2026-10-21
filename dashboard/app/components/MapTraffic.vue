@@ -5,9 +5,10 @@ import { ref, shallowRef, watch } from 'vue'
 import { hkd, movements, reasonOf, type Deployment, type Line } from '~/lib/story'
 import { buildings, houseLots, type BuildingId, type Vec3 } from '~/town/layout'
 
-// Money moving as vans between the places it was posted from and to, and a barrier where an attempt was
-// refused, with the rule that stopped it. Nothing moves that the chain did not report: each van is a
-// transfer of the deposit token in a line's receipt. See docs/architecture.md#bank-map.
+// Money moving as coins between the places it was posted from and to, and a barrier where an attempt was
+// refused; the rule that stopped it is in the map's caption and the story. Nothing moves that the chain did
+// not report: each stack of coins is a transfer of the deposit token in a line's receipt. See
+// docs/architecture.md#bank-map.
 const props = defineProps<{ deployment: Deployment; lines: Line[] }>()
 
 interface Van {
@@ -110,11 +111,14 @@ function vanAt(v: Van): Vec3 {
 
 <template>
   <TresGroup v-for="v in vans" :key="v.id" :position="vanAt(v)" :visible="now >= v.start">
-    <TresMesh cast-shadow>
-      <TresBoxGeometry :args="[0.9, 0.5, 0.55]" />
-      <TresMeshStandardMaterial color="#f2b134" />
-    </TresMesh>
-    <Html :position="[0, 0.7, 0]" center>
+    <!-- Money is a spinning stack of coins, not a box, so it cannot be taken for a building. -->
+    <TresGroup :rotation-z="0.5" :rotation-y="now * 3">
+      <TresMesh v-for="k in 3" :key="k" :position-y="(k - 2) * 0.14" :cast-shadow="k === 2">
+        <TresCylinderGeometry :args="[0.45, 0.45, 0.12, 24]" />
+        <TresMeshStandardMaterial color="#f2b134" :metalness="0.6" :roughness="0.3" />
+      </TresMesh>
+    </TresGroup>
+    <Html :position="[0, 0.7, 0]" center :z-index-range="[5, 0]">
       <span class="van">{{ v.label }}</span>
     </Html>
   </TresGroup>
@@ -124,8 +128,8 @@ function vanAt(v: Van): Vec3 {
       <TresBoxGeometry :args="[2.4, 0.18, 0.18]" />
       <TresMeshStandardMaterial color="#c0392b" />
     </TresMesh>
-    <Html :position="[0, 1.2 + b.level * 1.1, 1.6]" center>
-      <span class="barrier">Refused: {{ b.label }}</span>
+    <Html :position="[0, 1.2 + b.level * 0.5, 1.6]" center :z-index-range="[5, 0]">
+      <span class="barrier" :title="b.label">✗ Refused</span>
     </Html>
   </TresGroup>
 </template>

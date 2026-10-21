@@ -11,6 +11,8 @@ export type Panel = 'story' | 'waiting' | 'balance sheet'
 export interface Card {
   title: string
   kind: 'routine' | 'adverse' | 'tour'
+  // What an adverse scenario attempts, in plain words.
+  summary?: string
   control?: string
   // The building on the bank map and the panel an adverse scenario concerns, which the adverse view marks
   // and brings forward while it is shown.

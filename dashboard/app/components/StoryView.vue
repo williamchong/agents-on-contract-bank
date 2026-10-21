@@ -1,15 +1,24 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { isAlarm, namer, sentence, type Deployment, type Line } from '~/lib/story'
+import { explorer } from '~/town/entities'
 
 // One plain sentence per event, refusals included with their reason, newest first. Under the hood adds the
 // signers, the role checked, the transaction and the chain events behind each line. Selecting a line
 // shows the balance sheet rows its entry moved; while an adverse scenario is shown, the refusals and
-// incidents since it started are marked. See docs/architecture.md#story-lines.
-const props = defineProps<{ lines: Line[]; deployment: Deployment | undefined; selected?: number; alarms?: { from?: number; to?: number } }>()
+// incidents since it started are marked. An entity's details show its own lines the same way. See
+// docs/architecture.md#story-lines.
+const props = defineProps<{
+  lines: Line[]
+  deployment: Deployment | undefined
+  selected?: number
+  alarms?: { from?: number; to?: number }
+  underTheHood?: boolean
+  empty?: string
+}>()
 const emit = defineEmits<{ select: [seq: number | undefined] }>()
 
-const underTheHood = ref(false)
+const txBase = computed(() => explorer(props.deployment?.chainId))
 // The newest lines only, so a day after day of daily operation does not grow the page without end.
 const SHOWN = 300
 const shown = computed(() => props.lines.slice(-SHOWN).reverse())
@@ -32,11 +41,7 @@ function argText(value: unknown): string {
 
 <template>
   <section class="story" aria-label="Story view">
-    <header>
-      <h2>Story</h2>
-      <label><input v-model="underTheHood" type="checkbox" /> Under the hood</label>
-    </header>
-    <p v-if="!lines.length" class="empty">Nothing has happened yet.</p>
+    <p v-if="!lines.length" class="empty">{{ empty ?? 'Nothing has happened yet.' }}</p>
     <ol>
       <li
         v-for="line in shown"
@@ -47,12 +52,16 @@ function argText(value: unknown): string {
         @click="select(line)"
         @keydown.enter="select(line)"
       >
-        <span class="text">{{ sentence(line) }}</span>
+        <span class="text"><MoneyText :text="sentence(line)" /></span>
         <div v-if="underTheHood && line.kind !== 'operator'" class="hood">
           <div v-if="line.signers?.length">
             signed by {{ line.signers.join(', ') }}<template v-if="line.role"> · role checked: {{ line.role }}</template>
           </div>
-          <div>channel {{ line.channel }} · block {{ line.block }}<template v-if="line.tx"> · tx {{ line.tx.slice(0, 12) }}…</template></div>
+          <div>channel {{ line.channel }} · block {{ line.block }}<template v-if="line.tx">
+              · tx
+              <a v-if="txBase" :href="`${txBase}/tx/${line.tx}`" target="_blank" rel="noopener" @click.stop>{{ line.tx.slice(0, 12) }}…</a>
+              <span v-else :title="line.tx">{{ line.tx.slice(0, 12) }}…</span>
+            </template></div>
           <div v-if="line.reason">check that failed: {{ line.reason.error }}</div>
           <div v-for="(e, i) in line.events" :key="i">
             {{ e.contract }}.{{ e.name }}
@@ -71,24 +80,14 @@ function argText(value: unknown): string {
   flex: 0 0 auto;
 }
 
-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 13px;
-}
-
-h2 {
-  margin: 0 0 6px;
-  font-size: 15px;
-}
-
 ol {
   margin: 0;
   padding: 0;
   list-style: none;
-  max-height: 45vh;
-  overflow-y: auto;
+}
+
+.hood a {
+  color: inherit;
 }
 
 li {

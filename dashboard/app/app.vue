@@ -21,6 +21,7 @@ const playback = Boolean(useRuntimeConfig().public.playback)
   --bad: #b3261e;
   --bad-bg: #fbeceb;
   --wait: #d9922b;
+  --money: #8a5a00;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -35,6 +36,7 @@ const playback = Boolean(useRuntimeConfig().public.playback)
     --bad: #ff8a80;
     --bad-bg: #3a1f1d;
     --wait: #f0b45a;
+    --money: #f2c46b;
   }
 }
 
@@ -45,6 +47,14 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: system-ui, sans-serif;
+}
+
+/* Every amount of money reads apart from the words around it. */
+.money {
+  color: var(--money);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .dashboard {

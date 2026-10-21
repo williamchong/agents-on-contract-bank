@@ -1,11 +1,14 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { Card } from '~/composables/useControl'
 
-// What is being attempted, the control that should fire or the claim a tour beat makes, then pass or fail
-// with each check once it ends. See docs/architecture.md#dashboard.
-defineProps<{ card: Card | undefined }>()
+// The scene being played, in one plain sentence: what an adverse scenario attempts or the claim a tour beat
+// makes, then pass or fail once it ends. The control it tests, what to point at and each check are a click
+// away. See docs/architecture.md#dashboard.
+const props = defineProps<{ card: Card | undefined }>()
 
-const statusText: Record<Card['status'], string> = { running: 'Running…', passed: 'Passed', failed: 'Failed' }
+const statusText: Record<Card['status'], string> = { running: 'Playing', passed: 'Passed', failed: 'Failed' }
+const passed = computed(() => props.card?.checks.filter((c) => c.pass).length ?? 0)
 </script>
 
 <template>
@@ -14,15 +17,22 @@ const statusText: Record<Card['status'], string> = { running: 'Running…', pass
       <h2>{{ card.title }}</h2>
       <span class="status">{{ statusText[card.status] }}</span>
     </header>
-    <p v-if="card.control"><strong>Control:</strong> {{ card.control }}</p>
-    <p v-if="card.claim"><strong>Claim:</strong> {{ card.claim }}</p>
-    <p v-if="card.pointAt"><strong>Point at:</strong> {{ card.pointAt }}</p>
+    <p class="lead">{{ card.summary ?? card.claim }}</p>
     <p v-if="card.error" class="error">{{ card.error }}</p>
-    <ul>
-      <li v-for="c in card.checks" :key="c.name" :class="c.pass ? 'pass' : 'fail'">
-        {{ c.pass ? '✓' : '✗' }} {{ c.name }}<template v-if="!c.pass && c.detail">: {{ c.detail }}</template>
-      </li>
-    </ul>
+    <details v-if="card.control || card.pointAt || card.checks.length || (card.summary && card.claim)">
+      <summary>
+        <template v-if="card.checks.length">{{ passed }} of {{ card.checks.length }} checks passed</template>
+        <template v-else>What it tests</template>
+      </summary>
+      <p v-if="card.control"><strong>Control tested:</strong> {{ card.control }}</p>
+      <p v-if="card.summary && card.claim"><strong>Claim:</strong> {{ card.claim }}</p>
+      <p v-if="card.pointAt"><strong>Look at:</strong> {{ card.pointAt }}</p>
+      <ul>
+        <li v-for="c in card.checks" :key="c.name" :class="c.pass ? 'pass' : 'fail'">
+          {{ c.pass ? '✓' : '✗' }} {{ c.name }}<template v-if="!c.pass && c.detail">: {{ c.detail }}</template>
+        </li>
+      </ul>
+    </details>
   </section>
 </template>
 
@@ -47,6 +57,7 @@ header {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
+  gap: 8px;
 }
 
 h2 {
@@ -56,6 +67,30 @@ h2 {
 
 .status {
   font-weight: 600;
+  flex: none;
+}
+
+.passed .status {
+  color: var(--good);
+}
+
+.failed .status {
+  color: var(--bad);
+}
+
+.lead {
+  margin: 4px 0 0;
+  line-height: 1.45;
+}
+
+details {
+  margin-top: 6px;
+}
+
+summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 p {

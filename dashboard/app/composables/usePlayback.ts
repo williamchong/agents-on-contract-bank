@@ -1,12 +1,13 @@
 // A recorded run, played back with no chain or control service: the story up to a point in the run, the
 // scenario card showing there, and the bank's state at that line's block, read during the run by
 // `pnpm record`. Playback moves one story line at a time, so the waits of a time lock or a night take no
-// longer than any other step. See docs/plan.md open question 18.
+// longer than any other step. It starts playing once loaded if `autoplay` says so, so a visitor sees the
+// bank move at once. See docs/plan.md open question 18.
 
 import { computed, onScopeDispose, ref, shallowRef } from 'vue'
 import { parseBankState, type BankState } from '@bank/services/state'
 import type { Card } from '~/composables/useControl'
-import type { Deployment, Line } from '~/lib/story'
+import { sentence, type Deployment, type Line } from '~/lib/story'
 
 interface Recording {
   deployment: Deployment
@@ -16,11 +17,15 @@ interface Recording {
   states: unknown[]
 }
 
-// The control service's default pace, at ×1.
-const STEP_MS = 700
+// At ×1 each line stays long enough to read it.
 export const SPEEDS = [1, 2, 4, 8]
+function readingMs(line: Line | undefined): number {
+  if (!line) return 1000
+  if (line.kind === 'operator') return 900
+  return Math.min(5000, 1000 + 30 * sentence(line).length)
+}
 
-export function usePlayback(url: string) {
+export function usePlayback(url: string, autoplay: () => boolean = () => true) {
   const deployment = shallowRef<Deployment>()
   const all = shallowRef<Line[]>([])
   const chapters = shallowRef<Card[]>([])
@@ -60,6 +65,7 @@ export function usePlayback(url: string) {
       all.value = recording.lines
       chapters.value = recording.cards
       deployment.value = recording.deployment
+      if (autoplay()) play()
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
     }
@@ -67,7 +73,7 @@ export function usePlayback(url: string) {
 
   function schedule() {
     clearTimeout(timer)
-    if (playing.value) timer = setTimeout(step, STEP_MS / speed.value)
+    if (playing.value) timer = setTimeout(step, readingMs(lines.value.at(-1)) / speed.value)
   }
 
   function step() {

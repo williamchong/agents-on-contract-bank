@@ -60,47 +60,21 @@ export const roads: Road[] = [
   { from: [0, 4], to: [0, 7.5] },
 ]
 
-// Where each member of staff stands, marked with a short code for their role: the branch's people in a row
-// west of the branch, head office's in a row behind head office, and the red team, whose teller role is at
-// the second branch, out on the edge of town.
+// Staff work inside the building they belong to: the branch's people at the branch, the vault custodian at
+// the vault and head office's people at head office. Each building's label counts them, and its details
+// list them. The red team, whose teller role is at another branch, stands alone on the edge of town.
 export interface StaffPost {
   name: string
-  code: string
-  position: Vec3
-  color: string
+  building?: BuildingId
 }
 
-const branchStaff = '#d9822b'
-const headOfficeStaff = '#5f7f9a'
-const row = (names: [string, string][], z: number, x0: number, color: string): StaffPost[] =>
-  names.map(([name, code], i) => ({ name, code, position: [x0 + i * 1.3, 0, z] as Vec3, color }))
+const at = (building: BuildingId, names: string[]): StaffPost[] => names.map((name) => ({ name, building }))
 
 export const staffPosts: StaffPost[] = [
-  ...row(
-    [
-      ['teller', 'T'],
-      ['replacement teller', 'T2'],
-      ['supervisor', 'S'],
-      ['branch manager', 'BM'],
-      ['vault custodian', 'VC'],
-      ['account opening officer', 'AO'],
-    ],
-    6.4,
-    -13.4,
-    branchStaff,
-  ),
-  ...row(
-    [
-      ['compliance', 'C'],
-      ['back office', 'BO'],
-      ['finance', 'F'],
-      ['risk', 'R'],
-      ['support', 'Su'],
-      ['IT security', 'IT'],
-    ],
-    -3.2,
-    -3.2,
-    headOfficeStaff,
-  ),
-  { name: 'red team', code: 'RT', position: [13, 0, -6], color: '#c0392b' },
+  ...at('branch', ['teller', 'replacement teller', 'supervisor', 'branch manager', 'account opening officer']),
+  ...at('vault', ['vault custodian']),
+  ...at('head-office', ['compliance', 'back office', 'finance', 'risk', 'support', 'IT security']),
+  { name: 'red team' },
 ]
+
+export const redTeamSpot: Vec3 = [13, 0, -6]
