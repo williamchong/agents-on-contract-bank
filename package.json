@@ -11,10 +11,12 @@
     "scenarios": "hardhat run scripts/scenarios.ts",
     "demo": "hardhat run scripts/demo.ts --network localhost",
     "record": "hardhat run scripts/record.ts",
-    "record:base-sepolia": "export BASE_SEPOLIA_RPC_URL=${BASE_SEPOLIA_RPC_URL:-https://sepolia.base.org} && hardhat run scripts/record.ts --network baseSepolia"
+    "record:base-sepolia": "export BASE_SEPOLIA_RPC_URL=${BASE_SEPOLIA_RPC_URL:-https://sepolia.base.org} && hardhat run scripts/record.ts --network baseSepolia",
+    "verify:base-sepolia": "export BASE_SEPOLIA_RPC_URL=${BASE_SEPOLIA_RPC_URL:-https://sepolia.base.org} && hardhat run scripts/verify.ts --network baseSepolia"
   },
   "devDependencies": {
     "@bank/services": "workspace:*",
+    "@nomicfoundation/hardhat-verify": "3.1.2",
     "forge-std": "github:foundry-rs/forge-std#v1.11.0",
     "hardhat": "3.18.1",
     "typescript": "6.0.3"

@@ -252,6 +252,27 @@ export class Bank {
   }
 }
 
+// The contract each is an instance of, as deployBank deploys it.
+export const contractArtifacts: Record<keyof Contracts, ContractName> = {
+  verifier: 'ERC7913P256Verifier',
+  officers: 'MultiSignerAccount',
+  timelock: 'TimelockController',
+  manager: 'AccessManager',
+  limits: 'CustomerLimits',
+  token: 'DepositToken',
+  ledger: 'GeneralLedger',
+  staffRoles: 'StaffRoles',
+  holds: 'HoldRegister',
+  partnerKeys: 'PartnerKeys',
+  payments: 'Payments',
+  attestations: 'Attestations',
+  cash: 'CashOperations',
+  assisted: 'AssistedOperations',
+  recovery: 'AccountRecovery',
+  disputes: 'DisputeReversal',
+  incidents: 'IncidentLog',
+}
+
 const contractNames: Record<keyof Contracts, string> = {
   verifier: 'P256Verifier',
   officers: 'Officers',

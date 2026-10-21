@@ -2,7 +2,7 @@
 // Hardhat writes beside them, so a call with a wrong function name or argument fails the type check.
 
 import { readFileSync } from 'node:fs'
-import type { Abi, Hex } from 'viem'
+import { decodeDeployData, type Abi, type Hex } from 'viem'
 import type { AccessManager$Type } from '../../artifacts/@openzeppelin/contracts/access/manager/AccessManager.sol/artifacts.js'
 import type { TimelockController$Type } from '../../artifacts/@openzeppelin/contracts/governance/TimelockController.sol/artifacts.js'
 import type { ERC7913P256Verifier$Type } from '../../artifacts/@openzeppelin/contracts/utils/cryptography/verifiers/ERC7913P256Verifier.sol/artifacts.js'
@@ -72,6 +72,17 @@ export function abiOf<N extends ContractName>(name: N): Artifacts[N]['abi'] {
 
 export function bytecodeOf(name: ContractName): Hex {
   return read(name).bytecode as Hex
+}
+
+// The name a verifier knows the contract by: its source file and its name.
+export function qualifiedName(name: ContractName): string {
+  return `${sources[name]}:${name}`
+}
+
+// The constructor arguments a contract was deployed with, read back from its creation transaction's data,
+// which is its deploy data as the bank deploys every contract directly, never from another contract.
+export function constructorArgsOf(name: ContractName, data: Hex): readonly unknown[] {
+  return decodeDeployData({ abi: abiOf(name) as Abi, bytecode: bytecodeOf(name), data }).args ?? []
 }
 
 const cache = new Map<ContractName, Artifacts[ContractName]>()

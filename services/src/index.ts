@@ -1,3 +1,4 @@
+export { constructorArgsOf, qualifiedName, type ContractName } from './artifacts.ts'
 export * from './bank.ts'
 export * from './books.ts'
 export * from './chain.ts'

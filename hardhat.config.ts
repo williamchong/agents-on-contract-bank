@@ -1,6 +1,8 @@
+import hardhatVerify from "@nomicfoundation/hardhat-verify";
 import { configVariable, defineConfig } from "hardhat/config";
 
 export default defineConfig({
+  plugins: [hardhatVerify],
   solidity: {
     version: "0.8.27",
     settings: {
@@ -21,6 +23,10 @@ export default defineConfig({
       chainType: "op",
       url: configVariable("BASE_SEPOLIA_RPC_URL"),
     },
+  },
+  // Contract sources are verified on Etherscan, which Basescan shows, and on Sourcify: `pnpm verify:base-sepolia`.
+  verify: {
+    etherscan: { apiKey: configVariable("ETHERSCAN_API_KEY") },
   },
   test: {
     solidity: {
