@@ -174,8 +174,19 @@ export class Control {
           return
         }
       }
-      if (going()) await this.exclusive(() => this.nextBusinessDay())
+      if (going()) await this.nextDay()
     }
+  }
+
+  // Moves on to the next business day's opening, as daily operation does between its days.
+  nextDay(): Promise<void> {
+    return this.exclusive(() => this.nextBusinessDay())
+  }
+
+  // Calls `listener` with each line of the story from now on, as the recorder follows a run, until the
+  // returned function is called.
+  onLine(listener: (line: Line) => void): () => void {
+    return this.timeline.subscribe(listener)
   }
 
   // Moves block time on to 9 in the morning of the next weekday, Hong Kong time, as the contracts count days.

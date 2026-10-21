@@ -6,10 +6,12 @@
   "scripts": {
     "dev": "nuxt dev",
     "build": "nuxt build",
+    "generate:playback": "NUXT_PUBLIC_PLAYBACK=1 nuxt generate",
     "postinstall": "nuxt prepare",
     "check": "nuxt typecheck"
   },
   "dependencies": {
+    "@bank/services": "workspace:*",
     "@tresjs/cientos": "5.9.2",
     "@tresjs/core": "5.9.2",
     "nuxt": "4.5.2",

@@ -8,7 +8,8 @@ import type { Deployment, Line } from '~/lib/story'
 import { buildings, houseLots, roads, staffPosts } from '~/town/layout'
 import type { Building, Road, Vec3 } from '~/town/layout'
 
-const props = defineProps<{ deployment: Deployment | undefined; state: BankState | undefined; lines: Line[]; focus?: string }>()
+// `epoch` moves on when playback jumps, so the traffic starts again with the lines jumped over as history.
+const props = defineProps<{ deployment: Deployment | undefined; state: BankState | undefined; lines: Line[]; focus?: string; epoch?: number }>()
 
 const legend = staffPosts.map((p) => `${p.code} ${p.name}`).join(' · ')
 
@@ -172,7 +173,7 @@ function roadSize({ from, to }: Road): Vec3 {
       <TresMeshBasicMaterial color="#e8a33d" />
     </TresMesh>
 
-    <MapTraffic v-if="deployment" :deployment="deployment" :lines="lines" />
+    <MapTraffic v-if="deployment" :key="epoch" :deployment="deployment" :lines="lines" />
   </TresCanvas>
   <p class="legend">Staff: {{ legend }}</p>
   </div>

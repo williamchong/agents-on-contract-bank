@@ -36,7 +36,7 @@ function argText(value: unknown): string {
       <h2>Story</h2>
       <label><input v-model="underTheHood" type="checkbox" /> Under the hood</label>
     </header>
-    <p v-if="!lines.length" class="empty">Nothing has happened yet. Start daily operation or the tour.</p>
+    <p v-if="!lines.length" class="empty">Nothing has happened yet.</p>
     <ol>
       <li
         v-for="line in shown"

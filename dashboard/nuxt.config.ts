@@ -6,6 +6,8 @@ export default defineNuxtConfig({
   ssr: false,
   devtools: { enabled: false },
   telemetry: false,
+  // Set NUXT_PUBLIC_PLAYBACK=1 when building to play back a recorded run instead of driving a live one.
+  runtimeConfig: { public: { playback: false } },
   vue: {
     compilerOptions: templateCompilerOptions.template.compilerOptions,
   },

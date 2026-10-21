@@ -30,6 +30,9 @@ importers:
 
   dashboard:
     dependencies:
+      '@bank/services':
+        specifier: workspace:*
+        version: link:../services
       '@tresjs/cientos':
         specifier: 5.9.2
         version: 5.9.2(@tresjs/core@5.9.2(three@0.186.1)(vue@3.5.43(typescript@6.0.3)))(three@0.186.1)(vue@3.5.43(typescript@6.0.3))

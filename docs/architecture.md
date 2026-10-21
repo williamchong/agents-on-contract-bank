@@ -579,6 +579,10 @@ The operator can drive the simulation from the dashboard.
 
 Presets are scripted sequences of the same commands, so a run can be replayed identically. Adverse scenarios are scored against the pass criteria in [scenarios](scenarios.md).
 
+### Playback
+
+The same dashboard, built as static files, plays back a recorded run with nothing else running: no chain, control service or keys. The recorder drives the control service's own commands, the guided tour's beats and then a business day of daily routines for each adverse scenario, and keeps the deployment, the story, the scenario cards and the bank's state at every block of the run, read at that block while the run happens. The playback panel takes the control panel's place, with play and pause, speed, a scrubber across the story and the tour's beats and the scenarios as chapters to jump to. Playback moves one story line at a time, so a time lock or a night passes as quickly as any other step; a jump starts the bank map's traffic again, with the lines passed over taken as history. See [open question 18](plan.md#open-questions).
+
 ## Repository layout (planned)
 
 ```

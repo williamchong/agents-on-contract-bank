@@ -4,3 +4,5 @@ cache/
 .env
 .nuxt/
 .output/
+dashboard/public/recording.json
+dashboard/dist
