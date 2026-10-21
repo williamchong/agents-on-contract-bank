@@ -89,8 +89,12 @@ export function reasonOf(line: Line): string {
 // Head office's functions are named as functions; people and machines with "the".
 const functions = new Set(['compliance', 'finance', 'risk', 'support', 'back office', 'IT security', 'anyone', 'operator'])
 
+function capitalise(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
 function who(actor: string): string {
-  if (functions.has(actor)) return actor.charAt(0).toUpperCase() + actor.slice(1)
+  if (functions.has(actor)) return capitalise(actor)
   if (actor === 'ATM') return 'The ATM'
   return /^[A-Z]/.test(actor) ? actor : `The ${actor}`
 }
@@ -215,4 +219,31 @@ export function movements(line: Line): Movement[] {
   return line.events
     .filter((e) => e.contract === 'DepositToken' && e.name === 'Transfer')
     .map((e) => ({ from: String(e.args.from), to: String(e.args.to), amount: BigInt(String(e.args.value)), channel: line.channel }))
+}
+
+export const ZERO = '0x0000000000000000000000000000000000000000'
+
+export type Holder = 'Another bank' | 'Cash' | 'ATM' | 'Branch' | 'Post office'
+
+// Where a movement's side sits when it is not a customer: money made or destroyed came from or went to
+// another bank or cash, and money the bank holds waits at the ATM, the branch or the post office.
+export function holder(d: Deployment, address: string, other: string, channel: string): Holder | undefined {
+  const a = address.toLowerCase()
+  if (a === ZERO) return channel === 'partner' || other.toLowerCase() === d.contracts.payments?.toLowerCase() ? 'Another bank' : 'Cash'
+  if (a === d.contracts.cash?.toLowerCase()) return 'ATM'
+  if (a === d.contracts.assisted?.toLowerCase()) return 'Branch'
+  if (a === d.contracts.payments?.toLowerCase()) return 'Post office'
+  return undefined
+}
+
+export interface Entry {
+  from: string
+  to: string
+  amount: string
+}
+
+// The money a line moved as a passbook shows it: who paid whom, and how much.
+export function passbook(line: Line, d: Deployment, name: (address: string) => string): Entry[] {
+  const party = (address: string, other: string) => holder(d, address, other, line.channel) ?? capitalise(name(address))
+  return movements(line).map((m) => ({ from: party(m.from, m.to), to: party(m.to, m.from), amount: hkd(m.amount) }))
 }

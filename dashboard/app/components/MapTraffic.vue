@@ -2,7 +2,7 @@
 import { useLoop } from '@tresjs/core'
 import { Html } from '@tresjs/cientos'
 import { ref, shallowRef, watch } from 'vue'
-import { hkd, movements, reasonOf, type Deployment, type Line } from '~/lib/story'
+import { hkd, holder, movements, reasonOf, type Deployment, type Line } from '~/lib/story'
 import { buildings, houseLots, type BuildingId, type Vec3 } from '~/town/layout'
 
 // Money moving as coins between the places it was posted from and to, and a barrier where an attempt was
@@ -30,7 +30,6 @@ interface Barrier {
 
 const VAN_SECONDS = 2.2
 const BARRIER_SECONDS = 7
-const ZERO = '0x0000000000000000000000000000000000000000'
 
 const vans = shallowRef<Van[]>([])
 const barriers = shallowRef<Barrier[]>([])
@@ -51,13 +50,17 @@ function addressPlace(address: string, other: string, channel: string): Vec3 {
   const i = customers.findIndex(([, x]) => x.toLowerCase() === a)
   if (i >= 0) return houseLots[i] ?? place('head-office')
   if (a === d.customers['other customers']?.toLowerCase()) return [-12, 0, 9]
-  if (a === ZERO) {
-    if (channel === 'partner' || other.toLowerCase() === d.contracts.payments?.toLowerCase()) return place('clearing-house')
-    return place(channel === 'atm' ? 'atm' : 'branch')
+  switch (holder(d, address, other, channel)) {
+    case 'Another bank':
+      return place('clearing-house')
+    case 'Cash':
+    case 'ATM':
+      return place(channel === 'atm' ? 'atm' : 'branch')
+    case 'Branch':
+      return place('branch')
+    case 'Post office':
+      return place('post-office')
   }
-  if (a === d.contracts.cash?.toLowerCase()) return place(channel === 'atm' ? 'atm' : 'branch')
-  if (a === d.contracts.assisted?.toLowerCase()) return place('branch')
-  if (a === d.contracts.payments?.toLowerCase()) return place('post-office')
   return place('head-office')
 }
 
