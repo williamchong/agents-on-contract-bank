@@ -28,6 +28,9 @@ export interface CreditAdvice {
   signature: Hex
 }
 
+// The most blocks Base Sepolia's public endpoint returns logs for in one request.
+const LOG_WINDOW = 200n
+
 export class Clearing {
   private readonly bank: Bank
   // The bank's settlement account as the clearing system books it, in time order.
@@ -66,19 +69,24 @@ export class Clearing {
     const client = this.bank.chain.client
     // Read fresh rather than through the client's cached block number, which can trail the chain.
     const { number: toBlock } = await client.getBlock()
-    if (toBlock <= this.syncedTo) return
-    const logs = await client.getContractEvents({
-      address: this.bank.contracts.payments,
-      abi: abiOf('Payments'),
-      eventName: 'PaymentSent',
-      fromBlock: this.syncedTo + 1n,
-      toBlock,
-    })
-    for (const log of logs) {
-      const { timestamp } = await client.getBlock({ blockNumber: log.blockNumber })
-      this.book.push({ time: timestamp, balance: this.balance() - log.args.amount! })
+    // A public endpoint answers for a limited range of blocks at a time, and a time lock waited out there
+    // spans hundreds, so the range is read a window at a time.
+    while (this.syncedTo < toBlock) {
+      const fromBlock = this.syncedTo + 1n
+      const windowEnd = fromBlock + LOG_WINDOW - 1n < toBlock ? fromBlock + LOG_WINDOW - 1n : toBlock
+      const logs = await client.getContractEvents({
+        address: this.bank.contracts.payments,
+        abi: abiOf('Payments'),
+        eventName: 'PaymentSent',
+        fromBlock,
+        toBlock: windowEnd,
+      })
+      for (const log of logs) {
+        const { timestamp } = await client.getBlock({ blockNumber: log.blockNumber })
+        this.book.push({ time: timestamp, balance: this.balance() - log.args.amount! })
+      }
+      this.syncedTo = windowEnd
     }
-    this.syncedTo = toBlock
   }
 
   // A payment from another bank's customer: the clearing system credits the bank and sends the advice.
