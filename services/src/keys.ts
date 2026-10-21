@@ -1,6 +1,7 @@
 // P-256 keys, the key type of hardware security modules, chip cards and passkeys. Every key in the
 // simulation is derived from a name, as the contract tests derive theirs, so a run can be replayed and a
-// test and a script name the same key. See docs/plan.md open question 12.
+// test and a script name the same key. On a public chain the name is mixed with a secret seed, so no one
+// who reads the names here can sign as the bank's staff. See docs/plan.md open question 12.
 
 import { p256 } from '@noble/curves/nist.js'
 import { concat, keccak256, numberToHex, toBytes, toHex, type Address, type Hex } from 'viem'
@@ -12,8 +13,9 @@ export interface Key {
   secret: bigint
 }
 
-export function keyOf(name: string): Key {
-  return { name, secret: (BigInt(keccak256(toBytes(name))) % (N - 1n)) + 1n }
+export function keyOf(name: string, seed?: Hex): Key {
+  const preimage = seed ? concat([seed, toHex(name)]) : toHex(name)
+  return { name, secret: (BigInt(keccak256(preimage)) % (N - 1n)) + 1n }
 }
 
 function secretBytes(key: Key): Uint8Array {

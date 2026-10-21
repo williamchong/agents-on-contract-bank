@@ -283,7 +283,7 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
   const settings = chain.local ? Settings : PublicChainSettings
   const deployer = new Deployer(chain)
   const verifier = await deployer.deploy('ERC7913P256Verifier', [])
-  const signer = new Signer(verifier, chain.chainId)
+  const signer = new Signer(verifier, chain.chainId, chain.keySeed)
 
   const officerKeys = Officers.map((o) => `officer:${o}`)
   const officers = await deployer.account(signer, officerKeys, settings.governanceThreshold, zeroAddress)

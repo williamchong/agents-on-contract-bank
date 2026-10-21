@@ -30,17 +30,20 @@ export class Signer {
   // The P-256 verifier every key is registered through.
   readonly verifier: Address
   readonly chainId: number
+  // Mixed into every key's name on a public chain; see keys.ts.
+  private readonly seed: Hex | undefined
   private readonly keys = new Map<string, Key>()
 
-  constructor(verifier: Address, chainId: number) {
+  constructor(verifier: Address, chainId: number, seed?: Hex) {
     this.verifier = verifier
     this.chainId = chainId
+    this.seed = seed
   }
 
   key(name: string): Key {
     let key = this.keys.get(name)
     if (!key) {
-      key = keyOf(name)
+      key = keyOf(name, this.seed)
       this.keys.set(name, key)
     }
     return key

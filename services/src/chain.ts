@@ -6,9 +6,12 @@
 import {
   createPublicClient,
   createTestClient,
+  concat,
   createWalletClient,
   custom,
   http,
+  keccak256,
+  toHex,
   type Account,
   type Address,
   type Hex,
@@ -30,6 +33,9 @@ export interface Chain {
   chainId: number
   // Whether block time can be moved, as on Hardhat's chains.
   local: boolean
+  // On a public chain, the secret every signing key is derived with, so the keys cannot be worked out from
+  // their names in this repository.
+  keySeed?: Hex
 }
 
 // An EIP-1193 provider, such as Hardhat's, or a node's URL.
@@ -61,7 +67,10 @@ export async function connect(provider: Provider, key?: Hex): Promise<Chain> {
   if (!relayer) throw new Error('The chain offers no funded account to relay from')
   const wallet = createWalletClient({ transport, account: account ?? relayer })
   const test = createTestClient({ mode: 'hardhat', transport })
-  return { client, wallet, test, relayer, chainId, local }
+  // Derived from the relayer's key rather than kept as a second secret; a new run deploys a new bank, so
+  // nothing needs the seed afterwards.
+  const keySeed = key && keccak256(concat([key, toHex('signing keys')]))
+  return { client, wallet, test, relayer, chainId, local, keySeed }
 }
 
 export async function blockTime(chain: Chain): Promise<bigint> {
