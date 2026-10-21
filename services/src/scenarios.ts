@@ -272,20 +272,20 @@ export const presets: Preset[] = [
     control: "Recovery module: an account opening officer with a supervisor's approval, signer list only",
     async run(ctx) {
       const { bank } = ctx
-      const account = bank.account('Carol')
-      const balance = await balanceOf(bank, 'Carol')
+      const account = bank.account('Dave')
+      const balance = await balanceOf(bank, 'Dave')
       const total = await supply(bank)
       const isSigner = (key: string) => bank.read('MultiSignerAccount', account, 'isSigner', [bank.signer.signerBytes(key)])
-      const phone = bank.party('Carol').keys[0]!
-      const card = bank.cardOf('Carol')
-      const newPhone = bank.freshKey('Carol:phone')
-      const newCard = bank.freshKey('Carol:card')
-      const proposed = await proposeRecovery(bank, 'Carol', [phone, card], [newPhone, newCard])
+      const phone = bank.party('Dave').keys[0]!
+      const card = bank.cardOf('Dave')
+      const newPhone = bank.freshKey('Dave:phone')
+      const newCard = bank.freshKey('Dave:card')
+      const proposed = await proposeRecovery(bank, 'Dave', [phone, card], [newPhone, newCard])
       const waited = proposed.ok && (await isSigner(phone)) && !(await isSigner(newPhone))
       const recovered = proposed.ok ? await approveRecovery(bank, proposed) : proposed
-      if (recovered.ok) bank.setDevices('Carol', [newPhone], newCard)
+      if (recovered.ok) bank.setDevices('Dave', [newPhone], newCard)
       const pay = (key: string) =>
-        bank.act('Carol', 'app', `pay from ${key}`, [bank.call('DepositToken', bank.contracts.token, 'transfer', [bank.account('Dave'), 1n])], [key])
+        bank.act('Dave', 'app', `pay from ${key}`, [bank.call('DepositToken', bank.contracts.token, 'transfer', [bank.account('Bob'), 1n])], [key])
       const oldPhone = await pay(phone)
       return [
         check('the recovery waits for the supervisor', waited),
@@ -294,7 +294,7 @@ export const presets: Preset[] = [
         check('the old signers are gone', !(await isSigner(phone)) && !(await isSigner(card))),
         check('a new phone and card are enrolled', (await isSigner(newPhone)) && (await isSigner(newCard))),
         refusedWith('the lost phone can no longer sign', oldPhone, 'InvalidExecutionSignature'),
-        check('the address and balance are unchanged', bank.account('Carol') === account && (await balanceOf(bank, 'Carol')) === balance),
+        check('the address and balance are unchanged', bank.account('Dave') === account && (await balanceOf(bank, 'Dave')) === balance),
         check('no money moved', (await supply(bank)) === total),
         ...(await invariants(bank)),
       ]
