@@ -1,5 +1,6 @@
-# Records a run on Hardhat's in-process chain and publishes the dashboard that plays it back to GitHub Pages.
-# See docs/architecture.md#playback.
+# Publishes the dashboard that plays back the run recorded on Base Sepolia, recordings/base-sepolia.json, to
+# GitHub Pages. The run is recorded once with `pnpm record:base-sepolia`, not on each push, as each run deploys
+# a new bank there. See docs/architecture.md#playback.
 name: Pages
 
 on:
@@ -29,7 +30,9 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The local recording is still made, as a check that every card passes, then the Base Sepolia one replaces it.
       - run: pnpm record
+      - run: cp recordings/base-sepolia.json dashboard/public/recording.json
       - id: pages
         uses: actions/configure-pages@v5
       - run: pnpm --filter dashboard generate:playback
