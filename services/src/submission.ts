@@ -14,7 +14,7 @@ import {
 } from 'viem'
 import { allAbis } from './artifacts.ts'
 import type { Chain } from './chain.ts'
-import type { ChainEvent, Line, Timeline } from './timeline.ts'
+import type { Attempt, ChainEvent, Line, Timeline } from './timeline.ts'
 
 export interface Request {
   // Who acted, as the story view names them, such as "teller of branch 1" or "Alice".
@@ -28,6 +28,8 @@ export interface Request {
   // Shown when the line is opened: the keys that signed, and the role the request is checked against.
   signers?: string[]
   role?: string
+  // The money it would move, kept on the line if it is refused.
+  attempt?: Attempt
 }
 
 export type Outcome =
@@ -88,6 +90,7 @@ export class Submission {
         signers: request.signers,
         role: request.role,
         reason: refusal,
+        attempt: request.attempt,
         events: [],
       })
       return { ok: false, line, ...refusal }

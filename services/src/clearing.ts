@@ -5,7 +5,7 @@
 // what it actually settled, so they differ from the bank's only when something really happened that the
 // bank did not book, which is what the ledger mismatch scenario injects. See docs/architecture.md#services.
 
-import { keccak256, padHex, stringToHex, toBytes, type Address, type Hex } from 'viem'
+import { keccak256, padHex, sliceHex, stringToHex, toBytes, zeroAddress, type Address, type Hex } from 'viem'
 import { abiOf } from './artifacts.ts'
 import { partnerKey, type Bank } from './bank.ts'
 import { Ledger, Opening } from './books.ts'
@@ -117,6 +117,8 @@ export class Clearing {
       'partner',
       action,
       this.bank.call('Payments', this.bank.contracts.payments, 'receiveCredit', [advice.message, advice.signature]),
+      // The creditor is an address padded to 32 bytes, or a hash where the payer named no account of the bank's.
+      { from: zeroAddress, to: sliceHex(advice.message.creditorAccount, 12), amount: advice.message.amount },
     )
   }
 

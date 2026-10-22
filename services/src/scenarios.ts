@@ -2,7 +2,7 @@
 // criteria in docs/scenarios.md. A preset whose routine needs a contract still to come runs the part
 // that exists and lists the rest in `waitsFor`, so the score never claims more than was run.
 
-import { isAddressEqual, keccak256, numberToHex, toBytes, type Address, type Hex } from 'viem'
+import { isAddressEqual, keccak256, numberToHex, toBytes, zeroAddress, type Address, type Hex } from 'viem'
 import { grantThroughBranch, Staff, type Bank } from './bank.ts'
 import { DisputeStatus, drawer, HKD, Ledger, OperationStatus, Opening, PaymentStatus, vault } from './books.ts'
 import { advance } from './chain.ts'
@@ -239,11 +239,14 @@ export const presets: Preset[] = [
           bank.call('MultiSignerAccount', alice, 'removeSigners', [[bank.signer.signerBytes(lost)]]),
           bank.call('MultiSignerAccount', alice, 'addSigners', [[bank.signer.signerBytes(phone)]]),
         ],
-        [bank.cardOf('Alice')],
+        { keys: [bank.cardOf('Alice')] },
       )
       if (replaced.ok) bank.setDevices('Alice', [phone])
       const pay = (keys: string[], action: string) =>
-        bank.act('Alice', 'app', action, [bank.call('DepositToken', c.token, 'transfer', [bank.account('Bob'), 1n])], keys)
+        bank.act('Alice', 'app', action, [bank.call('DepositToken', c.token, 'transfer', [bank.account('Bob'), 1n])], {
+          keys,
+          attempt: { from: bank.account('Alice'), to: bank.account('Bob'), amount: 1n },
+        })
       const oldPhone = await pay([lost], 'pay from the lost phone')
       const newPhone = await pay([phone], 'pay from the new phone')
       return [
@@ -287,7 +290,10 @@ export const presets: Preset[] = [
       const recovered = proposed.ok ? await approveRecovery(bank, proposed) : proposed
       if (recovered.ok) bank.setDevices('Dave', [newPhone], newCard)
       const pay = (key: string) =>
-        bank.act('Dave', 'app', `pay from ${key}`, [bank.call('DepositToken', bank.contracts.token, 'transfer', [bank.account('Bob'), 1n])], [key])
+        bank.act('Dave', 'app', `pay from ${key}`, [bank.call('DepositToken', bank.contracts.token, 'transfer', [bank.account('Bob'), 1n])], {
+          keys: [key],
+          attempt: { from: bank.account('Dave'), to: bank.account('Bob'), amount: 1n },
+        })
       const oldPhone = await pay(phone)
       return [
         check('the recovery waits for the supervisor', waited),
@@ -548,16 +554,28 @@ export const presets: Preset[] = [
       const approveOwn = ownRef ? await decide(bank, 'red team', 'assisted', ownRef, 'approve') : own
       // Its own operation is cancelled again, so the money it moved goes back.
       if (ownRef) await bank.act('red team', 'branch', 'cancel it again', [bank.call('AssistedOperations', c.assisted, 'cancel', [ownRef])])
-      const forced = await bank.act('red team', 'branch', 'call the forced transfer directly', [
-        bank.call('DepositToken', c.token, 'forcedTransfer', [bank.account('Alice'), bank.account('red team'), 100n * HKD]),
-      ])
-      const atOtherBranch = await bank.act('red team', 'branch', 'take cash in at branch 1 with a teller role for branch 2', [
-        bank.call('CashOperations', c.cash, 'deposit', [1n, bank.account('Alice'), 100n * HKD]),
-      ])
+      const forced = await bank.act(
+        'red team',
+        'branch',
+        'call the forced transfer directly',
+        [bank.call('DepositToken', c.token, 'forcedTransfer', [bank.account('Alice'), bank.account('red team'), 100n * HKD])],
+        { attempt: { from: bank.account('Alice'), to: bank.account('red team'), amount: 100n * HKD } },
+      )
+      const atOtherBranch = await bank.act(
+        'red team',
+        'branch',
+        'take cash in at branch 1 with a teller role for branch 2',
+        [bank.call('CashOperations', c.cash, 'deposit', [1n, bank.account('Alice'), 100n * HKD])],
+        { attempt: { from: zeroAddress, to: bank.account('Alice'), amount: 100n * HKD } },
+      )
       const replay = await submitAtmWithdrawal(bank, 'Alice', card)
-      const notOnboarded = await bank.act('Alice', 'app', 'send money to an account that is not onboarded', [
-        bank.call('DepositToken', c.token, 'transfer', [stranger, 100n * HKD]),
-      ])
+      const notOnboarded = await bank.act(
+        'Alice',
+        'app',
+        'send money to an account that is not onboarded',
+        [bank.call('DepositToken', c.token, 'transfer', [stranger, 100n * HKD])],
+        { attempt: { from: bank.account('Alice'), to: stranger, amount: 100n * HKD } },
+      )
       // With Alice's phone in hand: more than the app limit, then a stranger above the small limit.
       const overAppLimit = await transfer(bank, 'Alice', 'Bob', bank.settings.appLimit + HKD)
       const strangerPaid = await payOut(bank, 'Alice', "the red team's account at another bank", bank.settings.unregisteredPayeeLimit + HKD)

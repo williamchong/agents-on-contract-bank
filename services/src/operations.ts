@@ -1,7 +1,7 @@
 // What each scripted actor can do, through its own account and the channel it acts from. AI agents get the
 // same operations as tools at milestone 5; see docs/roles.md.
 
-import { keccak256, numberToHex, toBytes, type Address, type Hex } from 'viem'
+import { keccak256, numberToHex, toBytes, zeroAddress, type Address, type Hex } from 'viem'
 import { ref, type Bank } from './bank.ts'
 import { atm, drawer, hkd, Holders, Ledger, vault, type CustomerName, type Location } from './books.ts'
 import type { Outcome } from './submission.ts'
@@ -55,9 +55,9 @@ export async function cashSplitMatchesLedger(bank: Bank): Promise<boolean> {
 // Customers, from their own devices
 
 export function transfer(bank: Bank, from: CustomerName, to: string, amount: bigint): Promise<Outcome> {
-  return bank.act(from, 'app', `transfer ${hkd(amount)} to ${to}`, [
-    bank.call('DepositToken', bank.contracts.token, 'transfer', [bank.account(to), amount]),
-  ])
+  return bank.act(from, 'app', `transfer ${hkd(amount)} to ${to}`, [bank.call('DepositToken', bank.contracts.token, 'transfer', [bank.account(to), amount])], {
+    attempt: { from: bank.account(from), to: bank.account(to), amount },
+  })
 }
 
 // The customer registers a payee from their phone; it counts as registered once the waiting period ends.
@@ -71,10 +71,13 @@ export function registerPayee(bank: Bank, customer: CustomerName, payee: string)
 // with the bank; the chain sees their hash.
 export function payOut(bank: Bank, from: CustomerName, payee: string, amount: bigint): Promise<Outcome> {
   const c = bank.contracts
-  return bank.act(from, 'app', `pay ${hkd(amount)} to ${payee}`, [
-    bank.call('DepositToken', c.token, 'approve', [c.payments, amount]),
-    bank.call('Payments', c.payments, 'pay', [amount, payeeHash(payee)]),
-  ])
+  return bank.act(
+    from,
+    'app',
+    `pay ${hkd(amount)} to ${payee}`,
+    [bank.call('DepositToken', c.token, 'approve', [c.payments, amount]), bank.call('Payments', c.payments, 'pay', [amount, payeeHash(payee)])],
+    { attempt: { from: bank.account(from), to: c.payments, amount } },
+  )
 }
 
 // The hash of a payee's details, which is all the chain keeps of them.
@@ -137,9 +140,10 @@ export async function withdrawAtAtm(bank: Bank, customer: CustomerName, amount: 
 
 // The ATM submits a card authorisation it was given, which a replay attempt reuses.
 export function submitAtmWithdrawal(bank: Bank, customer: CustomerName, card: CardAuthorisation, branch = 1n): Promise<Outcome> {
-  return bank.act('ATM', 'atm', `withdraw ${hkd(card.amount)} for ${customer} by card`, [
-    bank.call('CashOperations', bank.contracts.cash, 'withdrawAtAtm', [branch, card]),
-  ])
+  const c = bank.contracts
+  return bank.act('ATM', 'atm', `withdraw ${hkd(card.amount)} for ${customer} by card`, [bank.call('CashOperations', c.cash, 'withdrawAtAtm', [branch, card])], {
+    attempt: { from: bank.account(customer), to: c.cash, amount: card.amount },
+  })
 }
 
 // The ATM reports whether it dispensed the cash it was asked for.
@@ -153,9 +157,13 @@ export function reportDispense(bank: Bank, ref: Hex, dispensed: boolean): Promis
 // The branch
 
 export function cashDeposit(bank: Bank, customer: CustomerName, amount: bigint, teller = 'teller', branch = 1n): Promise<Outcome> {
-  return bank.act(teller, 'branch', `take ${hkd(amount)} in cash for ${customer}`, [
-    bank.call('CashOperations', bank.contracts.cash, 'deposit', [branch, bank.account(customer), amount]),
-  ])
+  return bank.act(
+    teller,
+    'branch',
+    `take ${hkd(amount)} in cash for ${customer}`,
+    [bank.call('CashOperations', bank.contracts.cash, 'deposit', [branch, bank.account(customer), amount])],
+    { attempt: { from: zeroAddress, to: bank.account(customer), amount } },
+  )
 }
 
 // The vault custodian records a move or a count, and a supervisor confirms it.
@@ -186,15 +194,16 @@ export async function transferAtCounter(
   branch = 1n,
 ): Promise<Outcome> {
   const c = bank.contracts
+  const attempt = { from: bank.account(customer), to: c.assisted, amount }
   if ('card' in by) {
     const card = await authorise(bank, customer, { module: 'assisted', purpose: 'TRANSFER', branch, recipient: bank.account(to) }, amount)
     return bank.act(teller, 'branch', `transfer ${hkd(amount)} from ${customer} to ${to} on their card`, [
       bank.call('AssistedOperations', c.assisted, 'transfer', [branch, bank.account(to), card]),
-    ])
+    ], { attempt })
   }
   return bank.act(teller, 'branch', `transfer ${hkd(amount)} from ${customer} to ${to} on a paper slip`, [
     bank.call('AssistedOperations', c.assisted, 'transferOnPaper', [branch, bank.account(customer), bank.account(to), amount, slipHash(by.slip)]),
-  ])
+  ], { attempt })
 }
 
 // A teller's payment for a customer to someone at another bank, on the customer's card at the counter or
@@ -211,21 +220,23 @@ export async function payAtCounter(
 ): Promise<Outcome> {
   const c = bank.contracts
   const hash = payeeHash(payee)
+  const attempt = { from: bank.account(customer), to: c.assisted, amount }
   if ('card' in by) {
     const card = await authorise(bank, customer, { module: 'assisted', purpose: { payee: hash }, branch, recipient: c.payments }, amount)
     return bank.act(teller, 'branch', `pay ${hkd(amount)} from ${customer} to ${payee} on their card`, [
       bank.call('AssistedOperations', c.assisted, 'pay', [branch, hash, card]),
-    ])
+    ], { attempt })
   }
   return bank.act(teller, 'branch', `pay ${hkd(amount)} from ${customer} to ${payee} on a paper slip`, [
     bank.call('AssistedOperations', c.assisted, 'payOnPaper', [branch, bank.account(customer), hash, amount, slipHash(by.slip)]),
-  ])
+  ], { attempt })
 }
 
 export async function withdrawAtCounter(bank: Bank, customer: CustomerName, amount: bigint, slip: string, teller = 'teller', branch = 1n): Promise<Outcome> {
+  const c = bank.contracts
   return bank.act(teller, 'branch', `pay out ${hkd(amount)} in cash to ${customer} on a paper slip`, [
-    bank.call('CashOperations', bank.contracts.cash, 'withdrawAtCounterOnPaper', [branch, bank.account(customer), amount, slipHash(slip)]),
-  ])
+    bank.call('CashOperations', c.cash, 'withdrawAtCounterOnPaper', [branch, bank.account(customer), amount, slipHash(slip)]),
+  ], { attempt: { from: bank.account(customer), to: c.cash, amount } })
 }
 
 // The hash of a scanned slip, which is all the chain keeps of it.

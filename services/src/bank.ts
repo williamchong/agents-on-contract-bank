@@ -30,7 +30,7 @@ import { advance, type Chain } from './chain.ts'
 import { atBranch, BranchRole, roleName, Roles } from './roles.ts'
 import { Signer } from './signer.ts'
 import { Submission, type Outcome } from './submission.ts'
-import { Timeline } from './timeline.ts'
+import { Timeline, type Attempt } from './timeline.ts'
 
 // The demo values in docs/roles.md, local profile.
 export const Settings = {
@@ -209,8 +209,9 @@ export class Bank {
     return this.chain.client.getBlock().then((b) => b.timestamp)
   }
 
-  // A party acts: its keys sign the batch for its account, and the submission service relays it.
-  async act(name: string, channel: string, action: string, calls: Call[], keys?: string[]): Promise<Outcome> {
+  // A party acts: its keys sign the batch for its account, and the submission service relays it. `keys` are
+  // all the party's own unless named, and `attempt` is the money the batch would move.
+  async act(name: string, channel: string, action: string, calls: Call[], { keys, attempt }: { keys?: string[]; attempt?: Attempt } = {}): Promise<Outcome> {
     const party = this.party(name)
     const executionData = encodeCalls(calls)
     const nonce = await this.read('MultiSignerAccount', party.account, 'executionNonce', [])
@@ -222,6 +223,7 @@ export class Bank {
       action,
       signers,
       role: roleChecked(name),
+      attempt,
       to: party.account,
       data: encodeFunctionData({ abi: abiOf('MultiSignerAccount'), functionName: 'executeSigned', args: [executionData, signature] }),
     })
@@ -229,8 +231,8 @@ export class Bank {
 
   // A request whose authority is a signature inside it, relayed with no account of its own, such as a
   // partner's message the partner adapter carries.
-  relay(actor: string, channel: string, action: string, call: Call): Promise<Outcome> {
-    return this.submission.submit({ actor, channel, action, ...call })
+  relay(actor: string, channel: string, action: string, call: Call, attempt?: Attempt): Promise<Outcome> {
+    return this.submission.submit({ actor, channel, action, attempt, ...call })
   }
 
   read<N extends ContractName, const F extends ContractFunctionName<AbiOf<N>, Read>>(

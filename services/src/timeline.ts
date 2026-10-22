@@ -27,7 +27,16 @@ export interface Line {
   tx?: Hex
   // For a refusal, the rule that stopped it, as the contract's error and its arguments.
   reason?: { error: string; args: unknown[] }
+  // For a refusal, the money it would have moved, so the bank map can play the attempt up to the refusal.
+  attempt?: Attempt
   events: ChainEvent[]
+}
+
+// A token transfer a request would make, as its first Transfer event would report it if it were allowed.
+export interface Attempt {
+  from: Address
+  to: Address
+  amount: bigint
 }
 
 export class Timeline {
