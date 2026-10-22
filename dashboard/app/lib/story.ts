@@ -2,6 +2,7 @@
 // what is still waiting, and the money each line moved for the bank map. The timeline comes from the
 // control service; see docs/plan.md open question 23 and docs/architecture.md#story-lines.
 
+import type { Tone } from '~/town/palette'
 import { hkd } from './money'
 
 export { hkd }
@@ -255,10 +256,21 @@ export interface Entry {
   from: string
   to: string
   amount: string
+  // Each side's colour by what it does, when the caller gives one.
+  fromTone?: Tone
+  toTone?: Tone
 }
 
+type Toner = (address: string, other: string, channel: string) => Tone | undefined
+
 // The money a line moved as a passbook shows it: who paid whom, and how much.
-export function passbook(line: Line, d: Deployment, name: (address: string) => string): Entry[] {
+export function passbook(line: Line, d: Deployment, name: (address: string) => string, tone?: Toner): Entry[] {
   const party = (address: string, other: string) => holder(d, address, other, line.channel) ?? capitalise(name(address))
-  return movements(line).map((m) => ({ from: party(m.from, m.to), to: party(m.to, m.from), amount: hkd(m.amount) }))
+  return movements(line).map((m) => ({
+    from: party(m.from, m.to),
+    to: party(m.to, m.from),
+    amount: hkd(m.amount),
+    fromTone: tone?.(m.from, m.to, line.channel),
+    toTone: tone?.(m.to, m.from, line.channel),
+  }))
 }

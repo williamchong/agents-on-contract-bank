@@ -9,6 +9,7 @@ import type { Deployment, Line } from '~/lib/story'
 import { customerId, parse, staffId, staffPresent, type EntityId } from '~/town/entities'
 import { framePoints, involved } from '~/town/focus'
 import { buildings, houseLots, redTeamSpot, roads, staffPosts } from '~/town/layout'
+import { tones, type Tone } from '~/town/palette'
 import type { Building, Road, Vec3 } from '~/town/layout'
 
 // `epoch` moves on when playback jumps, so the traffic starts again with the lines jumped over as history.
@@ -90,6 +91,8 @@ function labelClass(id: EntityId | undefined) {
   return [tier(id), { on: !!id && props.selected === id }]
 }
 
+const labelTone = (tone: Tone) => ({ borderLeftColor: tones[tone].color })
+
 function pick(id: EntityId, e?: { stopPropagation?: () => void }) {
   e?.stopPropagation?.()
   emit('select', id)
@@ -108,7 +111,10 @@ const houseWidth = 1.4
 const roofHeight = 0.7
 // Where a customer stands, by their house's door on the side the camera sees.
 const customerSpot: Vec3 = [houseWidth / 2 + 0.35, 0, houseWidth / 2 + 0.1]
-const CUSTOMER = '#3f6fa8'
+const CUSTOMER = tones.customer.color
+// Houses are pale and roofed in the customers' blue, so a home reads as theirs.
+const HOUSE = '#d6e3f2'
+const WATER = '#1f8a9e'
 // A house's height grows with its owner's balance, up to this balance.
 const tallestHouse = 150_000n * HKD
 // The water tower is full at twice the opening settlement balance.
@@ -159,12 +165,12 @@ const staffCount = computed(() => {
 })
 
 const key = [
+  ...Object.values(tones).map((t) => ({ color: t.color, text: t.key })),
   { color: CUSTOMER, text: 'A figure is a person: a customer stands at their door' },
-  { color: '#f2e6d0', text: 'A house is what a customer holds; it grows with their balance' },
-  { color: '#2f7fc1', text: 'The water is the bank’s money at the clearing system' },
+  { color: HOUSE, text: 'A house is what a customer holds; it grows with their balance' },
+  { color: WATER, text: 'The water is the bank’s money at the clearing system' },
   { color: '#f2b134', text: 'Gold coins are money moving' },
   { color: '#c0392b', text: 'A red wall stops an attempt the chain refused, and sends it back' },
-  { color: '#c0392b', text: 'The red figure is the red team, an attacker' },
 ]
 
 function isTower(b: Building) {
@@ -233,7 +239,7 @@ function roadSize({ from, to }: Road): Vec3 {
         <TresMeshStandardMaterial :color="shade(building.color, building.id)" :transparent="isTower(building)" :opacity="isTower(building) ? 0.35 : 1" />
       </TresMesh>
       <Html :position="[0, building.size[1] + 0.6, 0]" center :z-index-range="[5, 0]">
-        <button class="label" :class="labelClass(building.id)" @click="pick(building.id)">
+        <button class="label" :class="labelClass(building.id)" :style="labelTone(building.tone)" @click="pick(building.id)">
           {{ building.label }}<span v-if="staffCount[building.id]" class="staff" :title="`${staffCount[building.id]} staff work here`">👥 {{ staffCount[building.id] }}</span>
           <small v-if="figures[building.id]"><MoneyText :text="figures[building.id]!" /></small>
         </button>
@@ -243,7 +249,7 @@ function roadSize({ from, to }: Road): Vec3 {
     <!-- The water in the tower is the settlement account's balance. -->
     <TresMesh :position="[water.tower.position[0], water.height / 2, water.tower.position[2]]">
       <TresCylinderGeometry :args="[water.tower.size[0] / 2 - 0.08, water.tower.size[0] / 2 - 0.08, water.height, 16]" />
-      <TresMeshStandardMaterial :color="shade('#2f7fc1', 'water-tower')" />
+      <TresMeshStandardMaterial :color="shade(WATER, 'water-tower')" />
     </TresMesh>
 
     <TresGroup v-for="(house, i) in houses" :key="i" :position="[house.lot[0], 0, house.lot[2]]">
@@ -255,12 +261,12 @@ function roadSize({ from, to }: Road): Vec3 {
         @pointerleave="hover(false)"
       >
         <TresBoxGeometry :args="[houseWidth, house.height, houseWidth]" />
-        <TresMeshStandardMaterial :color="shade('#f2e6d0', house.id)" />
+        <TresMeshStandardMaterial :color="shade(HOUSE, house.id)" />
       </TresMesh>
       <!-- A pitched roof, so a house reads as a home and not one of the bank's buildings. -->
       <TresMesh :position-y="house.height + roofHeight / 2" :rotation-y="Math.PI / 4" cast-shadow>
         <TresConeGeometry :args="[houseWidth * 0.78, roofHeight, 4]" />
-        <TresMeshStandardMaterial :color="shade('#b5654a', house.id)" />
+        <TresMeshStandardMaterial :color="shade(CUSTOMER, house.id)" />
       </TresMesh>
       <!-- The customer stands at their door; the house is what they hold. -->
       <TownFigure
@@ -273,7 +279,7 @@ function roadSize({ from, to }: Road): Vec3 {
       />
       <!-- Html keeps the slot it was first rendered with, so the label reads the live list, not this house. -->
       <Html v-if="house.customer" :position="[0, house.height + roofHeight + 0.5, 0]" center :z-index-range="[5, 0]">
-        <button v-if="houses[i]?.id" class="label" :class="labelClass(houses[i]!.id)" @click="pick(houses[i]!.id!)">
+        <button v-if="houses[i]?.id" class="label" :class="labelClass(houses[i]!.id)" :style="labelTone('customer')" @click="pick(houses[i]!.id!)">
           {{ houses[i]!.customer!.name }}
           <small class="money">{{ hkd(houses[i]!.customer!.balance) }}</small>
         </button>
@@ -281,13 +287,13 @@ function roadSize({ from, to }: Road): Vec3 {
     </TresGroup>
     <TresGroup v-if="present.has('red team')" :position="redTeamSpot">
       <TownFigure
-        :color="shade('#c0392b', RED_TEAM)"
+        :color="shade(tones.attacker.color, RED_TEAM)"
         @click="pick(RED_TEAM, $event)"
         @pointerenter="hover(true)"
         @pointerleave="hover(false)"
       />
       <Html :position="[0, 1.4, 0]" center :z-index-range="[5, 0]">
-        <button class="label" :class="labelClass(RED_TEAM)" @click="pick(RED_TEAM)">Red team</button>
+        <button class="label" :class="labelClass(RED_TEAM)" :style="labelTone('attacker')" @click="pick(RED_TEAM)">Red team</button>
       </Html>
     </TresGroup>
 
@@ -413,6 +419,7 @@ function roadSize({ from, to }: Road): Vec3 {
   background: rgb(255 255 255 / 80%);
   padding: 2px 6px;
   border: 0;
+  border-left: 4px solid transparent;
   border-radius: 4px;
   white-space: nowrap;
   cursor: pointer;

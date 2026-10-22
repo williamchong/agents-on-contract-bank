@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import type { Entry } from '~/lib/story'
+import { toneClass } from '~/town/palette'
 
-// One passbook entry: who paid whom, and how much. See docs/architecture.md#story-lines.
+// One passbook entry: who paid whom, and how much, each side in the colour of what it does. See
+// docs/architecture.md#story-lines.
 defineProps<{ entry: Entry }>()
 </script>
 
 <template>
   <div class="entry">
-    <span class="party">{{ entry.from }}</span>
+    <span class="party" :class="toneClass(entry.fromTone)">{{ entry.from }}</span>
     <span class="arrow" aria-hidden="true">→</span>
     <span class="hidden">to</span>
-    <span class="party">{{ entry.to }}</span>
+    <span class="party" :class="toneClass(entry.toTone)">{{ entry.to }}</span>
     <span class="money">{{ entry.amount }}</span>
   </div>
 </template>
@@ -28,6 +30,17 @@ defineProps<{ entry: Entry }>()
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.party.who::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--tone);
+  vertical-align: 1px;
 }
 
 .arrow {

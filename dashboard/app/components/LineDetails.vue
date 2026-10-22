@@ -2,9 +2,10 @@
 import { computed } from 'vue'
 import { Accounts } from '~/composables/useBank'
 import { hkd } from '~/lib/money'
-import { ledgerLines, namer, passbook, reasonOf, sentence, type Deployment, type Line } from '~/lib/story'
+import { ledgerLines, namer, passbook, reasonOf, type Deployment, type Line } from '~/lib/story'
 import { entity, explorer, type EntityId } from '~/town/entities'
 import { involved } from '~/town/focus'
+import { addressToner, toneOf } from '~/town/palette'
 
 // A story line opened: what happened in plain words, who signed it and the role checked, the places on the
 // map it involved and the ledger entry it posted, then the chain events behind it, each linked to the block
@@ -17,13 +18,16 @@ const line = computed(() => props.lines.find((l) => l.seq === props.seq))
 const base = computed(() => explorer(props.deployment?.chainId))
 const name = computed(() => (props.deployment ? namer(props.deployment) : (a: string) => a))
 
-const entries = computed(() => (line.value && props.deployment ? passbook(line.value, props.deployment, name.value) : []))
+const entries = computed(() => {
+  const d = props.deployment
+  return line.value && d ? passbook(line.value, d, name.value, addressToner(d)) : []
+})
 const places = computed(() => {
   const d = props.deployment
   if (!d || !line.value) return []
   return [...involved(d, line.value)].flatMap((id) => {
     const e = entity(id)
-    return e ? [{ id, title: e.title }] : []
+    return e ? [{ id, title: e.title, tone: toneOf(id) }] : []
   })
 })
 // The account the actor acted from, which their keys signed for.
@@ -56,7 +60,7 @@ function argText(value: unknown): string {
       <span class="kind" :class="line.kind">{{ kinds[line.kind] }}</span>
       <span class="when">{{ when }}</span>
     </header>
-    <p class="concept"><MoneyText :text="sentence(line)" /></p>
+    <p class="concept"><StorySentence :line="line" :deployment="deployment" /></p>
 
     <div v-if="entries.length" class="passbook">
       <PassbookEntry v-for="(m, i) in entries" :key="i" :entry="m" />
@@ -83,7 +87,7 @@ function argText(value: unknown): string {
       <div v-if="places.length" class="block">
         <h3>Involved</h3>
         <span class="people">
-          <button v-for="p in places" :key="p.id" @click="emit('select', p.id)">{{ p.title }}</button>
+          <button v-for="p in places" :key="p.id" :class="p.tone && `tone-${p.tone}`" @click="emit('select', p.id)">{{ p.title }}</button>
         </span>
       </div>
 
@@ -218,9 +222,9 @@ h3 {
   font-size: 12px;
   padding: 2px 8px;
   border-radius: 999px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--tone, var(--line));
   background: var(--chip);
-  color: var(--ink);
+  color: var(--tone, var(--ink));
   cursor: pointer;
 }
 

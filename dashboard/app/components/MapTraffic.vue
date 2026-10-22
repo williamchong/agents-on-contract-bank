@@ -6,6 +6,7 @@ import { attempted, hkd, movements, reasonOf, who, type Deployment, type Line, t
 import { parse, type EntityId } from '~/town/entities'
 import { actorEntity, addressEntity, housedCustomers, involved, refusalEntity } from '~/town/focus'
 import { buildings, houseLots, redTeamSpot, staffPosts, type BuildingId, type Vec3 } from '~/town/layout'
+import { actorTone, tones } from '~/town/palette'
 
 // Money moving as coins between the places it was posted from and to, and a request that moves none as a
 // letter from whoever sent it. A refused attempt sets off as the real one would, until a wall rises in its
@@ -23,6 +24,8 @@ interface Trip {
   token: 'coins' | 'letter'
   // A refused trip turns back at the wall.
   refused: boolean
+  // The colour of whoever set it off, on its label.
+  color?: string
 }
 
 interface Wall {
@@ -85,16 +88,21 @@ const addressPlace = (address: string, other: string, channel: string) => placeO
 
 const same = (a: Vec3, b: Vec3) => Math.abs(a[0] - b[0]) < 0.1 && Math.abs(a[2] - b[2]) < 0.1
 
-type Route = Pick<Trip, 'from' | 'to' | 'label' | 'token'>
+type Route = Pick<Trip, 'from' | 'to' | 'label' | 'token' | 'color'>
+
+const toneColor = (line: Line) => {
+  const t = actorTone(props.deployment, line)
+  return t && tones[t].color
+}
 
 // Coins for a movement, labelled with who set it off.
 function coins(line: Line, m: Movement): Route {
-  return { from: addressPlace(m.from, m.to, m.channel), to: addressPlace(m.to, m.from, m.channel), label: `${who(line.actor)} · ${hkd(m.amount)}`, token: 'coins' }
+  return { from: addressPlace(m.from, m.to, m.channel), to: addressPlace(m.to, m.from, m.channel), label: `${who(line.actor)} · ${hkd(m.amount)}`, token: 'coins', color: toneColor(line) }
 }
 
 // A letter for a request that moves no money, labelled with who sent it and what it asks.
 function letter(line: Line, from: Vec3, to: Vec3): Route {
-  return { from, to, label: `${who(line.actor)} · ${line.action}`, token: 'letter' }
+  return { from, to, label: `${who(line.actor)} · ${line.action}`, token: 'letter', color: toneColor(line) }
 }
 
 // A refused line's trip: the money it would have moved, or else a letter from whoever acted to where they
@@ -207,7 +215,7 @@ function height(w: Wall): number {
       <TresMeshStandardMaterial :color="struck(v) ? '#c0392b' : '#fbf7ee'" />
     </TresMesh>
     <Html :position="[0, 0.7, 0]" center :z-index-range="[5, 0]">
-      <span class="trip" :class="{ struck: struck(v) }">{{ v.label }}</span>
+      <span class="trip" :class="{ struck: struck(v) }" :style="v.color && { borderLeftColor: v.color }">{{ v.label }}</span>
     </Html>
   </TresGroup>
 
@@ -238,6 +246,7 @@ function height(w: Wall): number {
   text-overflow: ellipsis;
   background: #fff3d6;
   color: #5a3b00;
+  border-left: 4px solid transparent;
 }
 
 .trip.struck,

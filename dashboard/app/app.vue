@@ -21,7 +21,18 @@ const playback = Boolean(useRuntimeConfig().public.playback)
   --bad: #b3261e;
   --bad-bg: #fbeceb;
   --wait: #d9922b;
+}
+
+/* Money and who took part, by what they do (see app/town/palette.ts). The map's overlays are always light,
+   so names and money on them keep the light theme's colours. */
+:root,
+.on-light {
   --money: #8a5a00;
+  --tone-customer: #2f63a8;
+  --tone-branch: #c4560e;
+  --tone-head-office: #7448b0;
+  --tone-payments: #0f7c70;
+  --tone-attacker: #b3261e;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -37,6 +48,11 @@ const playback = Boolean(useRuntimeConfig().public.playback)
     --bad-bg: #3a1f1d;
     --wait: #f0b45a;
     --money: #f2c46b;
+    --tone-customer: #8bb8f0;
+    --tone-branch: #f59a52;
+    --tone-head-office: #c4a6f0;
+    --tone-payments: #4fc9b8;
+    --tone-attacker: #ff7b72;
   }
 }
 
@@ -47,6 +63,18 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: system-ui, sans-serif;
+}
+
+/* Whoever took part in a line reads in the colour of what they do. */
+.tone-customer { --tone: var(--tone-customer); }
+.tone-branch { --tone: var(--tone-branch); }
+.tone-head-office { --tone: var(--tone-head-office); }
+.tone-payments { --tone: var(--tone-payments); }
+.tone-attacker { --tone: var(--tone-attacker); }
+
+.who {
+  color: var(--tone, inherit);
+  font-weight: 600;
 }
 
 /* Every amount of money reads apart from the words around it. */

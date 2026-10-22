@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import type { BankState } from '~/composables/useBank'
 import type { Card, Panel } from '~/composables/useControl'
-import { accountsMoved, namer, sentence, waiting, type Deployment, type Line } from '~/lib/story'
+import { accountsMoved, namer, waiting, type Deployment, type Line } from '~/lib/story'
 import { useIntro } from '~/composables/useIntro'
 import type { CheckKey } from '~/lib/checks'
 import { explorer, type EntityId } from '~/town/entities'
@@ -108,7 +108,7 @@ const tabs = computed((): { id: Tab; label: string; count?: number }[] => [
           <template #caption>
             <p
               v-if="latest"
-              class="caption"
+              class="caption on-light"
               :class="latest.kind"
               aria-live="polite"
               title="Open this line"
@@ -116,7 +116,7 @@ const tabs = computed((): { id: Tab; label: string; count?: number }[] => [
               @click="open({ kind: 'line', seq: latest.seq })"
               @keydown.enter="open({ kind: 'line', seq: latest.seq })"
             >
-              <MoneyText :text="sentence(latest)" />
+              <StorySentence :line="latest" :deployment="deployment" />
             </p>
           </template>
         </BankMap>

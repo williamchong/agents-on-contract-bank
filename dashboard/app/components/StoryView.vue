@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { isAlarm, namer, passbook, sentence, type Deployment, type Line } from '~/lib/story'
+import { isAlarm, namer, passbook, type Deployment, type Line } from '~/lib/story'
+import { addressToner } from '~/town/palette'
 
 // One plain sentence per event, refusals included with their reason, newest first; an event that moved
 // money leads with its passbook entries, who paid whom and how much. Clicking a line opens it: the
 // signers, the role checked, the chain events behind it and its transaction on the block explorer, with
 // the balance sheet rows its entry moved highlighted. While an adverse scenario is shown, the refusals and
 // incidents since it started are marked. An entity's details show its own lines the same way. See
-// docs/architecture.md#story-lines.
+// docs/architecture.md#story-lines. Whoever took part is in the colour of what they do.
 const props = defineProps<{
   lines: Line[]
   deployment: Deployment | undefined
@@ -32,7 +33,8 @@ function select(line: Line) {
 }
 
 function entries(line: Line) {
-  return props.deployment ? passbook(line, props.deployment, name.value) : []
+  const d = props.deployment
+  return d ? passbook(line, d, name.value, addressToner(d)) : []
 }
 </script>
 
@@ -52,9 +54,9 @@ function entries(line: Line) {
       >
         <template v-if="entries(line).length">
           <PassbookEntry v-for="(m, i) in entries(line)" :key="i" :entry="m" />
-          <span class="memo">{{ sentence(line) }}</span>
+          <span class="memo"><StorySentence :line="line" :deployment="deployment" plain /></span>
         </template>
-        <span v-else class="text"><MoneyText :text="sentence(line)" /></span>
+        <span v-else class="text"><StorySentence :line="line" :deployment="deployment" /></span>
       </li>
     </ol>
   </section>

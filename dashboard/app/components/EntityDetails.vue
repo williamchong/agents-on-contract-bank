@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import type { BankState } from '~/composables/useBank'
 import type { Deployment, Line } from '~/lib/story'
 import { concerns, contractsOf, entity, explorer, figuresOf, parse, staffAt, staffId, staffPresent, type EntityId } from '~/town/entities'
+import { toneClass, toneOf } from '~/town/palette'
 
 // A selected building, house or person: what it is, what it holds now and can do, and the story lines it
 // took part in, each of which opens, the roles its actions were checked against, and the contracts behind
@@ -54,7 +55,7 @@ const contracts = computed(() => {
     <template v-else>
       <header>
         <span class="kind">{{ info.kind }}</span>
-        <h2>{{ info.title }}</h2>
+        <h2 :class="toneClass(toneOf(id))">{{ info.title }}</h2>
       </header>
       <p class="concept">{{ info.concept }}</p>
 

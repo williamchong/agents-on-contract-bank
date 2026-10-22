@@ -563,6 +563,7 @@ Later milestones add buildings as their contracts arrive: the lending office at 
 - **A twin, not an animation.** Each frame is the chain at a block. Time controls move it as they move block time, so a jump to the end of the day shows time locks opening and queues draining. Vans move between two blocks' states; nothing appears that the chain did not report.
 - **From the contracts first, then the indexer.** A first look subscribes to the contracts' events and reads their balances directly, so it runs before the indexer exists. Once the indexer is built, the map reads the same feed as the story view.
 - **Selecting.** A building, a house or the red team shows what it is in plain words, what it holds now, what it can do, who works there, its story lines, the roles checked and the contracts behind it, each linked to the block explorer. Staff work inside their buildings, counted on each building's label, rather than standing about the map.
+- **Coloured by role.** Each entity has the colour of what it does, the same on the map, in the passbook and in the story's sentences, and alike roles share a hue: blue for customers, orange for the branch, its cash and its staff, violet for head office, governance and their staff, teal for payments, other banks and the settlement account, and red for the red team. Gold stays for money, so who took part in a line can be told from what moved.
 - **Simple shapes.** Low-poly shapes under a fixed isometric camera, running offline on a laptop.
 
 ### Control panel
