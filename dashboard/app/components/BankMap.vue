@@ -2,10 +2,12 @@
 import { TresCanvas } from '@tresjs/core'
 import { Html } from '@tresjs/cientos'
 import { computed, onBeforeUnmount, ref } from 'vue'
+import { Color } from 'three'
 import type { BankState } from '~/composables/useBank'
 import { HKD, hkd, OPENING_SETTLEMENT } from '~/lib/money'
 import type { Deployment, Line } from '~/lib/story'
 import { customerId, parse, staffId, staffPresent, type EntityId } from '~/town/entities'
+import { framePoints, involved } from '~/town/focus'
 import { buildings, houseLots, redTeamSpot, roads, staffPosts } from '~/town/layout'
 import type { Building, Road, Vec3 } from '~/town/layout'
 
@@ -16,12 +18,16 @@ const props = defineProps<{
   state: BankState | undefined
   lines: Line[]
   focus?: string
+  // The scenario showing, whose story lines the map keeps in view while following.
+  scenario?: { from?: number; to?: number }
   epoch?: number
   selected?: EntityId
 }>()
 const emit = defineEmits<{ select: [id: EntityId] }>()
 
 const showKey = ref(false)
+// Following, the camera frames whoever the latest line involves and the rest of the town fades.
+const follow = ref(true)
 
 const RED_TEAM = staffId('red team')
 
@@ -43,6 +49,46 @@ const selectedAt = computed((): { at: Vec3; radius: number } | undefined => {
   const b = buildings.find((x) => x.id === id)
   return b && { at: b.position, radius: ringRadius(b) }
 })
+
+const latest = computed(() => props.lines.findLast((l) => l.kind !== 'operator'))
+const followed = computed(() => {
+  const d = props.deployment
+  return follow.value && d && latest.value ? involved(d, latest.value) : new Set<EntityId>()
+})
+const frame = computed(() => {
+  const d = props.deployment
+  return d ? [...followed.value].flatMap((id) => framePoints(d, id)) : []
+})
+// Everything the scenario showing has involved so far, while the latest line belongs to it.
+const inScenario = computed(() => {
+  const ids = new Set<EntityId>()
+  const d = props.deployment
+  const { from, to } = props.scenario ?? {}
+  const seq = latest.value?.seq
+  if (!d || !followed.value.size || from === undefined || seq === undefined || seq < from || (to !== undefined && seq > to)) return ids
+  for (const line of props.lines) if (line.seq >= from) for (const id of involved(d, line)) ids.add(id)
+  return ids
+})
+// While following, the latest line's entities and the selection stay in full colour, the rest of the
+// scenario and the building it concerns fade a little, and the rest of the town fades well back.
+type Tier = 'step' | 'scenario' | 'other'
+function tier(id: EntityId | undefined): Tier {
+  if (!followed.value.size) return 'step'
+  if (id && (followed.value.has(id) || id === props.selected)) return 'step'
+  if (id && (inScenario.value.has(id) || id === props.focus)) return 'scenario'
+  return 'other'
+}
+const GROUND = '#cfe0c3'
+const fade: Record<Tier, number> = { step: 0, scenario: 0.35, other: 0.75 }
+// A faded colour, part way to the ground's, so the town keeps its shape behind what is happening.
+function shade(color: string, id: EntityId | undefined): string {
+  const t = tier(id)
+  return t === 'step' ? color : `#${new Color(color).lerp(new Color(GROUND), fade[t]).getHexString()}`
+}
+
+function labelClass(id: EntityId | undefined) {
+  return [tier(id), { on: !!id && props.selected === id }]
+}
 
 function pick(id: EntityId, e?: { stopPropagation?: () => void }) {
   e?.stopPropagation?.()
@@ -134,7 +180,14 @@ function roadSize({ from, to }: Road): Vec3 {
   <div class="map">
   <!-- Vans move between blocks' states, so the map draws every frame. -->
   <TresCanvas clear-color="#eef2f5" render-mode="always" shadows>
-    <IsometricCamera :position="cameraPosition" :target="mapCenter" :view-height="26" :min-view-width="31" />
+    <IsometricCamera
+      :position="cameraPosition"
+      :target="mapCenter"
+      :view-height="26"
+      :min-view-width="31"
+      :frame="frame"
+      :min-frame-height="9"
+    />
     <TresAmbientLight :intensity="1.6" />
     <!-- three's default shadow camera covers about 10 units; this one covers the whole map. -->
     <TresDirectionalLight
@@ -150,7 +203,7 @@ function roadSize({ from, to }: Road): Vec3 {
 
     <TresMesh :rotation-x="-Math.PI / 2" :position="mapCenter" receive-shadow>
       <TresPlaneGeometry :args="[40, 28]" />
-      <TresMeshStandardMaterial color="#cfe0c3" />
+      <TresMeshStandardMaterial :color="GROUND" />
     </TresMesh>
 
     <TresMesh v-for="(road, i) in roads" :key="i" :position="roadPosition(road)" receive-shadow>
@@ -172,10 +225,10 @@ function roadSize({ from, to }: Road): Vec3 {
           :args="[building.size[0] / 2, building.size[0] / 2, building.size[1], 16]"
         />
         <TresBoxGeometry v-else :args="building.size" />
-        <TresMeshStandardMaterial :color="building.color" :transparent="isTower(building)" :opacity="isTower(building) ? 0.35 : 1" />
+        <TresMeshStandardMaterial :color="shade(building.color, building.id)" :transparent="isTower(building)" :opacity="isTower(building) ? 0.35 : 1" />
       </TresMesh>
       <Html :position="[0, building.size[1] + 0.6, 0]" center :z-index-range="[5, 0]">
-        <button class="label" :class="{ on: selected === building.id }" @click="pick(building.id)">
+        <button class="label" :class="labelClass(building.id)" @click="pick(building.id)">
           {{ building.label }}<span v-if="staffCount[building.id]" class="staff" :title="`${staffCount[building.id]} staff work here`">👥 {{ staffCount[building.id] }}</span>
           <small v-if="figures[building.id]"><MoneyText :text="figures[building.id]!" /></small>
         </button>
@@ -185,7 +238,7 @@ function roadSize({ from, to }: Road): Vec3 {
     <!-- The water in the tower is the settlement account's balance. -->
     <TresMesh :position="[water.tower.position[0], water.height / 2, water.tower.position[2]]">
       <TresCylinderGeometry :args="[water.tower.size[0] / 2 - 0.08, water.tower.size[0] / 2 - 0.08, water.height, 16]" />
-      <TresMeshStandardMaterial color="#2f7fc1" />
+      <TresMeshStandardMaterial :color="shade('#2f7fc1', 'water-tower')" />
     </TresMesh>
 
     <TresGroup v-for="(house, i) in houses" :key="i" :position="[house.lot[0], 0, house.lot[2]]">
@@ -197,11 +250,11 @@ function roadSize({ from, to }: Road): Vec3 {
         @pointerleave="hover(false)"
       >
         <TresBoxGeometry :args="[houseWidth, house.height, houseWidth]" />
-        <TresMeshStandardMaterial color="#f2e6d0" />
+        <TresMeshStandardMaterial :color="shade('#f2e6d0', house.id)" />
       </TresMesh>
       <!-- Html keeps the slot it was first rendered with, so the label reads the live list, not this house. -->
       <Html v-if="house.customer" :position="[0, house.height + 0.5, 0]" center :z-index-range="[5, 0]">
-        <button v-if="houses[i]?.id" class="label" :class="{ on: selected === houses[i]!.id }" @click="pick(houses[i]!.id!)">
+        <button v-if="houses[i]?.id" class="label" :class="labelClass(houses[i]!.id)" @click="pick(houses[i]!.id!)">
           {{ houses[i]!.customer!.name }}
           <small class="money">{{ hkd(houses[i]!.customer!.balance) }}</small>
         </button>
@@ -216,10 +269,10 @@ function roadSize({ from, to }: Road): Vec3 {
         @pointerleave="hover(false)"
       >
         <TresCapsuleGeometry :args="[0.2, 0.5, 4, 8]" />
-        <TresMeshStandardMaterial color="#c0392b" />
+        <TresMeshStandardMaterial :color="shade('#c0392b', RED_TEAM)" />
       </TresMesh>
       <Html :position="[0, 1.25, 0]" center :z-index-range="[5, 0]">
-        <button class="label" :class="{ on: selected === RED_TEAM }" @click="pick(RED_TEAM)">Red team</button>
+        <button class="label" :class="labelClass(RED_TEAM)" @click="pick(RED_TEAM)">Red team</button>
       </Html>
     </TresGroup>
 
@@ -238,6 +291,14 @@ function roadSize({ from, to }: Road): Vec3 {
   <div class="overlay">
     <slot name="caption" />
     <div class="key">
+      <button
+        class="key-toggle"
+        :aria-pressed="follow"
+        title="Frame whoever the latest line involves, and fade the rest of the town"
+        @click="follow = !follow"
+      >
+        {{ follow ? 'Show whole town' : 'Follow the action' }}
+      </button>
       <button class="key-toggle" :aria-expanded="showKey" @click="showKey = !showKey">{{ showKey ? 'Hide key' : 'Key' }}</button>
       <ul v-if="showKey">
         <li v-for="k in key" :key="k.text"><span class="swatch" :style="{ background: k.color }" />{{ k.text }}</li>
@@ -252,6 +313,8 @@ function roadSize({ from, to }: Road): Vec3 {
 .map {
   position: relative;
   height: 100%;
+  /* Following, the camera frames part of the town; labels of the rest stay inside the map. */
+  overflow: hidden;
 }
 
 
@@ -339,6 +402,7 @@ function roadSize({ from, to }: Road): Vec3 {
   white-space: nowrap;
   cursor: pointer;
   text-align: center;
+  transition: opacity 0.4s;
 }
 
 /* On a phone the figures under each name would cover the town; a building's details still show them. */
@@ -355,5 +419,13 @@ function roadSize({ from, to }: Road): Vec3 {
 
 .label.on {
   outline: 2px solid #2b3540;
+}
+
+.label.scenario {
+  opacity: 0.7;
+}
+
+.label.other {
+  opacity: 0.3;
 }
 </style>

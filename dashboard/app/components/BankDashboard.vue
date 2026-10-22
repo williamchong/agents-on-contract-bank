@@ -81,6 +81,7 @@ const tabs = computed((): { id: Tab; label: string; count?: number }[] => [
           :state="state"
           :lines="lines"
           :focus="card?.building"
+          :scenario="card"
           :epoch="epoch"
           :selected="entity"
           @select="pick"

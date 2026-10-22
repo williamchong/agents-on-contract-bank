@@ -540,7 +540,7 @@ Each line says who acted, for whom, what, how much, and through which channel an
 
 ### Bank map
 
-The bank drawn as a small town in simple 3D shapes, in the manner of a city-building game, so an audience sees where money is while the story view says why. It is a live model of the bank, not a game: it keeps no state of its own and draws only what the contracts report.
+The bank drawn as a small town in simple 3D shapes, in the manner of a city-building game, so an audience sees where money is while the story view says why. It is a live model of the bank, not a game: it keeps no state of its own and draws only what the contracts report. By default it follows the action: the camera frames whoever the latest story line involves (the actor, their building, and the places its money moved between) and fades the rest of the town in two steps: a little for what the scenario showing has involved so far, and well back for everything else. "Show whole town" turns this off.
 
 | In the town | In the bank | Moves on |
 |---|---|---|

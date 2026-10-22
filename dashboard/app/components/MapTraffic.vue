@@ -2,7 +2,9 @@
 import { useLoop } from '@tresjs/core'
 import { Html } from '@tresjs/cientos'
 import { ref, shallowRef, watch } from 'vue'
-import { hkd, holder, movements, reasonOf, type Deployment, type Line } from '~/lib/story'
+import { hkd, movements, reasonOf, type Deployment, type Line } from '~/lib/story'
+import { parse, type EntityId } from '~/town/entities'
+import { addressEntity, housedCustomers, refusalEntity } from '~/town/focus'
 import { buildings, houseLots, type BuildingId, type Vec3 } from '~/town/layout'
 
 // Money moving as coins between the places it was posted from and to, and a barrier where an attempt was
@@ -43,34 +45,16 @@ const place = (id: BuildingId): Vec3 => {
   return [b.position[0], 0, b.position[2]]
 }
 
-function addressPlace(address: string, other: string, channel: string): Vec3 {
-  const d = props.deployment
-  const a = address.toLowerCase()
-  const customers = Object.entries(d.customers).filter(([n]) => n !== 'other customers')
-  const i = customers.findIndex(([, x]) => x.toLowerCase() === a)
-  if (i >= 0) return houseLots[i] ?? place('head-office')
-  if (a === d.customers['other customers']?.toLowerCase()) return [-12, 0, 9]
-  switch (holder(d, address, other, channel)) {
-    case 'Another bank':
-      return place('clearing-house')
-    case 'Cash':
-    case 'ATM':
-      return place(channel === 'atm' ? 'atm' : 'branch')
-    case 'Branch':
-      return place('branch')
-    case 'Post office':
-      return place('post-office')
-  }
-  return place('head-office')
+// Where an entity stands: a customer at their house and the rest of the world's customers off the edge of town.
+function placeOf(id: EntityId | undefined): Vec3 {
+  if (!id) return [-12, 0, 9]
+  const p = parse(id)
+  if (p.kind === 'customer') return houseLots[housedCustomers(props.deployment).indexOf(p.name)] ?? place('head-office')
+  return place(p.kind === 'building' ? p.id : 'head-office')
 }
 
-function refusalPlace(line: Line): Vec3 {
-  const byChannel: Record<string, BuildingId> = { atm: 'atm', branch: 'branch', partner: 'clearing-house', admin: 'town-hall' }
-  if (byChannel[line.channel]) return place(byChannel[line.channel]!)
-  const customers = Object.keys(props.deployment.customers)
-  const i = customers.indexOf(line.actor)
-  return i >= 0 && houseLots[i] ? houseLots[i]! : place('head-office')
-}
+const addressPlace = (address: string, other: string, channel: string) => placeOf(addressEntity(props.deployment, address, other, channel))
+const refusalPlace = (line: Line) => placeOf(refusalEntity(props.deployment, line))
 
 watch(
   () => props.lines.length,
