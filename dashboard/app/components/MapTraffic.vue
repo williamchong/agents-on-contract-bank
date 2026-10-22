@@ -4,12 +4,12 @@ import { Html } from '@tresjs/cientos'
 import { ref, shallowRef, watch } from 'vue'
 import { attempted, hkd, movements, reasonOf, who, type Deployment, type Line, type Movement } from '~/lib/story'
 import { parse, type EntityId } from '~/town/entities'
-import { actorEntity, addressEntity, housedCustomers, refusalEntity } from '~/town/focus'
+import { actorEntity, addressEntity, housedCustomers, involved, refusalEntity } from '~/town/focus'
 import { buildings, houseLots, redTeamSpot, staffPosts, type BuildingId, type Vec3 } from '~/town/layout'
 
-// Money moving as coins between the places it was posted from and to. A refused attempt sets off as the
-// real one would, coins if it would have moved money and a letter if not, until a wall rises in its way and
-// sends it back; the rule that stopped it is on the wall. Nothing moves that the chain or the submission
+// Money moving as coins between the places it was posted from and to, and a request that moves none as a
+// letter from whoever sent it. A refused attempt sets off as the real one would, until a wall rises in its
+// way and sends it back; the rule that stopped it is on the wall. Nothing moves that the chain or the submission
 // service did not report: each stack of coins is a transfer of the deposit token in a line's receipt, or the
 // transfer a refused request would have made. See docs/architecture.md#bank-map.
 const props = defineProps<{ deployment: Deployment; lines: Line[] }>()
@@ -92,20 +92,33 @@ function coins(line: Line, m: Movement): Route {
   return { from: addressPlace(m.from, m.to, m.channel), to: addressPlace(m.to, m.from, m.channel), label: `${who(line.actor)} · ${hkd(m.amount)}`, token: 'coins' }
 }
 
+// A letter for a request that moves no money, labelled with who sent it and what it asks.
+function letter(line: Line, from: Vec3, to: Vec3): Route {
+  return { from, to, label: `${who(line.actor)} · ${line.action}`, token: 'letter' }
+}
+
 // A refused line's trip: the money it would have moved, or else a letter from whoever acted to where they
 // were refused. One that starts where it is refused comes up to the door from in front.
 function attemptTrip(line: Line): Route {
   const m = attempted(line)
-  const route: Route = m
-    ? coins(line, m)
-    : {
-        from: placeOf(actorEntity(props.deployment, line)),
-        to: placeOf(refusalEntity(props.deployment, line)),
-        label: `${who(line.actor)} · ${line.action}`,
-        token: 'letter',
-      }
+  const d = props.deployment
+  const route = m ? coins(line, m) : letter(line, placeOf(actorEntity(d, line)), placeOf(refusalEntity(d, line)))
   if (same(route.from, route.to)) route.from = [route.to[0] + 2.6, 0, route.to[2] + 2.6]
   return route
+}
+
+// An allowed request that moves no money, such as an approval, a count or a role granted, goes as a letter
+// from whoever acted to the first other place it involves. One that involves nowhere else stays put.
+function letterTrip(line: Line): Route | undefined {
+  const d = props.deployment
+  const actor = actorEntity(d, line)
+  if (!actor) return undefined
+  const from = placeOf(actor)
+  for (const id of involved(d, line)) {
+    const to = placeOf(id)
+    if (!same(from, to)) return letter(line, from, to)
+  }
+  return undefined
 }
 
 // Where a trip is at `p` of the way: a short hop so it clears the buildings it passes.
@@ -125,10 +138,13 @@ watch(
     const newWalls: Wall[] = []
     fresh.forEach((line, n) => {
       const start = t + n * 0.4
-      for (const m of movements(line)) {
+      const moved = movements(line)
+      for (const m of moved) {
         const route = coins(line, m)
         if (!same(route.from, route.to)) newTrips.push({ id: ++ids, ...route, start, refused: false })
       }
+      const sent = line.kind === 'allowed' && !moved.length && letterTrip(line)
+      if (sent) newTrips.push({ id: ++ids, ...sent, start, refused: false })
       if (line.kind === 'refused') {
         const trip: Trip = { id: ++ids, ...attemptTrip(line), start, refused: true }
         newTrips.push(trip)
