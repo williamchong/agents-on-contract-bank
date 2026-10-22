@@ -105,6 +105,10 @@ const mapCenter: Vec3 = [3, 0, 2]
 const cameraPosition: Vec3 = [30, 30, 30]
 const roadWidth = 1
 const houseWidth = 1.4
+const roofHeight = 0.7
+// Where a customer stands, by their house's door on the side the camera sees.
+const customerSpot: Vec3 = [houseWidth / 2 + 0.35, 0, houseWidth / 2 + 0.1]
+const CUSTOMER = '#3f6fa8'
 // A house's height grows with its owner's balance, up to this balance.
 const tallestHouse = 150_000n * HKD
 // The water tower is full at twice the opening settlement balance.
@@ -155,7 +159,8 @@ const staffCount = computed(() => {
 })
 
 const key = [
-  { color: '#f2e6d0', text: 'A house is a customer; it grows with their balance' },
+  { color: CUSTOMER, text: 'A figure is a person: a customer stands at their door' },
+  { color: '#f2e6d0', text: 'A house is what a customer holds; it grows with their balance' },
   { color: '#2f7fc1', text: 'The water is the bank’s money at the clearing system' },
   { color: '#f2b134', text: 'Gold coins are money moving' },
   { color: '#c0392b', text: 'A red bar is an attempt the chain refused' },
@@ -252,8 +257,22 @@ function roadSize({ from, to }: Road): Vec3 {
         <TresBoxGeometry :args="[houseWidth, house.height, houseWidth]" />
         <TresMeshStandardMaterial :color="shade('#f2e6d0', house.id)" />
       </TresMesh>
+      <!-- A pitched roof, so a house reads as a home and not one of the bank's buildings. -->
+      <TresMesh :position-y="house.height + roofHeight / 2" :rotation-y="Math.PI / 4" cast-shadow>
+        <TresConeGeometry :args="[houseWidth * 0.78, roofHeight, 4]" />
+        <TresMeshStandardMaterial :color="shade('#b5654a', house.id)" />
+      </TresMesh>
+      <!-- The customer stands at their door; the house is what they hold. -->
+      <TownFigure
+        v-if="house.id"
+        :position="customerSpot"
+        :color="shade(CUSTOMER, house.id)"
+        @click="pick(house.id, $event)"
+        @pointerenter="hover(true)"
+        @pointerleave="hover(false)"
+      />
       <!-- Html keeps the slot it was first rendered with, so the label reads the live list, not this house. -->
-      <Html v-if="house.customer" :position="[0, house.height + 0.5, 0]" center :z-index-range="[5, 0]">
+      <Html v-if="house.customer" :position="[0, house.height + roofHeight + 0.5, 0]" center :z-index-range="[5, 0]">
         <button v-if="houses[i]?.id" class="label" :class="labelClass(houses[i]!.id)" @click="pick(houses[i]!.id!)">
           {{ houses[i]!.customer!.name }}
           <small class="money">{{ hkd(houses[i]!.customer!.balance) }}</small>
@@ -261,17 +280,13 @@ function roadSize({ from, to }: Road): Vec3 {
       </Html>
     </TresGroup>
     <TresGroup v-if="present.has('red team')" :position="redTeamSpot">
-      <TresMesh
-        :position-y="0.45"
-        cast-shadow
+      <TownFigure
+        :color="shade('#c0392b', RED_TEAM)"
         @click="pick(RED_TEAM, $event)"
         @pointerenter="hover(true)"
         @pointerleave="hover(false)"
-      >
-        <TresCapsuleGeometry :args="[0.2, 0.5, 4, 8]" />
-        <TresMeshStandardMaterial :color="shade('#c0392b', RED_TEAM)" />
-      </TresMesh>
-      <Html :position="[0, 1.25, 0]" center :z-index-range="[5, 0]">
+      />
+      <Html :position="[0, 1.4, 0]" center :z-index-range="[5, 0]">
         <button class="label" :class="labelClass(RED_TEAM)" @click="pick(RED_TEAM)">Red team</button>
       </Html>
     </TresGroup>

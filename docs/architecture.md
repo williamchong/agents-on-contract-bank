@@ -547,8 +547,8 @@ The bank drawn as a small town in simple 3D shapes, in the manner of a city-buil
 | Head office, with a balance on its roof | The general ledger; the balance stays level while the books balance | Each ledger entry posted |
 | Water tower | The settlement account; the water level is its balance | Entries that move the settlement account |
 | Vault, branch and ATM | Cash in the vault, the teller's drawer and the ATM | Cash entries and counts |
-| Houses | Customers, sized by balance, with a padlock for each named hold | Token transfers; holds placed and lifted |
-| Figures | Staff and machines, each marked with its role | Roles granted and revoked |
+| Houses, with a pitched roof | What each customer holds, sized by balance, with a padlock for each named hold | Token transfers; holds placed and lifted |
+| Figures, a body and a head | People, never a box like a building: each customer at their door, and the red team on the edge of town | Roles granted and revoked |
 | Clearing house, on the road out of town | Other banks, through the clearing system | Credit advices, payments sent, rejections |
 | Post office, with a gate and a queue lane | The payments module | Payments ordered, queued and released |
 | Compliance yard and suspense lot, beside the post office | Payments waiting for compliance, and payments with no beneficiary | Each payment's status |
