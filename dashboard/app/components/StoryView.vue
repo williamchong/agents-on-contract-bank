@@ -77,7 +77,7 @@ ol {
 
 li {
   padding: 6px 8px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--ui-border);
   border-left: 3px solid transparent;
   font-size: 13px;
   line-height: 1.4;
@@ -85,40 +85,40 @@ li {
 }
 
 li:hover {
-  background: var(--chip);
+  background: var(--ui-bg-elevated);
 }
 
 .selected {
-  border-left-color: var(--ink);
-  background: var(--chip);
+  border-left-color: var(--ui-text-highlighted);
+  background: var(--ui-bg-elevated);
 }
 
 .alarm {
-  border-left-color: var(--bad);
+  border-left-color: var(--ui-error);
   font-weight: 600;
 }
 
 .refused {
-  background: var(--bad-bg);
+  background: color-mix(in oklab, var(--ui-error) 10%, var(--ui-bg));
 }
 
 .refused .text {
-  color: var(--bad);
+  color: var(--ui-error);
 }
 
 .operator .text {
-  color: var(--muted);
+  color: var(--ui-text-muted);
   font-style: italic;
 }
 
 .memo {
   display: block;
-  color: var(--muted);
+  color: var(--ui-text-muted);
   font-size: 12px;
 }
 
 .empty {
-  color: var(--muted);
+  color: var(--ui-text-muted);
   font-size: 13px;
 }
 </style>

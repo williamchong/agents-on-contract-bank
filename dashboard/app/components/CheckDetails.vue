@@ -72,11 +72,11 @@ h2 {
 .status {
   margin: 6px 0 0;
   font-weight: 600;
-  color: var(--good);
+  color: var(--ui-success);
 }
 
 .status.broken {
-  color: var(--bad);
+  color: var(--ui-error);
 }
 
 .concept {
@@ -90,12 +90,12 @@ h2 {
   gap: 2px 12px;
   margin: 0 0 10px;
   padding: 8px 10px;
-  background: var(--chip);
+  background: var(--ui-bg-elevated);
   border-radius: 6px;
 }
 
 dt {
-  color: var(--muted);
+  color: var(--ui-text-muted);
 }
 
 dd {
@@ -124,7 +124,7 @@ h3 {
 }
 
 .empty {
-  color: var(--muted);
+  color: var(--ui-text-muted);
   font-size: 12px;
 }
 </style>

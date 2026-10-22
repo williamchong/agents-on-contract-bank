@@ -1,20 +1,6 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
-/* The dashboard's own names for Nuxt UI's theme colours, which follow its colour mode. */
-:root {
-  --bg: var(--ui-bg-muted);
-  --panel: var(--ui-bg);
-  --chip: var(--ui-bg-elevated);
-  --line: var(--ui-border);
-  --ink: var(--ui-text-highlighted);
-  --muted: var(--ui-text-muted);
-  --good: var(--ui-success);
-  --bad: var(--ui-error);
-  --bad-bg: color-mix(in oklab, var(--ui-error) 10%, var(--ui-bg));
-  --wait: var(--ui-warning);
-}
-
 /* Money and who took part, by what they do (see app/town/palette.ts). The map's overlays are always light,
    so names and money on them keep the light theme's colours. */
 :root,
@@ -40,8 +26,8 @@ html,
 body {
   margin: 0;
   height: 100%;
-  background: var(--bg);
-  color: var(--ink);
+  background: var(--ui-bg-muted);
+  color: var(--ui-text-highlighted);
   font-family: system-ui, sans-serif;
 }
 

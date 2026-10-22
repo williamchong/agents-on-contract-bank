@@ -153,12 +153,12 @@ header {
 }
 
 .bad {
-  color: var(--bad);
+  color: var(--ui-error);
 }
 
 .when {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--ui-text-muted);
 }
 
 .concept {
@@ -173,14 +173,14 @@ header {
   gap: 2px 12px;
   margin: 0 0 6px;
   padding: 8px 10px;
-  background: var(--chip);
+  background: var(--ui-bg-elevated);
   border-radius: 6px;
 }
 
 .passbook {
   margin: 0 0 10px;
   padding: 8px 10px;
-  background: var(--chip);
+  background: var(--ui-bg-elevated);
   border-radius: 6px;
 }
 
@@ -196,7 +196,7 @@ header {
 }
 
 dt {
-  color: var(--muted);
+  color: var(--ui-text-muted);
 }
 
 dd {
@@ -231,17 +231,17 @@ h3 {
 .event {
   margin-top: 6px;
   padding-top: 6px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--ui-border);
 }
 
 .arg {
   padding-left: 12px;
-  color: var(--muted);
+  color: var(--ui-text-muted);
 }
 
 .note,
 .empty {
-  color: var(--muted);
+  color: var(--ui-text-muted);
   font-size: 12px;
 }
 </style>

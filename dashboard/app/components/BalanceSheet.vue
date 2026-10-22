@@ -128,31 +128,31 @@ td {
 }
 
 .total {
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--ui-border);
   font-weight: 600;
 }
 
 small {
   display: block;
-  color: var(--muted);
+  color: var(--ui-text-muted);
   font-size: 11px;
 }
 
 .moved {
-  background: var(--chip);
-  outline: 2px solid var(--ink);
+  background: var(--ui-bg-elevated);
+  outline: 2px solid var(--ui-text-highlighted);
   outline-offset: -2px;
 }
 
 .differs th,
 .differs td,
 .differs small {
-  color: var(--bad);
+  color: var(--ui-error);
 }
 
 .note {
   margin: 6px 0 0;
   font-size: 12px;
-  color: var(--muted);
+  color: var(--ui-text-muted);
 }
 </style>

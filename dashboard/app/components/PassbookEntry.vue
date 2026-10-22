@@ -44,7 +44,7 @@ defineProps<{ entry: Entry }>()
 }
 
 .arrow {
-  color: var(--muted);
+  color: var(--ui-text-muted);
 }
 
 .money {

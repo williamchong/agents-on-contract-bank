@@ -128,12 +128,12 @@ h2 {
   gap: 2px 12px;
   margin: 0 0 10px;
   padding: 8px 10px;
-  background: var(--chip);
+  background: var(--ui-bg-elevated);
   border-radius: 6px;
 }
 
 dt {
-  color: var(--muted);
+  color: var(--ui-text-muted);
 }
 
 dd {
@@ -155,7 +155,7 @@ h3 {
 
 h3 small {
   font-weight: 400;
-  color: var(--muted);
+  color: var(--ui-text-muted);
 }
 
 .can {
@@ -180,7 +180,7 @@ h3 small {
 }
 
 .empty {
-  color: var(--muted);
+  color: var(--ui-text-muted);
   font-size: 12px;
 }
 </style>

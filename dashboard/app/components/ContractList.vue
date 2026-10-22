@@ -23,7 +23,7 @@ defineProps<{ contracts: { key: string; name: string; url: string; address?: str
 
 .note {
   margin: 0;
-  color: var(--muted);
+  color: var(--ui-text-muted);
   font-size: 12px;
 }
 </style>
