@@ -25,6 +25,8 @@ export interface Line {
   role?: string
   tx?: string
   reason?: { error: string; args: unknown[] }
+  // For a refusal, the money it would have moved.
+  attempt?: { from: string; to: string; amount: string }
   events: ChainEvent[]
 }
 
@@ -99,7 +101,7 @@ function capitalise(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
-function who(actor: string): string {
+export function who(actor: string): string {
   if (functions.has(actor)) return capitalise(actor)
   if (actor === 'ATM') return 'The ATM'
   return /^[A-Z]/.test(actor) ? actor : `The ${actor}`
@@ -225,6 +227,13 @@ export function movements(line: Line): Movement[] {
   return line.events
     .filter((e) => e.contract === 'DepositToken' && e.name === 'Transfer')
     .map((e) => ({ from: String(e.args.from), to: String(e.args.to), amount: BigInt(String(e.args.value)), channel: line.channel }))
+}
+
+// The movement a refused line would have made, for the bank map to play up to the refusal. Lines recorded
+// before attempts were kept have none.
+export function attempted(line: Line): Movement | undefined {
+  const a = line.attempt
+  return line.kind === 'refused' && a ? { from: a.from, to: a.to, amount: BigInt(a.amount), channel: line.channel } : undefined
 }
 
 export const ZERO = '0x0000000000000000000000000000000000000000'

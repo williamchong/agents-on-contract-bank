@@ -2,7 +2,7 @@
 // between. The map follows the latest line by framing these and fading the rest of the town. See
 // docs/architecture.md#bank-map.
 
-import { holder, movements, type Deployment, type Line } from '~/lib/story'
+import { attempted, holder, movements, type Deployment, type Line } from '~/lib/story'
 import { concerns, customerId, parse, staffId, type EntityId } from './entities'
 import { buildings, houseLots, redTeamSpot, staffPosts, type BuildingId, type Vec3 } from './layout'
 
@@ -11,13 +11,15 @@ export function housedCustomers(d: Deployment): string[] {
   return Object.keys(d.customers).filter((n) => n !== 'other customers')
 }
 
-// Where a movement's side stands: a customer's house or the building holding the money. The rest of the
-// world's customers stand nowhere on the map, so have no entity.
+// Where a movement's side stands: a customer's house, the red team or the building holding the money. The
+// rest of the world's customers, and accounts the bank does not know, stand nowhere on the map, so have no
+// entity.
 export function addressEntity(d: Deployment, address: string, other: string, channel: string): EntityId | undefined {
   const a = address.toLowerCase()
   const customer = housedCustomers(d).find((n) => d.customers[n]!.toLowerCase() === a)
   if (customer) return customerId(customer)
   if (a === d.customers['other customers']?.toLowerCase()) return undefined
+  if (a === d.staff['red team']?.toLowerCase()) return staffId('red team')
   switch (holder(d, address, other, channel)) {
     case 'Another bank':
       return 'clearing-house'
@@ -29,7 +31,17 @@ export function addressEntity(d: Deployment, address: string, other: string, cha
     case 'Post office':
       return 'post-office'
   }
-  return 'head-office'
+  return Object.values(d.contracts).some((c) => c.toLowerCase() === a) ? 'head-office' : undefined
+}
+
+// Who acted, where the map has them: a member of staff, a customer, or the machine or partner whose
+// channel it is.
+export function actorEntity(d: Deployment, line: Line): EntityId | undefined {
+  if (line.actor === 'ATM') return 'atm'
+  if (line.channel === 'partner') return 'clearing-house'
+  if (d.staff[line.actor] !== undefined) return staffId(line.actor)
+  if (housedCustomers(d).includes(line.actor)) return customerId(line.actor)
+  return undefined
 }
 
 // Where a refusal stands: at the channel it came through, or the house of the customer who tried it.
@@ -45,12 +57,12 @@ const involvable = buildings.map((b) => b.id).filter((id) => id !== 'head-office
 export function involved(d: Deployment, line: Line): Set<EntityId> {
   const ids = new Set<EntityId>()
   if (line.kind === 'operator') return ids
-  // The ATM signs as staff but is a building on the map, which its channel lights.
-  if (d.staff[line.actor] !== undefined && line.actor !== 'ATM') ids.add(staffId(line.actor))
-  if (housedCustomers(d).includes(line.actor)) ids.add(customerId(line.actor))
+  const actor = actorEntity(d, line)
+  if (actor) ids.add(actor)
   if (line.channel === 'head office') ids.add('head-office')
   if (line.kind === 'refused') ids.add(refusalEntity(d, line))
-  for (const m of movements(line)) {
+  const attempt = attempted(line)
+  for (const m of attempt ? [attempt] : movements(line)) {
     const from = addressEntity(d, m.from, m.to, m.channel)
     const to = addressEntity(d, m.to, m.from, m.channel)
     if (from) ids.add(from)
