@@ -3,7 +3,7 @@ import { templateCompilerOptions } from '@tresjs/core'
 const description =
   'A bank that runs on a blockchain in place of a core banking system: a recorded run of its customers and staff, shown as a small town in 3D, with every refusal, ledger entry and transaction open to inspect.'
 const intro =
-  'A small simulated bank whose accounts and books are smart contracts instead of a core banking system. Scripted customers and staff go through ordinary banking days, then try to break it: lost phones, a failed ATM, forged slips and an attacker. The chain decides what is allowed, and the books always balance. Watch it play, click any building or person to see what it is and what it has done, and turn on Under the hood for the signers, roles checked, chain events, transactions and contract source.'
+  'A small simulated bank whose accounts and books are smart contracts instead of a core banking system. Scripted customers and staff go through ordinary banking days, then try to break it: lost phones, a failed ATM, forged slips and an attacker. The chain decides what is allowed, and the books always balance. Watch it play, click any building or person to see what it is and what it has done, and click a line of the story or a check along the top for the signers, the roles checked and the chain events, then follow them to the block explorer.'
 
 // The dashboard runs on the operator's machine or as static files playing back a recorded run, and the bank map
 // draws with WebGL, so there is nothing to render on a server.

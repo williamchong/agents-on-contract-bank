@@ -58,11 +58,18 @@ export const sources: Record<string, { name: string; url: string }> = {
   verifier: { name: 'ERC7913P256Verifier', url: `${OZ}/utils/cryptography/verifiers/ERC7913P256Verifier.sol` },
 }
 
-// Block explorers by chain id; the local chain has none.
-const explorers: Record<number, string> = { 84532: 'https://sepolia.basescan.org', 8453: 'https://basescan.org' }
+// The public chains by chain id, with their block explorers; the local chain is none of them.
+const chains: Record<number, { name: string; test: boolean; explorer: string }> = {
+  84532: { name: 'Base Sepolia', test: true, explorer: 'https://sepolia.basescan.org' },
+  8453: { name: 'Base', test: false, explorer: 'https://basescan.org' },
+}
+
+export function chain(chainId: number | undefined) {
+  return chainId === undefined ? undefined : chains[chainId]
+}
 
 export function explorer(chainId: number | undefined): string | undefined {
-  return chainId === undefined ? undefined : explorers[chainId]
+  return chain(chainId)?.explorer
 }
 
 const buildingInfo: Record<BuildingId, Omit<Entity, 'id' | 'kind' | 'title'>> = {

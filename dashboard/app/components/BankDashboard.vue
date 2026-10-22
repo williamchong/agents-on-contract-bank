@@ -177,7 +177,7 @@ const tabs = computed((): { id: Tab; label: string; count?: number }[] => [
         </div>
       </aside>
     </main>
-    <IntroCard v-if="intro" />
+    <IntroCard v-if="intro" :chain-id="deployment?.chainId" />
   </div>
 </template>
 

@@ -1,10 +1,21 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useIntro } from '~/composables/useIntro'
+import { chain } from '~/town/entities'
 
 // What the page is, for a first-time visitor: the bank in two sentences and the three ways to look at it,
-// from watching to reading the contracts. The same words are in the page's HTML for search engines; see
-// nuxt.config.ts.
+// from watching to reading the contracts, and the chain the run was recorded on. The same words are in the
+// page's HTML for search engines; see nuxt.config.ts.
+const props = defineProps<{ chainId: number | undefined }>()
 const { open, close } = useIntro()
+
+// Said once the recording is loaded, so the chain is known.
+const recorded = computed(() => {
+  if (props.chainId === undefined) return undefined
+  const c = chain(props.chainId)
+  if (!c) return 'No real money. This run was recorded on a local test chain.'
+  return `No real money. This run was recorded on ${c.name}, a public ${c.test ? 'test ' : ''}chain, so every step can be checked on its block explorer.`
+})
 </script>
 
 <template>
@@ -21,7 +32,7 @@ const { open, close } = useIntro()
         <li><strong>Explore.</strong> Click any building, house or person to see what it is, what it holds and what it has done.</li>
         <li><strong>Dig in.</strong> Click a line of the story or a check along the top for the signers, the roles checked and the chain events, then follow them to the block explorer.</li>
       </ul>
-      <p class="note">No real money. This run was recorded on a local test chain.</p>
+      <p v-if="recorded" class="note">{{ recorded }}</p>
       <div class="actions">
         <button class="start" @click="close">Start watching</button>
         <a href="https://github.com/williamchong/agents-on-contract-bank" target="_blank" rel="noopener">Source on GitHub</a>
