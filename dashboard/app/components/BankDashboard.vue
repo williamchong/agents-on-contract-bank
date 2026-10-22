@@ -4,13 +4,16 @@ import type { BankState } from '~/composables/useBank'
 import type { Card, Panel } from '~/composables/useControl'
 import { accountsMoved, namer, sentence, waiting, type Deployment, type Line } from '~/lib/story'
 import { useIntro } from '~/composables/useIntro'
-import type { EntityId } from '~/town/entities'
+import type { CheckKey } from '~/lib/checks'
+import { explorer, type EntityId } from '~/town/entities'
 
 // The dashboard in layers, so a newcomer sees the scene and an expert can dig. On top, the bar that drives
-// the run, the invariant strip and the under the hood switch, which adds the technical detail everywhere.
-// The bank map, with the latest story line as its caption, then beside it the scenario card and tabs for
-// the story, what is waiting, the balance sheet and the details of whatever is selected on the map. While
-// an adverse scenario is shown, the tab it concerns comes forward. See docs/architecture.md#dashboard.
+// the run and the invariant strip, whose checks open to say what they mean, and the block, linked to the
+// block explorer. The bank map, with the latest story line as its caption, which opens it, then beside it
+// the scenario card and tabs for the story, what is waiting, the balance sheet and the details of whatever
+// was opened: a place or person on the map, a story line or a check. Details lead on to each other and to
+// the block explorer, with a way back. While an adverse scenario is shown, the tab it concerns comes
+// forward. See docs/architecture.md#dashboard.
 const props = defineProps<{
   deployment: Deployment | undefined
   lines: Line[]
@@ -26,14 +29,22 @@ const props = defineProps<{
 const { show: showIntro } = useIntro()
 
 type Tab = Panel | 'details'
+type Detail = { kind: 'entity'; id: EntityId } | { kind: 'line'; seq: number } | { kind: 'check'; key: CheckKey }
 const tab = ref<Tab>('story')
-const underTheHood = ref(false)
-const selected = ref<number>()
-const entity = ref<EntityId>()
-// A reset starts the story again, so a line selected before it is gone.
+// The details opened one from another, the one shown last, and the tab the first was opened from.
+const trail = ref<Detail[]>([])
+const from = ref<Tab>()
+const detail = computed(() => trail.value.at(-1))
+const selected = computed(() => (detail.value?.kind === 'line' ? detail.value.seq : undefined))
+const entity = computed(() => (detail.value?.kind === 'entity' ? detail.value.id : undefined))
+// A reset opens a fresh bank, at new addresses, and starts the story again, so what was opened before it is
+// gone. A reconnect to the same bank keeps it.
 watch(
-  () => props.deployment,
-  () => (selected.value = undefined),
+  () => props.deployment?.contracts.ledger,
+  () => {
+    trail.value = []
+    from.value = undefined
+  },
 )
 const moved = computed(() => {
   const line = props.lines.find((l) => l.seq === selected.value)
@@ -47,10 +58,21 @@ watch(
   },
 )
 
-function pick(id: EntityId) {
-  entity.value = id
+// Back from the first detail returns to the tab it was opened from, so opening one from the map while
+// details are shown keeps that tab. Opening the detail already shown again adds no step to go back through.
+function open(d: Detail, further = false) {
+  if (!further) trail.value = [d]
+  else if (JSON.stringify(d) !== JSON.stringify(detail.value)) trail.value = [...trail.value, d]
+  if (!further && tab.value !== 'details') from.value = tab.value
   tab.value = 'details'
 }
+
+function back() {
+  if (trail.value.length > 1) trail.value = trail.value.slice(0, -1)
+  else if (from.value) tab.value = from.value
+}
+
+const base = computed(() => explorer(props.deployment?.chainId))
 
 const items = computed(() => (props.deployment ? waiting(props.lines, namer(props.deployment)) : []))
 const latest = computed(() => props.lines.findLast((l) => l.kind !== 'operator'))
@@ -67,10 +89,7 @@ const tabs = computed((): { id: Tab; label: string; count?: number }[] => [
     <header class="top">
       <h1>Agents on Contract Bank</h1>
       <button v-if="intro" class="about" @click="showIntro">What is this?</button>
-      <InvariantStrip :state="state" :under-the-hood="underTheHood" />
-      <label class="hood-switch" title="Show signers, roles checked, chain events, transactions and contracts">
-        <input v-model="underTheHood" type="checkbox" /> Under the hood
-      </label>
+      <InvariantStrip :state="state" :explorer="base" @open="open({ kind: 'check', key: $event })" />
       <div v-if="$slots.bar" class="transport"><slot name="bar" /></div>
     </header>
     <p v-if="error" class="notice" role="status">{{ error }}</p>
@@ -84,10 +103,21 @@ const tabs = computed((): { id: Tab; label: string; count?: number }[] => [
           :scenario="card"
           :epoch="epoch"
           :selected="entity"
-          @select="pick"
+          @select="open({ kind: 'entity', id: $event })"
         >
           <template #caption>
-            <p v-if="latest" class="caption" :class="latest.kind" aria-live="polite"><MoneyText :text="sentence(latest)" /></p>
+            <p
+              v-if="latest"
+              class="caption"
+              :class="latest.kind"
+              aria-live="polite"
+              title="Open this line"
+              tabindex="0"
+              @click="open({ kind: 'line', seq: latest.seq })"
+              @keydown.enter="open({ kind: 'line', seq: latest.seq })"
+            >
+              <MoneyText :text="sentence(latest)" />
+            </p>
           </template>
         </BankMap>
       </div>
@@ -113,20 +143,37 @@ const tabs = computed((): { id: Tab; label: string; count?: number }[] => [
             :deployment="deployment"
             :selected="selected"
             :alarms="adverse"
-            :under-the-hood="underTheHood"
-            @select="selected = $event"
+            @select="open({ kind: 'line', seq: $event })"
           />
           <WaitingStrip v-else-if="tab === 'waiting'" :items="items" />
           <BalanceSheet v-else-if="tab === 'balance sheet'" :state="state" :lines="lines" :moved="moved" />
-          <EntityDetails
-            v-else
-            :id="entity"
-            :deployment="deployment"
-            :state="state"
-            :lines="lines"
-            :under-the-hood="underTheHood"
-            @select="pick"
-          />
+          <template v-else>
+            <button v-if="trail.length > 1 || from" class="back" @click="back">← Back</button>
+            <LineDetails
+              v-if="detail?.kind === 'line'"
+              :seq="detail.seq"
+              :deployment="deployment"
+              :lines="lines"
+              @select="open({ kind: 'entity', id: $event }, true)"
+              @sheet="tab = 'balance sheet'"
+            />
+            <CheckDetails
+              v-else-if="detail?.kind === 'check'"
+              :id="detail.key"
+              :deployment="deployment"
+              :state="state"
+              @select="open({ kind: 'entity', id: $event }, true)"
+            />
+            <EntityDetails
+              v-else
+              :id="entity"
+              :deployment="deployment"
+              :state="state"
+              :lines="lines"
+              @select="open({ kind: 'entity', id: $event }, true)"
+              @line="open({ kind: 'line', seq: $event }, true)"
+            />
+          </template>
         </div>
       </aside>
     </main>
@@ -167,13 +214,14 @@ h1 {
   cursor: pointer;
 }
 
-.hood-switch {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 13px;
-  white-space: nowrap;
+.back {
+  font: inherit;
+  font-size: 12px;
+  margin-bottom: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
   cursor: pointer;
 }
 
@@ -187,6 +235,7 @@ h1 {
   font-size: 14px;
   line-height: 1.4;
   box-shadow: 0 1px 4px rgb(0 0 0 / 12%);
+  cursor: pointer;
 }
 
 .caption.refused {

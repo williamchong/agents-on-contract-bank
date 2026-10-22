@@ -25,7 +25,7 @@ export interface Request {
   action: string
   to: Address
   data: Hex
-  // Under the hood: the keys that signed, and the role the request is checked against.
+  // Shown when the line is opened: the keys that signed, and the role the request is checked against.
   signers?: string[]
   role?: string
 }

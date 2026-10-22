@@ -42,7 +42,7 @@ const words = (o: Record<string, bigint>) => new Map(Object.entries(o).map(([k, 
 const roleWords = words(Roles)
 const branchRoleWords = words(BranchRole)
 
-// A role number in words, as the story's under-the-hood view shows it, such as "teller at branch 1".
+// A role number in words, as an opened story line shows it, such as "teller at branch 1".
 export function roleName(role: bigint): string {
   if (role < 100n) return roleWords.get(role) ?? `role ${role}`
   return `${branchRoleWords.get(role % 100n) ?? `role ${role % 100n}`} at branch ${role / 100n}`

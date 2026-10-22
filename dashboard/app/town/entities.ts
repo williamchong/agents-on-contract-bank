@@ -94,7 +94,7 @@ const buildingInfo: Record<BuildingId, Omit<Entity, 'id' | 'kind' | 'title'>> = 
   atm: {
     concept: 'A cash machine. It pays out against the customer’s card authorisation and must confirm or report each dispense.',
     can: ['Pay out cash on a card authorisation', 'Report a failed dispense, which returns the money'],
-    contracts: ['cash'],
+    contracts: ['cash', 'account'],
   },
   custodian: {
     concept: 'Holds the bank’s liquid securities, the assets it can sell quickly to meet withdrawals.',
@@ -161,12 +161,25 @@ export function entity(id: EntityId): Entity | undefined {
   return b && { id, kind: 'Building', title: b.label, ...buildingInfo[b.id] }
 }
 
-// The address an entity's 'account' contract stands for: its own multi-signer account.
+// The address an entity's 'account' contract stands for: its own multi-signer account. The ATM signs as
+// staff but is a building on the map.
 export function accountOf(id: EntityId, d: Deployment): string | undefined {
   const p = parse(id)
   if (p.kind === 'staff') return d.staff[p.name]
   if (p.kind === 'customer') return d.customers[p.name]
+  if (p.id === 'atm') return d.staff.ATM
   return undefined
+}
+
+// The contracts behind an entity or a check, by their keys in the deployment, with their source and address;
+// 'account' is the entity's own account.
+export function contractsOf(keys: string[], d: Deployment, id?: EntityId): { key: string; name: string; url: string; address?: string }[] {
+  return keys.flatMap((key) => {
+    const source = sources[key]
+    if (!source) return []
+    if (key !== 'account') return [{ key, ...source, address: d.contracts[key] }]
+    return [{ key, name: `${source.name} (its own account)`, url: source.url, address: id && accountOf(id, d) }]
+  })
 }
 
 // Staff present at each block: the replacement teller and the ATM only once granted a role, and anyone

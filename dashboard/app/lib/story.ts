@@ -39,11 +39,17 @@ export interface Deployment {
   beats: { number: number; title: string; pointAt: string; claim: string }[]
 }
 
-// The general ledger accounts a line's entry moved, by their number in GeneralLedger.Account.
-export function accountsMoved(line: Line): number[] {
+// The lines of the ledger entries a line posted: each account, by its number in GeneralLedger.Account, and
+// the amount in cents.
+export function ledgerLines(line: Line): { account: number; amount: string }[] {
   return line.events
     .filter((e) => e.name === 'EntryPosted')
-    .flatMap((e) => (e.args.lines as { account: number | string }[]).map((l) => Number(l.account)))
+    .flatMap((e) => (e.args.lines as { account: number | string; amount: string }[]).map((l) => ({ account: Number(l.account), amount: String(l.amount) })))
+}
+
+// The general ledger accounts a line's entry moved.
+export function accountsMoved(line: Line): number[] {
+  return ledgerLines(line).map((l) => l.account)
 }
 
 // What the adverse view marks: a refusal, a figure or count that did not match the ledger, or an incident.

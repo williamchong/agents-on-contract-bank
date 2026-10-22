@@ -27,7 +27,7 @@ The presenter leads with the bank and its refusals, not with the blockchain. The
 | Question | Answer | Where the dashboard shows it |
 |---|---|---|
 | Why can't the agent just do it anyway? | An agent's instructions are not the control. The contracts check every signature and role, and refuse what the role does not allow. | Refused lines in the story view, each naming the rule that stopped it, and a barrier on the bank map where the attempt was stopped |
-| Why not a database? | A balance and the bank's books change in one transaction, so they cannot disagree. Every change is signed by a named person or machine. The chain is public and not run by the bank, so the bank cannot rewrite it, and anyone, the auditor and the regulator included, can check every block without the bank's help. | The invariant strip, the ledger entry under the hood of each story line, and the same transaction on the public block explorer |
+| Why not a database? | A balance and the bank's books change in one transaction, so they cannot disagree. Every change is signed by a named person or machine. The chain is public and not run by the bank, so the bank cannot rewrite it, and anyone, the auditor and the regulator included, can check every block without the bank's help. | The invariant strip, the ledger entry of each story line opened, and the same transaction on the public block explorer |
 
 **What the presenter needs**
 
@@ -65,7 +65,7 @@ The presenter leads with the bank and its refusals, not with the blockchain. The
 - A scenario clock that advances time and injects events.
 - Daily routines that run as the baseline, and adverse scenarios injected on top and scored. See [scenarios](scenarios.md).
 - A guided tour that runs both in a fixed order as one presentation.
-- A dashboard with a plain-language story view, a live 3D bank map that draws the bank as a small town from the contracts' events, an under-the-hood toggle and an invariant strip.
+- A dashboard with a plain-language story view, a live 3D bank map that draws the bank as a small town from the contracts' events, story lines that open to their signers, chain events and transaction, and an invariant strip.
 - A control panel to instruct agents, trigger scenarios, control time, and stop or start channel gateways.
 
 ## Milestones
@@ -77,7 +77,7 @@ The presenter leads with the bank and its refusals, not with the blockchain. The
 | 3 | Products | Loans with the lending guard and the loss allowance, savings account, standing orders, bank-set rates, pause and resume through governance, with an income statement on the dashboard | The income statement, loans on the balance sheet with the two ratios moving against their minimums, governance changes in the waiting strip. The lending office on the bank map. Tour beat 5. |
 | 4 | Stablecoin | Conversion to and from deposits, mint guard, buffer, custodian simulator, reserve panel | The reserve panel, the reserve check on the invariant strip, and the reserve vault on the bank map |
 | 5 | AI agents | Default set of six first, then the optional six, with plain-language instructions from the control panel. Needs an Anthropic API key. | The same routines and scenarios played by AI agents, the red team's own attempts in the story view, and an instruction typed by the operator carried out or refused. The AI agents acting on their own as figures on the bank map. Tour beat 3 taken live. |
-| 6 | Institutional layer | Deployment to Base Sepolia with a seeded run, replayed on a public link, channel gateways on separate network zones with channel failure controls, signer service with key inventory and logs, passkey devices. The single-key exposure inventory and the expansion paper are written alongside. | Block explorer links under the hood and from the bank map's buildings, channel controls on the control panel, taking over a role with a passkey. Tour beat 6. The seeded run replayed on a public link, each step linked to its transaction. |
+| 6 | Institutional layer | Deployment to Base Sepolia with a seeded run, replayed on a public link, channel gateways on separate network zones with channel failure controls, signer service with key inventory and logs, passkey devices. The single-key exposure inventory and the expansion paper are written alongside. | Block explorer links from each story line, check and building, channel controls on the control panel, taking over a role with a passkey. Tour beat 6. The seeded run replayed on a public link, each step linked to its transaction. |
 
 A milestone is done when its [daily routines](scenarios.md#daily-operation) run and its [adverse scenarios](scenarios.md#adverse-scenarios) pass. Every milestone after the first ends with something new to see on the dashboard, named in the last column.
 

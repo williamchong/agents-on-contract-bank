@@ -33,7 +33,7 @@ export const beats: Beat[] = [
   {
     number: 2,
     title: 'Books that cannot disagree',
-    pointAt: 'One cash deposit opened under the hood: the ledger entry it posted, the two balance sheet rows it moved, and the invariant strip',
+    pointAt: 'One cash deposit opened from the story: the ledger entry it posted, the two balance sheet rows it moved, and the invariant strip',
     claim: 'The token and the ledger entry are one transaction',
     async run(ctx) {
       const deposit = await cashDeposit(ctx.bank, 'Bob', 500n * HKD)

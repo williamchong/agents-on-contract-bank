@@ -19,7 +19,7 @@ const { open, close } = useIntro()
       <ul>
         <li><strong>Watch.</strong> It plays by itself, and the caption at the bottom of the map says what is happening.</li>
         <li><strong>Explore.</strong> Click any building, house or person to see what it is, what it holds and what it has done.</li>
-        <li><strong>Dig in.</strong> Turn on Under the hood for the signers, the roles checked, chain events, transactions and contract source.</li>
+        <li><strong>Dig in.</strong> Click a line of the story or a check along the top for the signers, the roles checked and the chain events, then follow them to the block explorer.</li>
       </ul>
       <p class="note">No real money. This run was recorded on a local test chain.</p>
       <div class="actions">

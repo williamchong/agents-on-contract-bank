@@ -2,19 +2,18 @@
 import { computed } from 'vue'
 import type { BankState } from '~/composables/useBank'
 import type { Deployment, Line } from '~/lib/story'
-import { accountOf, concerns, entity, explorer, figuresOf, parse, sources, staffAt, staffId, staffPresent, type EntityId } from '~/town/entities'
+import { concerns, contractsOf, entity, explorer, figuresOf, parse, staffAt, staffId, staffPresent, type EntityId } from '~/town/entities'
 
 // A selected building, house or person: what it is, what it holds now and can do, and the story lines it
-// took part in. Under the hood adds the roles its actions were checked against and the contracts behind
-// it, with their addresses and source. See docs/architecture.md#bank-map.
+// took part in, each of which opens, the roles its actions were checked against, and the contracts behind
+// it with their source and their addresses on the block explorer. See docs/architecture.md#bank-map.
 const props = defineProps<{
   id: EntityId | undefined
   deployment: Deployment | undefined
   state: BankState | undefined
   lines: Line[]
-  underTheHood: boolean
 }>()
-const emit = defineEmits<{ select: [id: EntityId] }>()
+const emit = defineEmits<{ select: [id: EntityId]; line: [seq: number] }>()
 
 const info = computed(() => (props.id ? entity(props.id) : undefined))
 const figures = computed(() => (props.id ? figuresOf(props.id, props.state) : []))
@@ -45,12 +44,7 @@ const base = computed(() => explorer(props.deployment?.chainId))
 const contracts = computed(() => {
   const d = props.deployment
   const id = props.id
-  if (!d || !id || !info.value) return []
-  return info.value.contracts.flatMap((key) => {
-    const source = sources[key]
-    const address = key === 'account' ? accountOf(id, d) : d.contracts[key]
-    return source ? [{ key, name: key === 'account' ? `${source.name} (its own account)` : source.name, url: source.url, address }] : []
-  })
+  return d && id && info.value ? contractsOf(info.value.contracts, d, id) : []
 })
 </script>
 
@@ -85,32 +79,21 @@ const contracts = computed(() => {
         </ul>
       </div>
 
-      <div v-if="underTheHood" class="block hood">
+      <div class="block chain">
         <h3>On chain</h3>
         <p v-if="roles.length">
           Roles checked:
           <span v-for="[r, n] in roles" :key="r" class="tag">{{ r }} ×{{ n }}</span>
         </p>
-        <ul class="contracts">
-          <li v-for="c in contracts" :key="c.key">
-            <a :href="c.url" target="_blank" rel="noopener">{{ c.name }}</a>
-            <template v-if="c.address">
-              ·
-              <a v-if="base" :href="`${base}/address/${c.address}`" target="_blank" rel="noopener">{{ c.address.slice(0, 10) }}…</a>
-              <span v-else :title="c.address">{{ c.address.slice(0, 10) }}…</span>
-            </template>
-          </li>
-        </ul>
-        <p v-if="!base" class="note">Recorded on a local chain, so there is no block explorer to link to.</p>
+        <ContractList :contracts="contracts" :base="base" />
       </div>
-      <p v-else class="note">Turn on Under the hood for its contracts, the roles checked and each transaction.</p>
 
       <div class="block">
         <h3>
           What it has done
           <small>{{ log.length }} {{ log.length === 1 ? 'line' : 'lines' }}<template v-if="refused">, {{ refused }} refused</template></small>
         </h3>
-        <StoryView :lines="log" :deployment="deployment" :under-the-hood="underTheHood" empty="Nothing yet at this point in the run." />
+        <StoryView :lines="log" :deployment="deployment" empty="Nothing yet at this point in the run." @select="emit('line', $event)" />
       </div>
     </template>
   </section>
@@ -202,11 +185,11 @@ h3 small {
   cursor: pointer;
 }
 
-.hood {
+.chain {
   font: 12px/1.6 ui-monospace, monospace;
 }
 
-.hood p {
+.chain p {
   margin: 0 0 4px;
 }
 
@@ -217,17 +200,6 @@ h3 small {
   background: var(--chip);
 }
 
-.contracts {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-a {
-  color: inherit;
-}
-
-.note,
 .empty {
   color: var(--muted);
   font-size: 12px;
