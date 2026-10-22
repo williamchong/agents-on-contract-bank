@@ -8,8 +8,8 @@ import { actorEntity, addressEntity, housedCustomers, involved, refusalEntity } 
 import { buildings, houseLots, redTeamSpot, staffPosts, type BuildingId, type Vec3 } from '~/town/layout'
 import { actorTone, tones } from '~/town/palette'
 
-// Money moving as coins between the places it was posted from and to, and a request that moves none as a
-// letter from whoever sent it. A refused attempt sets off as the real one would, until a wall rises in its
+// Money moving as coins between the places it was posted from and to, a request that moves none as a
+// letter from whoever sent it, and a step that sends nothing anywhere as a tick where it was taken. A refused attempt sets off as the real one would, until a wall rises in its
 // way and sends it back; the rule that stopped it is on the wall. Nothing moves that the chain or the submission
 // service did not report: each stack of coins is a transfer of the deposit token in a line's receipt, or the
 // transfer a refused request would have made. See docs/architecture.md#bank-map.
@@ -21,7 +21,7 @@ interface Trip {
   to: Vec3
   label: string
   start: number
-  token: 'coins' | 'letter'
+  token: 'coins' | 'letter' | 'tick'
   // A refused trip turns back at the wall.
   refused: boolean
   // The colour of whoever set it off, on its label.
@@ -55,6 +55,13 @@ const WALL_HEIGHT = 3.4
 const WALL_WIDTH = 2.4
 // Walls face the isometric camera, so one is never seen edge on, whichever way the attempt runs.
 const FACING_CAMERA = Math.PI / 4
+
+// A tick is two strokes, the short one down to the corner and the long one up from it.
+const TICK_GREEN = '#2e9e5b'
+const TICK_STROKES = [
+  { position: [-0.3, -0.1, 0], angle: -Math.PI / 4, length: 0.42 },
+  { position: [0.15, 0.075, 0], angle: Math.atan2(0.65, 0.6), length: 0.89 },
+] as const
 
 // With reduced motion, trips glide flat without spinning or shaking, and walls stand without rising.
 const still = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
@@ -105,6 +112,11 @@ function letter(line: Line, from: Vec3, to: Vec3): Route {
   return { from, to, label: `${who(line.actor)} · ${line.action}`, token: 'letter', color: toneColor(line) }
 }
 
+// A tick for a step taken where it lands, labelled like a letter.
+function tick(line: Line, at: Vec3): Route {
+  return { ...letter(line, at, at), token: 'tick' }
+}
+
 // A refused line's trip: the money it would have moved, or else a letter from whoever acted to where they
 // were refused. One that starts where it is refused comes up to the door from in front.
 function attemptTrip(line: Line): Route {
@@ -115,9 +127,11 @@ function attemptTrip(line: Line): Route {
   return route
 }
 
-// An allowed request that moves no money, such as an approval, a count or a role granted, goes as a letter
-// from whoever acted to the first other place it involves. One that involves nowhere else stays put.
-function letterTrip(line: Line): Route | undefined {
+// An allowed line that sends nothing anywhere else, such as an approval, a count, a role granted or a
+// dispense confirmed, goes as a letter from whoever acted to the first other place it involves. One that
+// involves nowhere else, or whose money stays where it is, is done where they stand: a tick hops up out of
+// the roof and lands back.
+function requestTrip(line: Line): Route | undefined {
   const d = props.deployment
   const actor = actorEntity(d, line)
   if (!actor) return undefined
@@ -126,13 +140,15 @@ function letterTrip(line: Line): Route | undefined {
     const to = placeOf(id)
     if (!same(from, to)) return letter(line, from, to)
   }
-  return undefined
+  return tick(line, from)
 }
 
-// Where a trip is at `p` of the way: a short hop so it clears the buildings it passes.
-function along(t: Pick<Trip, 'from' | 'to'>, p: number): Vec3 {
+// Where a trip is at `p` of the way: a short hop so it clears the buildings it passes, or for a tick a
+// higher one, so it is seen out of the roof even of head office.
+function along(t: Pick<Trip, 'from' | 'to' | 'token'>, p: number): Vec3 {
   const lerp = (a: number, b: number) => a + (b - a) * p
-  return [lerp(t.from[0], t.to[0]), still ? 0.6 : 0.4 + Math.sin(p * Math.PI) * 2.2, lerp(t.from[2], t.to[2])]
+  const [flat, rise] = t.token === 'tick' ? [3.6, 4.5] : [0.6, 2.2]
+  return [lerp(t.from[0], t.to[0]), still ? flat : 0.4 + Math.sin(p * Math.PI) * rise, lerp(t.from[2], t.to[2])]
 }
 
 watch(
@@ -146,12 +162,14 @@ watch(
     const newWalls: Wall[] = []
     fresh.forEach((line, n) => {
       const start = t + n * 0.4
-      const moved = movements(line)
-      for (const m of moved) {
+      let travelled = false
+      for (const m of movements(line)) {
         const route = coins(line, m)
-        if (!same(route.from, route.to)) newTrips.push({ id: ++ids, ...route, start, refused: false })
+        if (same(route.from, route.to)) continue
+        newTrips.push({ id: ++ids, ...route, start, refused: false })
+        travelled = true
       }
-      const sent = line.kind === 'allowed' && !moved.length && letterTrip(line)
+      const sent = line.kind === 'allowed' && !travelled && requestTrip(line)
       if (sent) newTrips.push({ id: ++ids, ...sent, start, refused: false })
       if (line.kind === 'refused') {
         const trip: Trip = { id: ++ids, ...attemptTrip(line), start, refused: true }
@@ -203,11 +221,18 @@ function height(w: Wall): number {
 
 <template>
   <TresGroup v-for="v in trips" :key="v.id" :position="along(v, progress(v))" :visible="now >= v.start">
-    <!-- Money is a spinning stack of coins and a request a letter, not a box, so neither is taken for a building. -->
+    <!-- Money is a spinning stack of coins, a request a letter and a step taken in place a tick, not a box, so none is taken for a building. -->
     <TresGroup v-if="v.token === 'coins'" :rotation-z="0.5" :rotation-y="still ? 0 : now * 3">
       <TresMesh v-for="k in 3" :key="k" :position-y="(k - 2) * 0.14" :cast-shadow="k === 2">
         <TresCylinderGeometry :args="[0.45, 0.45, 0.12, 24]" />
         <TresMeshStandardMaterial :color="struck(v) ? '#c0392b' : '#f2b134'" :metalness="0.6" :roughness="0.3" />
+      </TresMesh>
+    </TresGroup>
+    <!-- A flat tick sways to face the camera rather than spinning, so it is never seen edge on. -->
+    <TresGroup v-else-if="v.token === 'tick'" :rotation-y="FACING_CAMERA + (still ? 0 : Math.sin(now * 3) * 0.5)">
+      <TresMesh v-for="(s, k) in TICK_STROKES" :key="k" :position="s.position" :rotation-z="s.angle" cast-shadow>
+        <TresBoxGeometry :args="[s.length, 0.14, 0.14]" />
+        <TresMeshStandardMaterial :color="TICK_GREEN" />
       </TresMesh>
     </TresGroup>
     <TresMesh v-else :rotation-z="0.4" :rotation-y="still ? 0 : now * 2" cast-shadow>

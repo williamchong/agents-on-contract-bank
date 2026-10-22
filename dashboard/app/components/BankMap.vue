@@ -178,6 +178,7 @@ const key = [
   { color: HOUSE, text: 'A house is what a customer holds; it grows with their balance' },
   { color: WATER, text: 'The water is the bank’s money at the clearing system' },
   { color: '#f2b134', text: 'Gold coins are money moving' },
+  { color: '#2e9e5b', text: 'A green tick is a step done where it was taken' },
   { color: '#c0392b', text: 'A red wall stops an attempt the chain refused, and sends it back' },
 ]
 
