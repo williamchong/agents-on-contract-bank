@@ -10,6 +10,13 @@ const intro =
 export default defineNuxtConfig({
   compatibilityDate: '2026-10-01',
   ssr: false,
+  modules: ['@nuxt/ui'],
+  css: ['~/assets/css/main.css'],
+  // The page keeps the system's fonts, so the build fetches none. Controls are in the neutral ink unless they
+  // say a check holds, fails or waits.
+  ui: { fonts: false, theme: { defaultVariants: { color: 'neutral' } } },
+  // Static files have no icon endpoint to ask, so the icons used are bundled with the page.
+  icon: { clientBundle: { scan: true } },
   // The page draws in the browser, so what a search engine or a link preview reads without running it is
   // here: the title, the description, the preview tags, and the introduction's words in a noscript block.
   app: {

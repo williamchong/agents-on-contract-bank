@@ -37,7 +37,11 @@ const account = computed(() => {
   return d && actor ? (d.staff[actor] ?? d.customers[actor]) : undefined
 })
 const ledger = computed(() => (line.value ? ledgerLines(line.value).map((l) => ({ account: Accounts[l.account], amount: hkd(l.amount) })) : []))
-const kinds: Record<Line['kind'], string> = { allowed: 'Allowed', refused: 'Refused', operator: 'Operator' }
+const kinds: Record<Line['kind'], { label: string; color: 'success' | 'error' | 'neutral' }> = {
+  allowed: { label: 'Allowed', color: 'success' },
+  refused: { label: 'Refused', color: 'error' },
+  operator: { label: 'Operator', color: 'neutral' },
+}
 
 const when = computed(() =>
   line.value
@@ -57,7 +61,7 @@ function argText(value: unknown): string {
 <template>
   <section v-if="line" class="details" aria-label="Story line">
     <header>
-      <span class="kind" :class="line.kind">{{ kinds[line.kind] }}</span>
+      <UBadge :label="kinds[line.kind].label" :color="kinds[line.kind].color" variant="subtle" size="sm" class="uppercase" />
       <span class="when">{{ when }}</span>
     </header>
     <p class="concept"><StorySentence :line="line" :deployment="deployment" /></p>
@@ -87,7 +91,16 @@ function argText(value: unknown): string {
       <div v-if="places.length" class="block">
         <h3>Involved</h3>
         <span class="people">
-          <button v-for="p in places" :key="p.id" :class="p.tone && `tone-${p.tone}`" @click="emit('select', p.id)">{{ p.title }}</button>
+          <UButton
+            v-for="p in places"
+            :key="p.id"
+            :label="p.title"
+            variant="outline"
+            size="xs"
+            class="rounded-full text-(--tone,var(--ui-text)) ring-(--tone,var(--ui-border-accented))"
+            :class="p.tone && `tone-${p.tone}`"
+            @click="emit('select', p.id)"
+          />
         </span>
       </div>
 
@@ -99,7 +112,7 @@ function argText(value: unknown): string {
             <dd class="money">{{ l.amount }}</dd>
           </template>
         </dl>
-        <button class="link" @click="emit('sheet')">See the rows it moved on the balance sheet</button>
+        <UButton label="See the rows it moved on the balance sheet" variant="link" size="xs" class="px-0 underline" @click="emit('sheet')" />
       </div>
 
       <div class="block chain">
@@ -139,25 +152,13 @@ header {
   gap: 8px;
 }
 
-.kind {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--good);
-}
-
-.kind.refused,
 .bad {
   color: var(--bad);
 }
 
-.kind.operator,
-.when {
-  color: var(--muted);
-}
-
 .when {
   font-size: 12px;
+  color: var(--muted);
 }
 
 .concept {
@@ -209,34 +210,13 @@ dd {
 h3 {
   margin: 0 0 4px;
   font-size: 13px;
+  font-weight: 600;
 }
 
 .people {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-}
-
-.people button {
-  font: inherit;
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--tone, var(--line));
-  background: var(--chip);
-  color: var(--tone, var(--ink));
-  cursor: pointer;
-}
-
-.link {
-  font: inherit;
-  font-size: 12px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--muted);
-  text-decoration: underline;
-  cursor: pointer;
 }
 
 .chain {

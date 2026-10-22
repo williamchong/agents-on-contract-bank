@@ -54,7 +54,7 @@ const contracts = computed(() => {
     <p v-if="!info" class="empty">Click a building, a house or a person on the map to see what it is, what it holds and what it has done.</p>
     <template v-else>
       <header>
-        <span class="kind">{{ info.kind }}</span>
+        <UBadge :label="info.kind" variant="subtle" size="sm" class="uppercase" />
         <h2 :class="toneClass(toneOf(id))">{{ info.title }}</h2>
       </header>
       <p class="concept">{{ info.concept }}</p>
@@ -69,7 +69,7 @@ const contracts = computed(() => {
       <div v-if="staff.length" class="block">
         <h3>Works here</h3>
         <span class="people">
-          <button v-for="n in staff" :key="n" @click="emit('select', staffId(n))">{{ n }}</button>
+          <UButton v-for="n in staff" :key="n" :label="n" variant="outline" size="xs" class="rounded-full" @click="emit('select', staffId(n))" />
         </span>
       </div>
 
@@ -84,7 +84,7 @@ const contracts = computed(() => {
         <h3>On chain</h3>
         <p v-if="roles.length">
           Roles checked:
-          <span v-for="[r, n] in roles" :key="r" class="tag">{{ r }} ×{{ n }}</span>
+          <UBadge v-for="[r, n] in roles" :key="r" :label="`${r} ×${n}`" variant="soft" size="sm" class="ml-1.5 font-mono" />
         </p>
         <ContractList :contracts="contracts" :base="base" />
       </div>
@@ -114,13 +114,7 @@ header {
 h2 {
   margin: 0;
   font-size: 17px;
-}
-
-.kind {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
+  font-weight: 600;
 }
 
 .concept {
@@ -156,6 +150,7 @@ dd {
 h3 {
   margin: 0 0 4px;
   font-size: 13px;
+  font-weight: 600;
 }
 
 h3 small {
@@ -166,6 +161,7 @@ h3 small {
 .can {
   margin: 0;
   padding-left: 18px;
+  list-style: disc;
   line-height: 1.5;
 }
 
@@ -175,30 +171,12 @@ h3 small {
   gap: 4px;
 }
 
-.people button {
-  font: inherit;
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: var(--chip);
-  color: var(--ink);
-  cursor: pointer;
-}
-
 .chain {
   font: 12px/1.6 ui-monospace, monospace;
 }
 
 .chain p {
   margin: 0 0 4px;
-}
-
-.tag {
-  margin-left: 6px;
-  padding: 0 6px;
-  border-radius: 4px;
-  background: var(--chip);
 }
 
 .empty {

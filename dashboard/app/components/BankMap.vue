@@ -164,6 +164,14 @@ const staffCount = computed(() => {
   return counts
 })
 
+// The map is always light, so its buttons are too.
+const mapButton = {
+  color: 'neutral',
+  variant: 'outline',
+  size: 'xs',
+  class: 'bg-white/90 text-[#2b3540] ring-[#c9d1d8] hover:bg-white',
+} as const
+
 const key = [
   ...Object.values(tones).map((t) => ({ color: t.color, text: t.key })),
   { color: CUSTOMER, text: 'A figure is a person: a customer stands at their door' },
@@ -311,20 +319,26 @@ function roadSize({ from, to }: Road): Vec3 {
   </TresCanvas>
   <div class="overlay">
     <slot name="caption" />
-    <div class="key">
-      <button
-        class="key-toggle"
+    <div class="ml-auto flex gap-1">
+      <UButton
+        :label="follow ? 'Show whole town' : 'Follow the action'"
+        :icon="follow ? 'i-lucide-maximize' : 'i-lucide-crosshair'"
         :aria-pressed="follow"
         title="Frame whoever the latest line involves, and fade the rest of the town"
+        v-bind="mapButton"
         @click="follow = !follow"
-      >
-        {{ follow ? 'Show whole town' : 'Follow the action' }}
-      </button>
-      <button class="key-toggle" :aria-expanded="showKey" @click="showKey = !showKey">{{ showKey ? 'Hide key' : 'Key' }}</button>
-      <ul v-if="showKey">
-        <li v-for="k in key" :key="k.text"><span class="swatch" :style="{ background: k.color }" />{{ k.text }}</li>
-        <li class="hint">Click a building, a house or a person to see what it is and what it has done.</li>
-      </ul>
+      />
+      <UPopover v-model:open="showKey" :content="{ side: 'top', align: 'end' }">
+        <UButton :label="showKey ? 'Hide key' : 'Key'" icon="i-lucide-map" v-bind="mapButton" />
+        <template #content>
+          <ul class="max-w-60 space-y-0.5 p-2.5 text-xs">
+            <li v-for="k in key" :key="k.text" class="flex items-center gap-1.5">
+              <span class="size-2.5 flex-none rounded-full" :style="{ background: k.color }" />{{ k.text }}
+            </li>
+            <li class="pt-1.5 text-muted">Click a building, a house or a person to see what it is and what it has done.</li>
+          </ul>
+        </template>
+      </UPopover>
     </div>
   </div>
   </div>
@@ -352,52 +366,6 @@ function roadSize({ from, to }: Road): Vec3 {
 
 .overlay > * {
   pointer-events: auto;
-}
-
-.key {
-  margin-left: auto;
-  font: 12px/1.4 system-ui, sans-serif;
-  color: #2b3540;
-  text-align: right;
-}
-
-.key-toggle {
-  font: inherit;
-  padding: 4px 10px;
-  border-radius: 6px;
-  border: 1px solid #c9d1d8;
-  background: rgb(255 255 255 / 90%);
-  color: inherit;
-  cursor: pointer;
-}
-
-.key ul {
-  margin: 0 0 6px;
-  padding: 8px 10px;
-  list-style: none;
-  text-align: left;
-  background: rgb(255 255 255 / 92%);
-  border-radius: 6px;
-  max-width: 240px;
-}
-
-.key li {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 2px 0;
-}
-
-.key .hint {
-  margin-top: 6px;
-  color: #66727d;
-}
-
-.swatch {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex: none;
 }
 
 .staff {

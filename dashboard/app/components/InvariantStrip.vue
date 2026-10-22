@@ -11,84 +11,36 @@ const emit = defineEmits<{ open: [key: CheckKey] }>()
 const checks = computed(() => checksOf(props.state))
 
 // A check that holds, fails, or cannot be told yet.
-function symbol(ok: boolean | undefined): string {
-  if (ok === undefined) return '–'
-  return ok ? '✓' : '✗'
-}
+const looks = {
+  ok: { icon: 'i-lucide-check', color: 'neutral', ui: { leadingIcon: 'text-success' } },
+  broken: { icon: 'i-lucide-x', color: 'error', ui: {} },
+  unknown: { icon: 'i-lucide-minus', color: 'neutral', ui: { leadingIcon: 'text-muted' } },
+} as const
 
-function tone(ok: boolean | undefined): string {
-  if (ok === undefined) return 'unknown'
-  return ok ? 'ok' : 'broken'
+function look(ok: boolean | undefined) {
+  if (ok === undefined) return looks.unknown
+  return ok ? looks.ok : looks.broken
 }
 </script>
 
 <template>
-  <ul class="strip" aria-label="Invariants">
-    <li v-for="c in checks" :key="c.key">
-      <button :class="tone(c.ok)" :title="c.full" @click="emit('open', c.key)">
-        <span aria-hidden="true">{{ symbol(c.ok) }}</span>
-        {{ c.label }}
-      </button>
+  <ul class="flex basis-full flex-nowrap gap-1.5 overflow-x-auto sm:basis-auto sm:flex-wrap" aria-label="Invariants">
+    <li v-for="c in checks" :key="c.key" class="whitespace-nowrap">
+      <UTooltip :text="c.full">
+        <UButton
+          :label="c.label"
+          :icon="look(c.ok).icon"
+          :color="look(c.ok).color"
+          variant="soft"
+          size="xs"
+          class="rounded-full"
+          :ui="look(c.ok).ui"
+          @click="emit('open', c.key)"
+        />
+      </UTooltip>
     </li>
-    <li v-if="state" class="block">
+    <li v-if="state" class="px-1 text-xs whitespace-nowrap text-muted tabular-nums">
       <ExplorerLink :base="explorer" kind="block" :value="String(state.block)" :label="`Block ${state.block}`" />
     </li>
   </ul>
 </template>
-
-<style scoped>
-.strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: 12px;
-}
-
-li {
-  white-space: nowrap;
-}
-
-button {
-  font: inherit;
-  padding: 3px 9px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--chip);
-  color: var(--ink);
-  cursor: pointer;
-}
-
-button:hover {
-  outline: 1px solid var(--line);
-}
-
-@media (max-width: 600px) {
-  .strip {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    flex-basis: 100%;
-  }
-}
-
-.ok span {
-  color: var(--good);
-}
-
-.broken {
-  background: var(--bad-bg);
-  color: var(--bad);
-}
-
-.unknown span,
-.block {
-  color: var(--muted);
-}
-
-.block {
-  padding: 3px 4px;
-  font-variant-numeric: tabular-nums;
-}
-</style>

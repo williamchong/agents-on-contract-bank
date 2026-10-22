@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import type { TabsItem } from '@nuxt/ui'
 import type { BankState } from '~/composables/useBank'
 import type { Card, Panel } from '~/composables/useControl'
 import { accountsMoved, namer, waiting, type Deployment, type Line } from '~/lib/story'
@@ -76,25 +77,33 @@ const base = computed(() => explorer(props.deployment?.chainId))
 
 const items = computed(() => (props.deployment ? waiting(props.lines, namer(props.deployment)) : []))
 const latest = computed(() => props.lines.findLast((l) => l.kind !== 'operator'))
-const tabs = computed((): { id: Tab; label: string; count?: number }[] => [
-  { id: 'story', label: 'Story' },
-  { id: 'waiting', label: 'Waiting', count: items.value.length },
-  { id: 'balance sheet', label: 'Balance sheet' },
-  { id: 'details', label: 'Details' },
+// The count alone, so the tabs are rebuilt only when it changes, not on every line.
+const waitingCount = computed(() => items.value.length)
+const tabs = computed((): TabsItem[] => [
+  { value: 'story', label: 'Story' },
+  {
+    value: 'waiting',
+    label: 'Waiting',
+    badge: waitingCount.value ? { label: waitingCount.value, color: 'warning', variant: 'solid' } : undefined,
+  },
+  { value: 'balance sheet', label: 'Balance sheet' },
+  { value: 'details', label: 'Details' },
 ])
 </script>
 
 <template>
-  <div class="dashboard">
-    <header class="top">
-      <h1>Agents on Contract Bank</h1>
-      <button v-if="intro" class="about" @click="showIntro">What is this?</button>
+  <div class="flex h-screen flex-col">
+    <header class="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-default bg-default px-4 py-2">
+      <h1 class="text-[15px] font-semibold whitespace-nowrap">Agents on Contract Bank</h1>
+      <UButton v-if="intro" label="What is this?" variant="outline" size="sm" class="rounded-full" @click="showIntro" />
       <InvariantStrip :state="state" :explorer="base" @open="open({ kind: 'check', key: $event })" />
-      <div v-if="$slots.bar" class="transport"><slot name="bar" /></div>
+      <div v-if="$slots.bar" class="flex basis-full"><slot name="bar" /></div>
     </header>
-    <p v-if="error" class="notice" role="status">{{ error }}</p>
-    <main>
-      <div class="map">
+    <UAlert v-if="error" :title="error" color="warning" variant="subtle" class="rounded-none" role="status" />
+    <main
+      class="grid min-h-0 flex-1 grid-cols-1 grid-rows-[55vh_auto] min-[900px]:grid-cols-[minmax(0,1fr)_420px] min-[900px]:grid-rows-1"
+    >
+      <div class="min-h-0">
         <BankMap
           :deployment="deployment"
           :state="state"
@@ -121,22 +130,21 @@ const tabs = computed((): { id: Tab; label: string; count?: number }[] => [
           </template>
         </BankMap>
       </div>
-      <aside>
+      <aside
+        class="flex flex-col gap-3.5 overflow-y-auto border-t border-default bg-default px-4 py-3 min-[900px]:border-t-0 min-[900px]:border-l"
+      >
         <slot name="panel" />
         <ScenarioCard :card="card" />
-        <div class="tabs" role="tablist" aria-label="Panels">
-          <button
-            v-for="t in tabs"
-            :key="t.id"
-            role="tab"
-            :aria-selected="tab === t.id"
-            :class="{ on: tab === t.id }"
-            @click="tab = t.id"
-          >
-            {{ t.label }}<span v-if="t.count" class="count">{{ t.count }}</span>
-          </button>
-        </div>
-        <div class="panel" role="tabpanel">
+        <UTabs
+          v-model="tab"
+          :items="tabs"
+          :content="false"
+          variant="link"
+          size="sm"
+          aria-label="Panels"
+          class="sticky -top-3 z-10 bg-default"
+        />
+        <div class="min-h-0" role="tabpanel">
           <StoryView
             v-if="tab === 'story'"
             :lines="lines"
@@ -148,7 +156,15 @@ const tabs = computed((): { id: Tab; label: string; count?: number }[] => [
           <WaitingStrip v-else-if="tab === 'waiting'" :items="items" />
           <BalanceSheet v-else-if="tab === 'balance sheet'" :state="state" :lines="lines" :moved="moved" />
           <template v-else>
-            <button v-if="trail.length > 1 || from" class="back" @click="back">← Back</button>
+            <UButton
+              v-if="trail.length > 1 || from"
+              label="Back"
+              icon="i-lucide-arrow-left"
+              variant="link"
+              size="xs"
+              class="mb-2 px-0"
+              @click="back"
+            />
             <LineDetails
               v-if="detail?.kind === 'line'"
               :seq="detail.seq"
@@ -182,49 +198,6 @@ const tabs = computed((): { id: Tab; label: string; count?: number }[] => [
 </template>
 
 <style scoped>
-.top {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 16px;
-  padding: 8px 16px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
-}
-
-h1 {
-  margin: 0;
-  font-size: 15px;
-  white-space: nowrap;
-}
-
-.transport {
-  display: flex;
-  flex-basis: 100%;
-}
-
-.about {
-  font: inherit;
-  font-size: 13px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: none;
-  color: var(--ink);
-  cursor: pointer;
-}
-
-.back {
-  font: inherit;
-  font-size: 12px;
-  margin-bottom: 8px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--muted);
-  cursor: pointer;
-}
-
 .caption {
   margin: 0;
   max-width: 560px;
@@ -240,45 +213,5 @@ h1 {
 
 .caption.refused {
   color: #b3261e;
-}
-
-.tabs {
-  display: flex;
-  gap: 2px;
-  border-bottom: 1px solid var(--line);
-  position: sticky;
-  top: -12px;
-  background: var(--panel);
-  z-index: 1;
-}
-
-.tabs button {
-  font: inherit;
-  font-size: 13px;
-  padding: 7px 10px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: none;
-  color: var(--muted);
-  cursor: pointer;
-}
-
-.tabs button.on {
-  color: var(--ink);
-  border-bottom-color: var(--ink);
-  font-weight: 600;
-}
-
-.count {
-  margin-left: 5px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--wait);
-  color: #fff;
-  font-size: 11px;
-}
-
-.panel {
-  min-height: 0;
 }
 </style>

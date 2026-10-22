@@ -25,7 +25,7 @@ const status = computed(() => {
 <template>
   <section v-if="check" class="details" aria-label="Check">
     <header>
-      <span class="kind">Invariant</span>
+      <UBadge label="Invariant" variant="subtle" size="sm" class="uppercase" />
       <h2>{{ check.label }}</h2>
     </header>
     <p class="status" :class="{ broken: check.ok === false }">{{ status }}: {{ check.full }}.</p>
@@ -40,7 +40,7 @@ const status = computed(() => {
 
     <div class="block">
       <h3>Where it is kept</h3>
-      <button class="chip" @click="emit('select', check.building)">{{ building?.title }}</button>
+      <UButton :label="building?.title" variant="outline" size="xs" class="rounded-full" @click="emit('select', check.building)" />
     </div>
 
     <div class="block chain">
@@ -66,13 +66,7 @@ header {
 h2 {
   margin: 0;
   font-size: 17px;
-}
-
-.kind {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
+  font-weight: 600;
 }
 
 .status {
@@ -118,17 +112,7 @@ dd {
 h3 {
   margin: 0 0 4px;
   font-size: 13px;
-}
-
-.chip {
-  font: inherit;
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: var(--chip);
-  color: var(--ink);
-  cursor: pointer;
+  font-weight: 600;
 }
 
 .chain {

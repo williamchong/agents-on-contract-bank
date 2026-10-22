@@ -9,12 +9,8 @@ const text = computed(() => props.label ?? (props.kind === 'block' ? props.value
 </script>
 
 <template>
-  <a v-if="base" class="explorer" :href="`${base}/${kind}/${value}`" target="_blank" rel="noopener" :title="value" @click.stop>{{ text }} ↗</a>
+  <ULink v-if="base" raw :to="`${base}/${kind}/${value}`" target="_blank" class="underline" :title="value" @click.stop>
+    {{ text }}<UIcon name="i-lucide-arrow-up-right" class="size-3 align-[-1px]" />
+  </ULink>
   <span v-else :title="value">{{ text }}</span>
 </template>
-
-<style scoped>
-.explorer {
-  color: inherit;
-}
-</style>

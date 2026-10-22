@@ -12,9 +12,12 @@
   },
   "dependencies": {
     "@bank/services": "workspace:*",
+    "@iconify-json/lucide": "1.2.147",
+    "@nuxt/ui": "4.12.0",
     "@tresjs/cientos": "5.9.2",
     "@tresjs/core": "5.9.2",
     "nuxt": "4.6.2",
+    "tailwindcss": "4.3.3",
     "three": "0.186.1",
     "viem": "2.57.3",
     "vue": "3.5.43"

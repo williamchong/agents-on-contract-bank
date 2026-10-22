@@ -7,108 +7,54 @@ import type { Card } from '~/composables/useControl'
 // away. See docs/architecture.md#dashboard.
 const props = defineProps<{ card: Card | undefined }>()
 
-const statusText: Record<Card['status'], string> = { running: 'Playing', passed: 'Passed', failed: 'Failed' }
+const status: Record<Card['status'], { label: string; color: 'warning' | 'success' | 'error'; border: string }> = {
+  running: { label: 'Playing', color: 'warning', border: 'border-l-warning' },
+  passed: { label: 'Passed', color: 'success', border: 'border-l-success' },
+  failed: { label: 'Failed', color: 'error', border: 'border-l-error' },
+}
+// Fixed, so the card's parts are not redrawn for each line played while it shows.
+const cardUi = { body: 'p-2.5 sm:p-2.5' }
+const toggleUi = { trailingIcon: 'group-data-[state=open]:rotate-180 transition-transform' }
 const passed = computed(() => props.card?.checks.filter((c) => c.pass).length ?? 0)
 </script>
 
 <template>
-  <section v-if="card" class="card" :class="card.status" aria-label="Scenario card">
-    <header>
-      <h2>{{ card.title }}</h2>
-      <span class="status">{{ statusText[card.status] }}</span>
+  <UCard
+    v-if="card"
+    as="section"
+    aria-label="Scenario card"
+    class="shrink-0 border-l-4 text-[13px]"
+    :class="status[card.status].border"
+    :ui="cardUi"
+  >
+    <header class="flex items-baseline justify-between gap-2">
+      <h2 class="text-[15px] font-semibold">{{ card.title }}</h2>
+      <UBadge :label="status[card.status].label" :color="status[card.status].color" variant="subtle" />
     </header>
-    <p class="lead">{{ card.summary ?? card.claim }}</p>
-    <p v-if="card.error" class="error">{{ card.error }}</p>
-    <details v-if="card.control || card.pointAt || card.checks.length || (card.summary && card.claim)">
-      <summary>
-        <template v-if="card.checks.length">{{ passed }} of {{ card.checks.length }} checks passed</template>
-        <template v-else>What it tests</template>
-      </summary>
-      <p v-if="card.control"><strong>Control tested:</strong> {{ card.control }}</p>
-      <p v-if="card.summary && card.claim"><strong>Claim:</strong> {{ card.claim }}</p>
-      <p v-if="card.pointAt"><strong>Look at:</strong> {{ card.pointAt }}</p>
-      <ul>
-        <li v-for="c in card.checks" :key="c.name" :class="c.pass ? 'pass' : 'fail'">
-          {{ c.pass ? '✓' : '✗' }} {{ c.name }}<template v-if="!c.pass && c.detail">: {{ c.detail }}</template>
-        </li>
-      </ul>
-    </details>
-  </section>
+    <p class="mt-1 leading-snug">{{ card.summary ?? card.claim }}</p>
+    <p v-if="card.error" class="mt-1 text-error">{{ card.error }}</p>
+    <UCollapsible v-if="card.control || card.pointAt || card.checks.length || (card.summary && card.claim)" class="mt-1.5">
+      <UButton
+        :label="card.checks.length ? `${passed} of ${card.checks.length} checks passed` : 'What it tests'"
+        trailing-icon="i-lucide-chevron-down"
+        variant="link"
+        size="xs"
+        class="group px-0 text-muted"
+        :ui="toggleUi"
+      />
+      <template #content>
+        <div class="space-y-1 pt-1">
+          <p v-if="card.control"><strong>Control tested:</strong> {{ card.control }}</p>
+          <p v-if="card.summary && card.claim"><strong>Claim:</strong> {{ card.claim }}</p>
+          <p v-if="card.pointAt"><strong>Look at:</strong> {{ card.pointAt }}</p>
+          <ul class="space-y-0.5">
+            <li v-for="c in card.checks" :key="c.name" class="flex gap-1" :class="c.pass ? 'text-success' : 'text-error'">
+              <UIcon :name="c.pass ? 'i-lucide-check' : 'i-lucide-x'" class="mt-0.5 size-4 flex-none" />
+              <span>{{ c.name }}<template v-if="!c.pass && c.detail">: {{ c.detail }}</template></span>
+            </li>
+          </ul>
+        </div>
+      </template>
+    </UCollapsible>
+  </UCard>
 </template>
-
-<style scoped>
-.card {
-  border: 1px solid var(--line);
-  border-left: 4px solid var(--wait);
-  padding: 8px 10px;
-  background: var(--panel);
-  font-size: 13px;
-}
-
-.passed {
-  border-left-color: var(--good);
-}
-
-.failed {
-  border-left-color: var(--bad);
-}
-
-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 8px;
-}
-
-h2 {
-  margin: 0;
-  font-size: 15px;
-}
-
-.status {
-  font-weight: 600;
-  flex: none;
-}
-
-.passed .status {
-  color: var(--good);
-}
-
-.failed .status {
-  color: var(--bad);
-}
-
-.lead {
-  margin: 4px 0 0;
-  line-height: 1.45;
-}
-
-details {
-  margin-top: 6px;
-}
-
-summary {
-  cursor: pointer;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-p {
-  margin: 4px 0;
-}
-
-ul {
-  margin: 6px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.pass {
-  color: var(--good);
-}
-
-.fail,
-.error {
-  color: var(--bad);
-}
-</style>

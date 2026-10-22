@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import type { SelectItem } from '@nuxt/ui'
 import type { Deployment } from '~/lib/story'
 
 // The operator's commands: the guided tour, daily operation, an adverse scenario, time, and a reset to the
@@ -20,136 +21,88 @@ const paces = [
   { label: 'Normal', ms: 700 },
   { label: 'Fast', ms: 0 },
 ]
-const days = ref(1)
-// Whole days only; an empty or invalid entry reads as NaN, which jumps nothing.
-const jumpDays = computed(() => (Number.isFinite(days.value) ? Math.floor(days.value) : 0))
+const days = ref<number | null>(1)
+// Whole days only; an empty entry jumps nothing.
+const jumpDays = computed(() => (days.value == null ? 0 : Math.floor(days.value)))
 const DAY_SECONDS = 86_400
 
 // The adverse scenarios in their four groups; a group with none yet is listed empty.
-const groups = computed(() => {
+const groups = computed((): SelectItem[][] => {
   const d = props.deployment
   if (!d) return []
-  return d.groups.map((name) => ({ name, presets: d.presets.filter((p) => p.kind === 'adverse' && p.group === name) }))
+  return d.groups.map((name) => {
+    const presets = d.presets.filter((p) => p.kind === 'adverse' && p.group === name)
+    return [
+      { type: 'label', label: name },
+      ...(presets.length ? presets.map((p) => ({ label: p.name, value: p.name })) : [{ label: 'None yet', value: `none:${name}`, disabled: true }]),
+    ]
+  })
 })
 const beat = computed(() => props.deployment?.beats.find((b) => b.number === props.nextBeat))
 
-function inject(event: Event) {
-  const select = event.target as HTMLSelectElement
-  if (select.value) emit('command', `/preset?name=${encodeURIComponent(select.value)}`)
-  select.value = ''
+// The select shows its prompt again after each choice.
+function inject(name: unknown) {
+  if (typeof name === 'string') emit('command', `/preset?name=${encodeURIComponent(name)}`)
 }
 </script>
 
 <template>
-  <section aria-label="Control panel">
-    <h2>Control panel</h2>
-    <div class="row">
-      <button :disabled="busy || !beat" @click="emit('command', '/tour/next')">
-        {{ beat ? `Tour: beat ${beat.number}, ${beat.title}` : 'Tour finished' }}
-      </button>
-      <button :aria-pressed="daily" @click="emit('setting', daily ? '/daily/stop' : '/daily/start')">
-        {{ daily ? 'Stop daily operation' : 'Start daily operation' }}
-      </button>
+  <section class="space-y-1.5" aria-label="Control panel">
+    <h2 class="text-[15px] font-semibold">Control panel</h2>
+    <div class="flex flex-wrap gap-1.5">
+      <UButton
+        :label="beat ? `Tour: beat ${beat.number}, ${beat.title}` : 'Tour finished'"
+        :disabled="busy || !beat"
+        @click="emit('command', '/tour/next')"
+      />
+      <UButton
+        :label="daily ? 'Stop daily operation' : 'Start daily operation'"
+        :icon="daily ? 'i-lucide-square' : 'i-lucide-repeat'"
+        :aria-pressed="daily"
+        variant="outline"
+        @click="emit('setting', daily ? '/daily/stop' : '/daily/start')"
+      />
     </div>
-    <div class="row">
-      <select
-        :disabled="busy"
-        aria-label="Inject an adverse scenario"
-        @change="inject"
-      >
-        <option value="">Inject an adverse scenario…</option>
-        <optgroup v-for="g in groups" :key="g.name" :label="g.name">
-          <option v-for="s in g.presets" :key="s.name" :value="s.name">{{ s.name }}</option>
-          <option v-if="!g.presets.length" disabled>None yet</option>
-        </optgroup>
-      </select>
-    </div>
-    <div class="row">
-      <button @click="emit('setting', paused ? '/resume' : '/pause')">{{ paused ? 'Resume' : 'Pause' }}</button>
-      <span class="speed" role="group" aria-label="Speed">
-        <button
+    <USelect
+      :model-value="undefined"
+      :items="groups"
+      :disabled="busy"
+      placeholder="Inject an adverse scenario…"
+      aria-label="Inject an adverse scenario"
+      class="w-full"
+      @update:model-value="inject"
+    />
+    <div class="flex flex-wrap gap-1.5">
+      <UButton
+        :label="paused ? 'Resume' : 'Pause'"
+        :icon="paused ? 'i-lucide-play' : 'i-lucide-pause'"
+        variant="outline"
+        @click="emit('setting', paused ? '/resume' : '/pause')"
+      />
+      <UFieldGroup role="group" aria-label="Speed">
+        <UButton
           v-for="p in paces"
           :key="p.ms"
+          :label="p.label"
           :aria-pressed="pace === p.ms"
-          :class="{ on: pace === p.ms }"
+          :variant="pace === p.ms ? 'solid' : 'outline'"
           @click="emit('setting', `/pace?ms=${p.ms}`)"
-        >
-          {{ p.label }}
-        </button>
-      </span>
+        />
+      </UFieldGroup>
     </div>
-    <div class="row">
-      <button :disabled="busy" @click="emit('command', '/time/advance?seconds=3600')">+1 hour</button>
-      <label class="jump">
-        <input v-model.number="days" type="number" min="1" max="365" aria-label="Days to jump" />
-        <button :disabled="busy || jumpDays < 1" @click="emit('command', `/time/advance?seconds=${jumpDays * DAY_SECONDS}`)">
-          Jump {{ jumpDays === 1 ? 'a day' : `${jumpDays} days` }}
-        </button>
-      </label>
-      <button :disabled="busy" @click="emit('command', '/time/end-of-day')">Close the day</button>
-      <button :disabled="busy" class="reset" @click="emit('command', '/reset')">Reset</button>
+    <div class="flex flex-wrap gap-1.5">
+      <UButton label="+1 hour" variant="outline" :disabled="busy" @click="emit('command', '/time/advance?seconds=3600')" />
+      <UFieldGroup>
+        <UInputNumber v-model="days" :min="1" :max="365" class="w-24" aria-label="Days to jump" />
+        <UButton
+          :label="`Jump ${jumpDays === 1 ? 'a day' : `${jumpDays} days`}`"
+          variant="outline"
+          :disabled="busy || jumpDays < 1"
+          @click="emit('command', `/time/advance?seconds=${jumpDays * DAY_SECONDS}`)"
+        />
+      </UFieldGroup>
+      <UButton label="Close the day" variant="outline" :disabled="busy" @click="emit('command', '/time/end-of-day')" />
+      <UButton label="Reset" color="error" variant="soft" class="ml-auto" :disabled="busy" @click="emit('command', '/reset')" />
     </div>
   </section>
 </template>
-
-<style scoped>
-h2 {
-  margin: 0 0 6px;
-  font-size: 15px;
-}
-
-.row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 6px;
-}
-
-button,
-select {
-  font: inherit;
-  font-size: 13px;
-  padding: 5px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--line);
-  background: var(--chip);
-  color: var(--ink);
-  cursor: pointer;
-}
-
-button:disabled,
-select:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.reset {
-  margin-left: auto;
-}
-
-.speed {
-  display: inline-flex;
-  gap: 2px;
-}
-
-.on {
-  background: var(--ink);
-  color: var(--panel);
-}
-
-.jump {
-  display: inline-flex;
-  gap: 4px;
-}
-
-.jump input {
-  width: 3.5em;
-  font: inherit;
-  font-size: 13px;
-  padding: 4px 6px;
-  border-radius: 6px;
-  border: 1px solid var(--line);
-  background: var(--chip);
-  color: var(--ink);
-}
-</style>

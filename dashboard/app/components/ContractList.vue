@@ -7,7 +7,7 @@ defineProps<{ contracts: { key: string; name: string; url: string; address?: str
 <template>
   <ul class="contracts">
     <li v-for="c in contracts" :key="c.key">
-      <a :href="c.url" target="_blank" rel="noopener">{{ c.name }}</a>
+      <ULink raw :to="c.url" target="_blank" class="underline">{{ c.name }}</ULink>
       <template v-if="c.address"> · <ExplorerLink :base="base" kind="address" :value="c.address" /></template>
     </li>
   </ul>
@@ -19,10 +19,6 @@ defineProps<{ contracts: { key: string; name: string; url: string; address?: str
   margin: 0;
   padding: 0;
   list-style: none;
-}
-
-a {
-  color: inherit;
 }
 
 .note {

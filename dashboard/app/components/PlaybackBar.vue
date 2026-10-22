@@ -37,126 +37,57 @@ const playLabel = computed(() => {
 const current = computed(() => props.chapters.findLastIndex((c) => c.from !== undefined && c.from <= props.position))
 const nextSpeed = computed(() => SPEEDS[(SPEEDS.indexOf(props.speed) + 1) % SPEEDS.length]!)
 const mark = (c: Card) => `${((c.from ?? 0) / Math.max(1, props.total)) * 100}%`
+const chapterItems = computed(() => [
+  ...(current.value < 0 ? [{ label: 'Opening balance sheet', value: -1, disabled: true }] : []),
+  ...props.chapters.map((c, i) => ({ label: c.title, value: i })),
+])
 
-function jump(e: Event) {
-  const i = Number((e.target as HTMLSelectElement).value)
+function jump(i: number) {
   emit('seek', props.chapters[i]?.from ?? 0)
 }
 </script>
 
 <template>
-  <section class="bar" aria-label="Playback">
-    <button class="play" :aria-label="playLabel" :title="playLabel" @click="playing ? emit('pause') : emit('play')">
-      <span aria-hidden="true">{{ playing ? '❚❚' : '▶' }}</span>
-    </button>
-    <select class="chapter" aria-label="Chapter" :value="current" @change="jump">
-      <option v-if="current < 0" :value="-1" disabled>Opening balance sheet</option>
-      <option v-for="(c, i) in chapters" :key="c.from" :value="i">{{ c.title }}</option>
-    </select>
-    <div class="track">
-      <input
-        class="scrubber"
-        type="range"
-        min="0"
+  <section class="flex min-w-0 flex-1 flex-wrap items-center gap-2.5 sm:flex-nowrap" aria-label="Playback">
+    <UButton
+      :icon="playing ? 'i-lucide-pause' : 'i-lucide-play'"
+      :aria-label="playLabel"
+      :title="playLabel"
+      @click="playing ? emit('pause') : emit('play')"
+    />
+    <USelect
+      :model-value="current"
+      :items="chapterItems"
+      aria-label="Chapter"
+      class="w-56 min-w-0"
+      @update:model-value="jump"
+    />
+    <div class="relative order-last flex min-w-20 basis-full items-center sm:order-none sm:basis-auto sm:flex-1">
+      <USlider
+        :model-value="position"
+        :min="0"
         :max="total"
-        :value="position"
+        size="sm"
         aria-label="Position in the run"
         :aria-valuetext="`Line ${position} of ${total}`"
-        @input="emit('seek', Number(($event.target as HTMLInputElement).value))"
+        @update:model-value="emit('seek', $event ?? 0)"
       />
-      <span v-for="c in chapters" :key="c.from" class="mark" :style="{ left: mark(c) }" :title="c.title" />
+      <span
+        v-for="c in chapters"
+        :key="c.from"
+        class="pointer-events-none absolute top-1/2 -mt-1.5 h-3 w-0.5 bg-(--ui-text-muted) opacity-60"
+        :style="{ left: mark(c) }"
+        :title="c.title"
+      />
     </div>
-    <button class="speed" :aria-label="`Speed ×${speed}, change to ×${nextSpeed}`" :title="`Speed: ×${speed}`" @click="emit('speed', nextSpeed)">
-      ×{{ speed }}
-    </button>
-    <span class="when">{{ when }}</span>
+    <UButton
+      :label="`×${speed}`"
+      variant="soft"
+      class="tabular-nums"
+      :aria-label="`Speed ×${speed}, change to ×${nextSpeed}`"
+      :title="`Speed: ×${speed}`"
+      @click="emit('speed', nextSpeed)"
+    />
+    <span class="ml-auto flex-none text-sm text-muted tabular-nums sm:ml-0">{{ when }}</span>
   </section>
 </template>
-
-<style scoped>
-.bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  flex: 1;
-}
-
-button,
-select {
-  font: inherit;
-  font-size: 13px;
-  border-radius: 6px;
-  border: 1px solid var(--line);
-  background: var(--chip);
-  color: var(--ink);
-  cursor: pointer;
-}
-
-.play {
-  width: 34px;
-  height: 30px;
-  flex: none;
-  background: var(--ink);
-  color: var(--panel);
-  border-color: var(--ink);
-}
-
-.chapter {
-  padding: 5px 6px;
-  max-width: 230px;
-  min-width: 0;
-}
-
-.track {
-  position: relative;
-  flex: 1;
-  min-width: 80px;
-  display: flex;
-  align-items: center;
-}
-
-.scrubber {
-  width: 100%;
-  margin: 0;
-}
-
-.mark {
-  position: absolute;
-  top: 50%;
-  width: 2px;
-  height: 12px;
-  margin-top: -6px;
-  background: var(--muted);
-  opacity: 0.6;
-  pointer-events: none;
-}
-
-.speed {
-  padding: 5px 8px;
-  flex: none;
-  font-variant-numeric: tabular-nums;
-}
-
-.when {
-  flex: none;
-  font-size: 13px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-@media (max-width: 600px) {
-  .bar {
-    flex-wrap: wrap;
-  }
-
-  .track {
-    order: 5;
-    flex-basis: 100%;
-  }
-
-  .when {
-    margin-left: auto;
-  }
-}
-</style>
