@@ -13,7 +13,7 @@ import { explorer, type EntityId } from '~/town/entities'
 // the scenario card and tabs for the story, what is waiting, the balance sheet and the details of whatever
 // was opened: a place or person on the map, a story line or a check. Details lead on to each other and to
 // the block explorer, with a way back. While an adverse scenario is shown, the tab it concerns comes
-// forward. See docs/architecture.md#dashboard.
+// forward, unless details are open. See docs/architecture.md#dashboard.
 const props = defineProps<{
   deployment: Deployment | undefined
   lines: Line[]
@@ -54,7 +54,7 @@ const adverse = computed(() => (props.card?.kind === 'adverse' ? props.card : un
 watch(
   () => adverse.value?.title,
   () => {
-    if (adverse.value?.panel) tab.value = adverse.value.panel
+    if (adverse.value?.panel && tab.value !== 'details') tab.value = adverse.value.panel
   },
 )
 
