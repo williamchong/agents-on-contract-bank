@@ -24,6 +24,7 @@ export const Roles = {
   LIMIT_KEEPER: 36n,
   DISPUTE_HOLDER: 37n,
   PAYMENT_ORIGINATOR: 38n,
+  LENDER: 39n,
 } as const
 
 export const BranchRole = {

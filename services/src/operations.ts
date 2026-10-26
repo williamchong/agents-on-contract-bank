@@ -315,6 +315,42 @@ export function releasePayments(bank: Bank, max = 50n): Promise<Outcome> {
   return bank.act('back office', 'head office', 'release queued payments', [bank.call('Payments', bank.contracts.payments, 'release', [max])])
 }
 
+// Lending
+
+// The credit officer proposes a loan of `amount` to `customer`, for a supervisor of branch 1 to approve.
+export function proposeLoan(bank: Bank, customer: string, amount: bigint): Promise<Outcome> {
+  return bank.act('credit officer', 'lending office', `propose a loan of ${hkd(amount)} to ${customer}`, [
+    bank.call('Loans', bank.contracts.loans, 'propose', [bank.account(customer), 1n, amount]),
+  ])
+}
+
+// A supervisor approves or refuses a proposed loan.
+export function decideLoan(bank: Bank, ref: Hex, verdict: 'approve' | 'refuse'): Promise<Outcome> {
+  return bank.act('supervisor', 'branch', `${verdict} loan ${ref.slice(0, 10)}`, [bank.call('Loans', bank.contracts.loans, verdict, [ref])])
+}
+
+// The borrower accepts the loan's terms from their own device, which draws it through the lending guard.
+export function acceptLoan(bank: Bank, customer: string, ref: Hex, amount: bigint): Promise<Outcome> {
+  return bank.act(customer, 'app', `accept a loan of ${hkd(amount)}`, [bank.call('Loans', bank.contracts.loans, 'accept', [ref])], {
+    attempt: { from: bank.contracts.loans, to: bank.account(customer), amount },
+  })
+}
+
+// The credit officer cancels a loan not yet drawn, such as one the lending guard refused.
+export function cancelLoan(bank: Bank, ref: Hex): Promise<Outcome> {
+  return bank.act('credit officer', 'lending office', `cancel loan ${ref.slice(0, 10)}`, [bank.call('Loans', bank.contracts.loans, 'cancel', [ref])])
+}
+
+// A loan from proposal to the customer's acceptance; the outcome is the acceptance, or the first step refused.
+export async function lend(bank: Bank, customer: string, amount: bigint): Promise<{ ref?: Hex; outcome: Outcome }> {
+  const proposed = await proposeLoan(bank, customer, amount)
+  if (!proposed.ok) return { outcome: proposed }
+  const ref = eventArg<Hex>(proposed, 'LoanProposed', 'ref')
+  const approved = await decideLoan(bank, ref, 'approve')
+  if (!approved.ok) return { ref, outcome: approved }
+  return { ref, outcome: await acceptLoan(bank, customer, ref, amount) }
+}
+
 // Outcomes
 
 export function emitted(outcome: Outcome, event: string): boolean {

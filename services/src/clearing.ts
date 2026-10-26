@@ -162,26 +162,8 @@ export class Clearing {
   // with the ledger's balance at that time.
   async statement(asOf: bigint): Promise<Outcome> {
     await this.sync()
-    const message = {
-      statementId: keccak256(toBytes(`camt.053 ${++this.sequence}`)),
-      sequence: this.sequence,
-      closingBalance: this.balance(asOf),
-      asOf,
-      documentHash: keccak256(toBytes(`camt.053 document ${this.sequence}`)),
-    }
-    const c = this.bank.contracts
-    const signature = this.bank.signer.signAsPartner(partnerKey.clearing, {
-      domain: { name: 'Attestations', version: '1', chainId: this.bank.chain.chainId, verifyingContract: c.attestations },
-      types: { Statement: statementFields },
-      primaryType: 'Statement',
-      message,
-    })
-    return this.bank.relay(
-      'finance',
-      'head office',
-      `reconcile the clearing system's statement ${message.sequence}`,
-      this.bank.call('Attestations', c.attestations, 'acceptStatement', [Ledger.Settlement, message, signature]),
-    )
+    const partner = { key: partnerKey.clearing, account: Ledger.Settlement, kind: 'camt.053', by: 'the clearing system' }
+    return relayStatement(this.bank, partner, ++this.sequence, this.balance(asOf), asOf)
   }
 
   private signPayments(key: string, definition: { types: Record<string, readonly { name: string; type: string }[]>; primaryType: string; message: object }): Hex {
@@ -213,3 +195,34 @@ const statementFields = [
   { name: 'asOf', type: 'uint256' },
   { name: 'documentHash', type: 'bytes32' },
 ] as const
+
+// A partner's statement of the account it attests, signed with its key, which finance relays to the attested
+// figures contract to be compared with the ledger's balance at `asOf`.
+export function relayStatement(
+  bank: Bank,
+  partner: { key: string; account: number; kind: string; by: string },
+  sequence: bigint,
+  closingBalance: bigint,
+  asOf: bigint,
+): Promise<Outcome> {
+  const message = {
+    statementId: keccak256(toBytes(`${partner.kind} ${sequence}`)),
+    sequence,
+    closingBalance,
+    asOf,
+    documentHash: keccak256(toBytes(`${partner.kind} document ${sequence}`)),
+  }
+  const c = bank.contracts
+  const signature = bank.signer.signAsPartner(partner.key, {
+    domain: { name: 'Attestations', version: '1', chainId: bank.chain.chainId, verifyingContract: c.attestations },
+    types: { Statement: statementFields },
+    primaryType: 'Statement',
+    message,
+  })
+  return bank.relay(
+    'finance',
+    'head office',
+    `reconcile ${partner.by}'s statement ${sequence}`,
+    bank.call('Attestations', c.attestations, 'acceptStatement', [partner.account, message, signature]),
+  )
+}

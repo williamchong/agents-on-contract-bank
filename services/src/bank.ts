@@ -47,6 +47,13 @@ export const Settings = {
   payeeWait: 86_400n,
   // The branch approval ladder's steps.
   ladder: { first: 50_000n * HKD, second: 500_000n * HKD },
+  // The capital and liquidity minimums and the performing loan's allowance, in basis points.
+  capitalMinimum: 800n,
+  liquidityMinimum: 2_500n,
+  performingAllowance: 100n,
+  // The loan rate a year in basis points, the number of monthly instalments, and the lending caps.
+  loanTerms: { rateBps: 600n, instalments: 12n },
+  lendingCaps: { perCustomer: 600_000n * HKD, total: 12_000_000n * HKD },
 }
 export type BankSettings = typeof Settings
 
@@ -86,6 +93,8 @@ export interface Contracts {
   recovery: Address
   disputes: Address
   incidents: Address
+  guard: Address
+  loans: Address
 }
 
 // The account a party acts from, the keys that sign for it unless others are named, and a customer's card.
@@ -106,6 +115,7 @@ export const Staff = {
   'back office': Roles.BACK_OFFICE,
   support: Roles.SUPPORT,
   'IT security': Roles.IT_SECURITY,
+  'credit officer': Roles.CREDIT_OFFICER,
   'branch manager': atBranch(1n, BranchRole.BRANCH_MANAGER),
   teller: atBranch(1n, BranchRole.TELLER),
   supervisor: atBranch(1n, BranchRole.SUPERVISOR),
@@ -127,7 +137,17 @@ function roleChecked(name: string): string | undefined {
 }
 
 // The roles governance grants itself; the branch roles are granted through the branch manager.
-const governanceGrants = ['risk', 'compliance', 'finance', 'back office', 'support', 'IT security', 'branch manager', 'branch 2 manager'] as const
+const governanceGrants = [
+  'risk',
+  'compliance',
+  'finance',
+  'back office',
+  'support',
+  'IT security',
+  'credit officer',
+  'branch manager',
+  'branch 2 manager',
+] as const
 
 // People hired during a run, with an account but no role yet.
 const Hires = ['replacement teller'] as const
@@ -273,6 +293,8 @@ export const contractArtifacts: Record<keyof Contracts, ContractName> = {
   recovery: 'AccountRecovery',
   disputes: 'DisputeReversal',
   incidents: 'IncidentLog',
+  guard: 'LendingGuard',
+  loans: 'Loans',
 }
 
 const contractNames: Record<keyof Contracts, string> = {
@@ -293,6 +315,8 @@ const contractNames: Record<keyof Contracts, string> = {
   recovery: 'AccountRecovery',
   disputes: 'DisputeReversal',
   incidents: 'IncidentLog',
+  guard: 'LendingGuard',
+  loans: 'Loans',
 }
 
 // A short reference as a ledger entry or message carries it, such as "opening".
@@ -339,6 +363,15 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
     settings.ladder,
   ])
   const assisted = await deployer.deploy('AssistedOperations', [manager, token, recovery, payments, settings.ladder])
+  const guard = await deployer.deploy('LendingGuard', [
+    manager,
+    ledger,
+    attestations,
+    settings.capitalMinimum,
+    settings.liquidityMinimum,
+    settings.performingAllowance,
+  ])
+  const loans = await deployer.deploy('Loans', [manager, guard, recovery, settings.loanTerms, settings.lendingCaps])
   const contracts: Contracts = {
     verifier,
     officers,
@@ -357,6 +390,8 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
     recovery,
     disputes,
     incidents,
+    guard,
+    loans,
   }
   const bank = new Bank(chain, signer, timeline, contracts, settings)
   bank.add('governance officers', { account: officers, keys: officerKeys.slice(0, Number(settings.governanceThreshold)) })
@@ -468,6 +503,12 @@ const wiring: [keyof Contracts, ContractName, string, bigint][] = [
   ['limits', 'CustomerLimits', 'setChannel', Roles.GOVERNANCE],
   ['limits', 'CustomerLimits', 'setLimits', Roles.GOVERNANCE],
   ['incidents', 'IncidentLog', 'report', Roles.FINANCE],
+  ['guard', 'LendingGuard', 'drawdown', Roles.LENDER],
+  ['guard', 'LendingGuard', 'setMinimums', Roles.GOVERNANCE],
+  ['guard', 'LendingGuard', 'setAllowanceRate', Roles.GOVERNANCE],
+  ['loans', 'Loans', 'propose', Roles.CREDIT_OFFICER],
+  ['loans', 'Loans', 'setTerms', Roles.GOVERNANCE],
+  ['loans', 'Loans', 'setCaps', Roles.GOVERNANCE],
 ]
 
 // Every staff and machine role, for each branch, which the staff roles module administers.
@@ -495,6 +536,8 @@ async function wire(deployer: Deployer, c: Contracts): Promise<void> {
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.LIMIT_KEEPER, c.payments, 0])
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.ENFORCER, c.disputes, 0])
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.DISPUTE_HOLDER, c.disputes, 0])
+  await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.BOOKKEEPER, c.guard, 0])
+  await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.LENDER, c.loans, 0])
   for (const role of administered) await deployer.write('AccessManager', c.manager, 'setRoleAdmin', [role, Roles.STAFF_ADMIN])
 }
 

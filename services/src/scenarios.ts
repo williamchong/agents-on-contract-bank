@@ -4,12 +4,14 @@
 
 import { isAddressEqual, keccak256, numberToHex, toBytes, zeroAddress, type Address, type Hex } from 'viem'
 import { grantThroughBranch, Staff, type Bank } from './bank.ts'
-import { DisputeStatus, drawer, HKD, Ledger, OperationStatus, Opening, PaymentStatus, vault } from './books.ts'
+import { DisputeStatus, drawer, HKD, Holders, Ledger, OperationStatus, Opening, PaymentStatus, vault } from './books.ts'
 import { advance } from './chain.ts'
 import type { Clearing } from './clearing.ts'
+import { custodianStatement } from './custodian.ts'
 import {
   authorise,
   balanceOf,
+  cancelLoan,
   booksBalance,
   cashAt,
   cashDeposit,
@@ -21,6 +23,7 @@ import {
   emitted,
   operationOf,
   eventArg,
+  lend,
   ledgerBalance,
   moveCash,
   openDispute,
@@ -100,15 +103,20 @@ async function invariants(bank: Bank): Promise<Check[]> {
   return [check('the books balance', await booksBalance(bank)), check('the cash split sums to the ledger', await cashSplitMatchesLedger(bank))]
 }
 
-// Closes the business day as the scenario clock does: the clearing system issues its statement of the
-// day, and finance relays it to be compared with the ledger.
+// Closes the business day as the scenario clock does: the clearing system and the custodian issue their
+// statements of the day, and finance relays them to be compared with the ledger. The clearing system's is
+// the one returned.
 export async function closeDay(ctx: Context): Promise<Outcome> {
   const { bank, clearing } = ctx
   const asOf = await bank.now()
   // A statement must be dated before the block that accepts it.
   await advance(bank.chain, 60n)
   await operator(bank, 'close the business day')
-  return clearing.statement(asOf)
+  const statement = await clearing.statement(asOf)
+  // Lending stops on a securities figure that is not current, so a refused statement is not passed over.
+  const holdings = await custodianStatement(bank, asOf)
+  if (!holdings.ok) throw new Error(`The custodian's statement was refused: ${holdings.error}`)
+  return statement
 }
 
 // An operator command, marked apart from the bank's own events.
@@ -641,7 +649,101 @@ export const presets: Preset[] = [
       ]
     },
   },
+
+  // Financial stress
+
+  {
+    name: 'Lending stopped by the capital ratio',
+    kind: 'adverse',
+    group: 'Financial stress',
+    building: 'lending-office',
+    panel: 'balance sheet',
+    summary: 'The bank lends until the next loan would take its capital below the minimum, and that loan is refused while a smaller one still goes through.',
+    control: 'Lending guard: the capital and liquidity ratios after every drawdown',
+    async run(ctx) {
+      const { bank } = ctx
+      // Lending rests on figures reconciled within the statement maximum age.
+      await closeDay(ctx)
+      // Loans of 500,000, each to the customer with the most room under their cap, until one is refused.
+      // Capital stops it within a few loans, long before every holder has had one.
+      const drawn: bigint[] = []
+      let refused: { ref?: Hex; outcome: Outcome } | undefined
+      let supplyUnchanged = false
+      for (let i = 0; i < Holders.length && !refused; i++) {
+        const { name, room } = await mostRoom(bank)
+        const amount = room < LOAN ? room : LOAN
+        if (amount === 0n) break
+        const before = await supply(bank)
+        const loan = await lend(bank, name, amount)
+        if (loan.outcome.ok) drawn.push(await capitalRatio(bank))
+        else {
+          refused = loan
+          supplyUnchanged = (await supply(bank)) === before
+        }
+      }
+      // The credit officer cancels the loan the guard refused, and a smaller one within the ratio is drawn.
+      if (refused?.ref) await cancelLoan(bank, refused.ref)
+      const { name, room } = await mostRoom(bank)
+      const within = await largestLoanWithinCapital(bank)
+      const small = [SMALL_LOAN, within, room].reduce((a, b) => (a < b ? a : b))
+      const smaller = small >= LOAN_STEP ? (await lend(bank, name, small)).outcome : undefined
+      const minimum = bank.settings.capitalMinimum
+      return [
+        check('the capital ratio falls towards its minimum, never below it', drawn.every((r) => r >= minimum), drawn.map((r) => `${r} bps`).join(', ')),
+        refused ? refusedWith('a drawdown is refused naming the capital ratio', refused.outcome, 'CapitalRatioBelowMinimum') : check('a drawdown is refused naming the capital ratio', false, 'none was refused'),
+        check('the refused drawdown creates no tokens', supplyUnchanged),
+        smaller ? allowed('a smaller loan within the ratio still goes through', smaller) : check('a smaller loan within the ratio still goes through', false, 'no room left under the capital ratio'),
+        check('the capital ratio holds after it', (await capitalRatio(bank)) >= minimum),
+        ...(await invariants(bank)),
+      ]
+    },
+  },
 ]
+
+// The loans the tour beat 5 table in docs/scenarios.md draws, one by one, and the smaller one that fits after
+// the refusal; and the whole dollars a smaller loan is rounded down to.
+const LOAN = 500_000n * HKD
+const SMALL_LOAN = 300_000n * HKD
+const LOAN_STEP = 1_000n * HKD
+const BPS = 10_000n
+
+// The customer with the most room left under the per-customer lending cap, and how much, the first in
+// the opening balance sheet's order on a tie. Once all devices lost has run, the supervisor has recovered
+// Dave's account and may not approve his loans, so a customer the credit officer or the supervisor
+// recovered is passed over; the other customers, held together, stand in once the rest have no room.
+async function mostRoom(bank: Bank): Promise<{ name: string; room: bigint }> {
+  const { loans, recovery } = bank.contracts
+  const cap = bank.settings.lendingCaps.perCustomer
+  const staff = ['credit officer', 'supervisor'].map((n) => bank.account(n))
+  const rooms = await Promise.all(
+    Holders.map(async (name) => {
+      const account = bank.account(name)
+      const [exposure, ...recovered] = await Promise.all([
+        bank.read('Loans', loans, 'exposure', [account]),
+        ...staff.map((s) => bank.read('AccountRecovery', recovery, 'involved', [account, s])),
+      ])
+      return { name: name as string, room: recovered.some(Boolean) || exposure >= cap ? 0n : cap - (exposure as bigint) }
+    }),
+  )
+  return rooms.reduce((best, r) => (r.room > best.room ? r : best))
+}
+
+function capitalRatio(bank: Bank): Promise<bigint> {
+  return bank.read('LendingGuard', bank.contracts.guard, 'capitalRatioBps', [])
+}
+
+// The largest loan, in whole thousands of dollars, the capital ratio would still hold after: equity less
+// the loan's allowance, over loans net of the allowance plus what the loan adds, at the minimum.
+async function largestLoanWithinCapital(bank: Bank): Promise<bigint> {
+  const [equityBalance, loans, allowance] = await Promise.all([Ledger.Equity, Ledger.Loans, Ledger.Allowance].map((a) => ledgerBalance(bank, a)))
+  const equity = -equityBalance!
+  const netLoans = loans! + allowance!
+  const { capitalMinimum: m, performingAllowance: a } = bank.settings
+  const headroom = equity * BPS - m * netLoans
+  if (headroom <= 0n) return 0n
+  const loan = (headroom * BPS) / (m * (BPS - a) + a * BPS)
+  return (loan / LOAN_STEP) * LOAN_STEP
+}
 
 // Alice withdraws once at the ATM, which uses her card's authorisation, and the authorisation is kept to
 // be replayed.
