@@ -374,6 +374,30 @@ contract LoansTest is BankFixture {
         _assertBooksBalance();
     }
 
+    /// @dev Cancelling one loan's mandate leaves the borrower's other loans collected.
+    function test_MandateCancelled_OneLoanOnly() public {
+        bytes32 first = _draw(alice, SMALL_LOAN);
+        bytes32 second = _draw(alice, SMALL_LOAN);
+        vm.prank(bob);
+        vm.expectRevert(abi.encodeWithSelector(Loans.NotItsBorrower.selector, second, bob));
+        loans.cancelMandate(second);
+        vm.prank(alice);
+        loans.cancelMandate(second);
+
+        skip(INSTALMENT_PERIOD);
+        _collect(first);
+        _collect(second);
+        assertEq(loans.loan(first).paid, 1);
+        assertEq(uint8(loans.loan(second).stage), uint8(Loans.Stage.Arrears));
+
+        vm.prank(alice);
+        loans.renewMandate(second);
+        skip(INSTALMENT_PERIOD);
+        _collect(second);
+        assertEq(loans.loan(second).paid, 2);
+        assertEq(uint8(loans.loan(second).stage), uint8(Loans.Stage.Performing));
+    }
+
     function test_EmptyAccount_MissesTheInstalment() public {
         bytes32 ref = _draw(bob, SMALL_LOAN);
         // Bob's money leaves his account, as the cash module would take it at the counter.

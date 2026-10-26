@@ -25,7 +25,7 @@ The bank at work, with the controls passing quietly. A daily run loops through e
 | **Payments day** | A customer pays a registered payee at another bank. Another receives a payment from someone who was never registered. The day closes and finance reconciles the clearing system's statement. | The settlement account and deposits move together. The reconciliation line reports a match. | 2 |
 | **Staff and device changes** | A teller leaves: their roles are revoked at once and a replacement is granted them. A customer loses a phone, revokes it from another device and enrols a new one. | The bank map changes. No account address, balance or history does. | 2 |
 | **Lending and savings** | A credit officer proposes a loan, a supervisor approves, the customer accepts and it is drawn. Instalments are collected, savings interest is paid each day and a standing order runs. | Loans and deposits rise together at the drawdown. The income statement fills in. The ratios stay above their minimums. | 3 |
-| **Rate change** | Treasury proposes new savings and loan rates and governance approves. | The proposal waits for governance, then applies. Loans already drawn keep their rate. | 3 |
+| **Rate change** | Treasury proposes new savings and loan rates and governance approves. | The proposal waits for governance, then applies. Loans proposed before it applies keep their rate. | 3 |
 | **Stablecoin day** | Customers convert deposits to stablecoin and back. The custodian confirms the funds sent to the reserve. | The reserve panel: funds in transit rise with each conversion and clear on the confirmation, which restores the buffer. | 4 |
 
 ## Adverse scenarios

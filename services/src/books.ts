@@ -13,6 +13,11 @@ export function hkd(cents: bigint): string {
   return `HK$${dollars}${rest === 0n ? '' : `.${rest.toString().padStart(2, '0')}`}`
 }
 
+// A rate in basis points as a story line says it, such as 6.5%.
+export function percent(rate: bigint): string {
+  return `${Number(rate) / 100}%`
+}
+
 // GeneralLedger.Account, in its order.
 export const Ledger = {
   Settlement: 0,
@@ -55,6 +60,10 @@ export const Channel = { App: 0, Own: 1, PayeeCheckedThere: 2 } as const
 
 // DisputeReversal.Status, in its order.
 export const DisputeStatus = { None: 0, Open: 1, Proposed: 2, Reversed: 3, Rejected: 4 } as const
+
+// Loans.Status and Loans.Stage, in their order.
+export const LoanStatus = { None: 0, Proposed: 1, Approved: 2, Drawn: 3, Refused: 4, Cancelled: 5, Repaid: 6, WrittenOff: 7 } as const
+export const LoanStage = { Performing: 0, Arrears: 1, Default: 2 } as const
 
 // BranchApprovals.Status, in its order.
 export const OperationStatus = { None: 0, Waiting: 1, CarriedOut: 2, Refused: 3, Cancelled: 4 } as const

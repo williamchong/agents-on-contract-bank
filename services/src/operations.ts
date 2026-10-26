@@ -1,9 +1,9 @@
 // What each scripted actor can do, through its own account and the channel it acts from. AI agents get the
 // same operations as tools at milestone 5; see docs/roles.md.
 
-import { keccak256, numberToHex, toBytes, zeroAddress, type Address, type Hex } from 'viem'
+import { encodeAbiParameters, keccak256, numberToHex, toBytes, zeroAddress, type Address, type Hex } from 'viem'
 import { ref, type Bank } from './bank.ts'
-import { atm, drawer, hkd, Holders, Ledger, vault, type CustomerName, type Location } from './books.ts'
+import { atm, drawer, hkd, Holders, Ledger, LoanStatus, percent, vault, type CustomerName, type Location } from './books.ts'
 import type { Outcome } from './submission.ts'
 
 // Reads
@@ -350,6 +350,48 @@ export async function acceptLoan(bank: Bank, customer: string, ref: Hex, amount:
 // The credit officer cancels a loan not yet drawn, such as one the lending guard refused.
 export function cancelLoan(bank: Bank, ref: Hex): Promise<Outcome> {
   return bank.act('credit officer', 'lending office', `cancel loan ${ref.slice(0, 10)}`, [bank.call('Loans', bank.contracts.loans, 'cancel', [ref])])
+}
+
+// The customer cancels one loan's mandate, as they might stop a direct debit; their other loans stay covered.
+export function cancelMandate(bank: Bank, customer: string, ref: Hex): Promise<Outcome> {
+  return bank.act(customer, 'app', `cancel the mandate for loan ${ref.slice(0, 10)}`, [
+    bank.call('Loans', bank.contracts.loans, 'cancelMandate', [ref]),
+  ])
+}
+
+// Every loan the module holds, by the reference Loans.propose gave each in turn.
+export async function loanRefs(bank: Bank): Promise<Hex[]> {
+  const { loans } = bank.contracts
+  const count = await bank.read('Loans', loans, 'loanCount', [])
+  return Array.from({ length: Number(count) }, (_, i) =>
+    keccak256(encodeAbiParameters([{ type: 'uint256' }, { type: 'address' }, { type: 'uint256' }], [BigInt(bank.chain.chainId), loans, BigInt(i + 1)])),
+  )
+}
+
+// The scheduler triggers the collection of each drawn loan with an instalment come due since its last
+// collection; the loans module works out what is due and takes it. A loan in arrears is tried again when
+// its next instalment falls due, not each day, as a bank re-presents a direct debit on the next due date.
+export async function collectInstalments(bank: Bank): Promise<Outcome[]> {
+  const { loans } = bank.contracts
+  const refs = await loanRefs(bank)
+  const found = await Promise.all(
+    refs.map(async (ref) => {
+      const [loan, due] = await Promise.all([bank.read('Loans', loans, 'loan', [ref]), bank.read('Loans', loans, 'instalmentsDue', [ref])])
+      return loan.status === LoanStatus.Drawn && due > loan.paid + loan.unpaid
+    }),
+  )
+  const outcomes: Outcome[] = []
+  for (const ref of refs.filter((_, i) => found[i])) {
+    outcomes.push(await bank.act('scheduler', 'scheduler', `collect the instalments due on loan ${ref.slice(0, 10)}`, [bank.call('Loans', loans, 'collectDue', [ref])]))
+  }
+  return outcomes
+}
+
+// Treasury proposes new savings and loan rates under the hash of its pricing paper, for governance to apply.
+export function proposeRates(bank: Bank, rates: { savingsBps: bigint; loanBps: bigint }, paper: Hex): Promise<Outcome> {
+  return bank.act('treasury', 'head office', `propose a savings rate of ${percent(rates.savingsBps)} and a loan rate of ${percent(rates.loanBps)}`, [
+    bank.call('Rates', bank.contracts.rates, 'proposeProductRates', [rates, paper]),
+  ])
 }
 
 // A loan from proposal to the customer's acceptance; the outcome is the acceptance, or the first step refused.

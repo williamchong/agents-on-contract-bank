@@ -3,8 +3,8 @@
 // that exists and lists the rest in `waitsFor`, so the score never claims more than was run.
 
 import { isAddressEqual, keccak256, numberToHex, toBytes, zeroAddress, type Address, type Hex } from 'viem'
-import { grantThroughBranch, Staff, type Bank } from './bank.ts'
-import { DisputeStatus, drawer, HKD, Holders, Ledger, OperationStatus, Opening, PaymentStatus, vault } from './books.ts'
+import { govern, grantThroughBranch, Staff, type Bank } from './bank.ts'
+import { DisputeStatus, drawer, HKD, hkd, Holders, Ledger, LoanStage, LoanStatus, OperationStatus, Opening, PaymentStatus, vault } from './books.ts'
 import { advance } from './chain.ts'
 import type { Clearing } from './clearing.ts'
 import { custodianStatement } from './custodian.ts'
@@ -12,6 +12,8 @@ import {
   authorise,
   balanceOf,
   cancelLoan,
+  cancelMandate,
+  collectInstalments,
   booksBalance,
   cashAt,
   cashDeposit,
@@ -31,6 +33,8 @@ import {
   places,
   approveRecovery,
   approveReversal,
+  proposeLoan,
+  proposeRates,
   proposeRecovery,
   proposeReversal,
   releasePayments,
@@ -103,20 +107,28 @@ async function invariants(bank: Bank): Promise<Check[]> {
   return [check('the books balance', await booksBalance(bank)), check('the cash split sums to the ledger', await cashSplitMatchesLedger(bank))]
 }
 
-// Closes the business day as the scenario clock does: the clearing system and the custodian issue their
-// statements of the day, and finance relays them to be compared with the ledger. The clearing system's is
-// the one returned.
+// Closes the business day as the scenario clock does: the scheduler triggers the collection of every loan
+// with an instalment come due, the clearing system and the custodian issue their statements of the day, and
+// finance relays them to be compared with the ledger. The clearing system's is the one returned.
 export async function closeDay(ctx: Context): Promise<Outcome> {
   const { bank, clearing } = ctx
+  await operator(bank, 'close the business day')
+  await collectInstalments(bank)
   const asOf = await bank.now()
   // A statement must be dated before the block that accepts it.
   await advance(bank.chain, 60n)
-  await operator(bank, 'close the business day')
   const statement = await clearing.statement(asOf)
   // Lending stops on a securities figure that is not current, so a refused statement is not passed over.
   const holdings = await custodianStatement(bank, asOf)
   if (!holdings.ok) throw new Error(`The custodian's statement was refused: ${holdings.error}`)
   return statement
+}
+
+// Block time moves on by one loan period, to the next instalments, and the day closes there, collecting them.
+async function nextInstalment(ctx: Context): Promise<Outcome> {
+  await operator(ctx.bank, 'move on to the next instalments')
+  await advance(ctx.bank.chain, ctx.bank.settings.loanSchedule.period)
+  return closeDay(ctx)
 }
 
 // An operator command, marked apart from the bank's own events.
@@ -268,6 +280,79 @@ export const presets: Preset[] = [
         refusedWith('the lost phone can no longer sign', oldPhone, 'InvalidExecutionSignature'),
         allowed('the new phone signs', newPhone),
         check('the same account keeps its balance', (await balanceOf(bank, 'Alice')) === balance - 1n),
+        ...(await invariants(bank)),
+      ]
+    },
+  },
+
+  {
+    name: 'Lending and savings',
+    kind: 'routine',
+    waitsFor: ['the savings vault, with interest paid each day', 'standing orders'],
+    async run(ctx) {
+      const { bank } = ctx
+      // A month of instalments is collected first: repayments and interest are what make room to lend again
+      // after lending has stopped at the capital ratio.
+      const collected = await nextInstalment(ctx)
+      const { name } = await mostRoom(bank)
+      const [loansBefore, supplyBefore] = await Promise.all([ledgerBalance(bank, Ledger.Loans), supply(bank)])
+      const loan = await lend(bank, name, ROUTINE_LOAN)
+      const together =
+        loan.outcome.ok &&
+        (await ledgerBalance(bank, Ledger.Loans)) === loansBefore + ROUTINE_LOAN &&
+        (await supply(bank)) === supplyBefore + ROUTINE_LOAN
+      // A month on, the day's close collects the first instalment under the borrower's mandate.
+      const close = await nextInstalment(ctx)
+      const drawn = loan.ref ? await bank.read('Loans', bank.contracts.loans, 'loan', [loan.ref]) : undefined
+      const { capitalMinimum, liquidityMinimum } = bank.settings
+      return [
+        check("the month's instalments collected, the reconciliation line reports a match", matched(collected, 'StatementAccepted') === true),
+        allowed('a loan is proposed, approved, accepted and drawn', loan.outcome),
+        check('loans and deposits rise together at the drawdown', together),
+        check(
+          'its first instalment is collected, part interest and part principal',
+          drawn !== undefined && drawn.paid === 1n && drawn.outstanding < ROUTINE_LOAN && drawn.stage === LoanStage.Performing,
+        ),
+        check('the ratios stay above their minimums', (await capitalRatio(bank)) >= capitalMinimum && (await liquidityRatio(bank)) >= liquidityMinimum),
+        check('at the first instalment the reconciliation line reports a match', matched(close, 'StatementAccepted') === true),
+        ...(await invariants(bank)),
+      ]
+    },
+  },
+
+  {
+    name: 'Rate change',
+    kind: 'routine',
+    async run(ctx) {
+      const { bank } = ctx
+      const { rates } = bank.contracts
+      const products = async () => {
+        const [savingsBps, loanBps] = await bank.read('Rates', rates, 'products', [])
+        return { savingsBps, loanBps }
+      }
+      // Treasury moves the rates up a quarter point, and back down on the next day it runs, so the routine
+      // runs day after day.
+      const before = await products()
+      const step = before.loanBps === bank.settings.productRates.loanBps ? 25n : -25n
+      const next = { savingsBps: before.savingsBps + step, loanBps: before.loanBps + step }
+      const paper = keccak256(toBytes(`pricing paper: savings ${next.savingsBps}, loans ${next.loanBps}, ${await bank.now()}`))
+      const proposed = await proposeRates(bank, next, paper)
+      const waited = (await products()).loanBps === before.loanBps
+      // A loan proposed before governance applies the change keeps the rate it was proposed at.
+      const { name } = await mostRoom(bank)
+      const pending = await proposeLoan(bank, name, ROUTINE_LOAN)
+      const pendingRef = refOf(pending, 'LoanProposed')
+      await govern(bank, 'governance officers', 'apply the new savings and loan rates', [bank.call('Rates', rates, 'applyProductRates', [paper])])
+      const after = await products()
+      const kept = pendingRef ? (await bank.read('Loans', bank.contracts.loans, 'loan', [pendingRef])).terms.rateBps === before.loanBps : false
+      if (pendingRef) await cancelLoan(bank, pendingRef)
+      const close = await closeDay(ctx)
+      return [
+        allowed('treasury proposes new savings and loan rates', proposed),
+        check('the proposal waits for governance', waited),
+        check('governance applies it after its time lock', after.loanBps === next.loanBps && after.savingsBps === next.savingsBps),
+        check('a loan proposed before keeps its rate', kept),
+        check('the reconciliation line reports a match', matched(close, 'StatementAccepted') === true),
         ...(await invariants(bank)),
       ]
     },
@@ -652,6 +737,62 @@ export const presets: Preset[] = [
 
   // Financial stress
 
+  // Before lending stopped by the capital ratio, which leaves no room for its loan when the presets run in
+  // order on one bank.
+  {
+    name: 'Loan in arrears',
+    kind: 'adverse',
+    group: 'Financial stress',
+    building: 'lending-office',
+    panel: 'balance sheet',
+    summary: "A borrower cancels their loan's mandate, so its instalments cannot be collected: it goes into arrears, then default, and is written off.",
+    control: "Scheduled collection under the borrower's mandate, the loan's stage and its loss allowance",
+    async run(ctx) {
+      const { bank } = ctx
+      const { loans } = bank.contracts
+      await closeDay(ctx)
+      const { name } = await mostRoom(bank)
+      const loan = await lend(bank, name, ARREARS_LOAN)
+      if (!loan.ref || !loan.outcome.ok) return [allowed('the loan is drawn', loan.outcome), ...(await invariants(bank))]
+      const ref = loan.ref
+      const read = () => bank.read('Loans', loans, 'loan', [ref])
+      const drawn = await read()
+      const cancelled = await cancelMandate(bank, name, ref)
+      // Each month the day's close finds another instalment it cannot take.
+      const months: { stage: number; allowance: bigint }[] = []
+      for (let i = 0; i < 3; i++) {
+        await nextInstalment(ctx)
+        const l = await read()
+        months.push({ stage: l.stage, allowance: l.allowance })
+      }
+      const defaulted = await read()
+      if (defaulted.stage === LoanStage.Default) {
+        await govern(bank, 'governance officers', `write off loan ${ref.slice(0, 10)}`, [bank.call('Loans', loans, 'writeOff', [ref])])
+      }
+      const written = await read()
+      const shortfall = defaulted.outstanding - defaulted.allowance
+      const { performingBps, arrearsBps, defaultBps } = bank.settings.allowanceRates
+      const at = (bps: bigint) => (ARREARS_LOAN * bps + BPS - 1n) / BPS
+      const stages = [LoanStage.Arrears, LoanStage.Arrears, LoanStage.Default]
+      const allowances = [at(arrearsBps), at(arrearsBps), at(defaultBps)]
+      return [
+        check('the loan is drawn with its performing allowance', drawn.allowance === at(performingBps)),
+        allowed('the borrower cancels its mandate', cancelled),
+        check(
+          'the missed collections put it into arrears, then default at the third',
+          months.every((m, i) => m.stage === stages[i]),
+          `${months.map((m) => Object.keys(LoanStage)[m.stage]).join(', ')}; paid ${defaulted.paid}`,
+        ),
+        check('the allowance rises at the set rates', months.every((m, i) => m.allowance === allowances[i]), months.map((m) => hkd(m.allowance)).join(', ')),
+        check(
+          'governance writes it off against the allowance, the shortfall on equity',
+          written.status === LoanStatus.WrittenOff && written.outstanding === 0n && shortfall === ARREARS_LOAN - at(defaultBps),
+        ),
+        ...(await invariants(bank)),
+      ]
+    },
+  },
+
   {
     name: 'Lending stopped by the capital ratio',
     kind: 'adverse',
@@ -706,6 +847,9 @@ const LOAN = 500_000n * HKD
 const SMALL_LOAN = 300_000n * HKD
 const LOAN_STEP = 1_000n * HKD
 const BPS = 10_000n
+// The loan lending and savings draws each day, and the loan in arrears in docs/scenarios.md.
+const ROUTINE_LOAN = 10_000n * HKD
+const ARREARS_LOAN = 20_000n * HKD
 
 // The customer with the most room left under the per-customer lending cap, and how much, the first in
 // the opening balance sheet's order on a tie. Once all devices lost has run, the supervisor has recovered
@@ -730,6 +874,10 @@ async function mostRoom(bank: Bank): Promise<{ name: string; room: bigint }> {
 
 function capitalRatio(bank: Bank): Promise<bigint> {
   return bank.read('LendingGuard', bank.contracts.guard, 'capitalRatioBps', [])
+}
+
+function liquidityRatio(bank: Bank): Promise<bigint> {
+  return bank.read('LendingGuard', bank.contracts.guard, 'liquidityRatioBps', [])
 }
 
 // The largest loan, in whole thousands of dollars, the capital ratio would still hold after: equity less

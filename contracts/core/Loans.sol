@@ -20,8 +20,9 @@ import {Roles} from "./Roles.sol";
 /// the module take the loan's instalments, and the acceptance draws the loan through the lending guard in
 /// the same transaction; a drawdown the guard refuses undoes the acceptance and leaves the loan approved.
 /// Staff may not propose or approve a loan to themselves, or to a customer whose account they recovered.
-/// The scheduler triggers each loan's collection, and every instalment due is taken under the mandate,
-/// oldest first, each whole or not at all. A loan is in arrears while an instalment due is unpaid and in
+/// The borrower may cancel one loan's mandate, as a direct debit is stopped, and renew it. The scheduler
+/// triggers each loan's collection, and every instalment due is taken under the mandate, oldest first,
+/// each whole or not at all. A loan is in arrears while an instalment due is unpaid and in
 /// default from the third, where it stays until governance writes it off; its allowance is measured
 /// again at each collection and change of stage. The guard posts every entry, so the module, which holds
 /// the lender role, cannot create money; it holds money only within a collection. See open questions 25
@@ -74,6 +75,7 @@ contract Loans is AccessManaged {
         uint256 amount;
         Terms terms;
         Stage stage;
+        bool mandateCancelled;
         /// @dev Instalments collected, and instalments due and not collected at the last collection.
         uint256 paid;
         uint256 unpaid;
@@ -111,6 +113,8 @@ contract Loans is AccessManaged {
     /// @dev A collection found more instalments due and unpaid than the last one did.
     event CollectionMissed(bytes32 indexed ref, uint256 unpaid, Stage stage);
     event StageChanged(bytes32 indexed ref, Stage stage, uint256 allowance);
+    event MandateCancelled(bytes32 indexed ref);
+    event MandateRenewed(bytes32 indexed ref);
     event LoanRepaid(bytes32 indexed ref);
     event LoanWrittenOff(bytes32 indexed ref, uint256 principal, uint256 allowance);
     event CapsSet(Caps caps);
@@ -233,6 +237,19 @@ contract Loans is AccessManaged {
         emit LoanDrawn(ref, l.borrower, l.amount);
     }
 
+    /// @dev The borrower stops the loan's instalments being taken, as they may stop any direct debit;
+    /// each instalment then falls due unpaid.
+    function cancelMandate(bytes32 ref) external {
+        _ownDrawn(ref).mandateCancelled = true;
+        emit MandateCancelled(ref);
+    }
+
+    /// @dev The borrower lets the loan's instalments be taken again, from the next that falls due.
+    function renewMandate(bytes32 ref) external {
+        _ownDrawn(ref).mandateCancelled = false;
+        emit MandateRenewed(ref);
+    }
+
     /// @dev Collects every instalment of the loan due by now, oldest first, until one cannot be taken,
     /// then sets its stage and measures its allowance again. A second trigger finds nothing more due.
     function collectDue(bytes32 ref) external restricted {
@@ -283,6 +300,12 @@ contract Loans is AccessManaged {
         if (l.status != Status.Proposed) revert NotProposed(ref, l.status);
     }
 
+    function _ownDrawn(bytes32 ref) private view returns (Loan storage l) {
+        l = _loans[ref];
+        if (l.status != Status.Drawn) revert NotDrawn(ref, l.status);
+        if (l.borrower != msg.sender) revert NotItsBorrower(ref, msg.sender);
+    }
+
     function _checkApprover(Loan storage l, bytes32 ref) private view {
         if (!_has(Roles.atBranch(l.branch, Roles.SUPERVISOR), msg.sender)) revert NotSupervisor(msg.sender, l.branch);
         if (msg.sender == l.officer) revert OfficerCannotApprove(msg.sender, ref);
@@ -293,6 +316,7 @@ contract Loans is AccessManaged {
     /// cancelled or too small, or the account short, frozen or blocked. Each pays the month's interest on
     /// what is outstanding, and the rest off the principal.
     function _collect(Loan storage l, bytes32 ref) private returns (bool) {
+        if (l.mandateCancelled) return false;
         uint256 interest = Math.mulDiv(l.outstanding, l.terms.rateBps, 12 * BPS);
         bool last = l.paid + 1 == l.terms.instalments;
         uint256 amount = last ? l.outstanding + interest : Math.min(l.instalment, l.outstanding + interest);
