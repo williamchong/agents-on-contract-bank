@@ -2,12 +2,12 @@
 import { computed } from 'vue'
 import { Accounts, ratios, type BankState } from '~/composables/useBank'
 import { hkd, MIN_CAPITAL, MIN_LIQUIDITY } from '~/lib/money'
-import type { Line } from '~/lib/story'
+import { incomeStatement, type Line } from '~/lib/story'
 
 // Assets against deposits and equity, the two ratios against their minimums, and the age of each attested
 // figure: the clearing system's statement of the settlement account and the latest cash count. A figure
-// that did not match the ledger is marked, and the rows a selected story line moved are highlighted. See
-// docs/architecture.md#dashboard.
+// that did not match the ledger is marked, and the rows a selected story line moved are highlighted. Below
+// it, the income statement over the run so far. See docs/architecture.md#dashboard.
 const props = defineProps<{ state: BankState | undefined; lines: Line[]; moved: number[] }>()
 
 type Account = (typeof Accounts)[number]
@@ -57,6 +57,8 @@ const sheet = computed(() => {
   }
 })
 
+const income = computed(() => incomeStatement(props.lines))
+
 const movedRows = computed(() => new Set(props.moved.map((i) => Accounts[i])))
 </script>
 
@@ -89,6 +91,21 @@ const movedRows = computed(() => new Set(props.moved.map((i) => Accounts[i])))
         </tr>
       </table>
     </div>
+    <table class="income">
+      <caption>Income statement, this run</caption>
+      <tr>
+        <th scope="row">Loan interest</th>
+        <td class="money">{{ hkd(income.interest) }}</td>
+      </tr>
+      <tr>
+        <th scope="row">Loan loss charges</th>
+        <td class="money">{{ hkd(-income.lossCharges) }}</td>
+      </tr>
+      <tr class="total">
+        <th scope="row">Net income</th>
+        <td class="money">{{ hkd(income.net) }}</td>
+      </tr>
+    </table>
     <p class="note">
       Capital {{ sheet.ratios.capital.toFixed(2) }}% (minimum {{ MIN_CAPITAL }}%) · liquidity {{ sheet.ratios.liquidity.toFixed(2) }}% (minimum
       {{ MIN_LIQUIDITY }}%)
@@ -148,6 +165,10 @@ small {
 .differs td,
 .differs small {
   color: var(--ui-error);
+}
+
+.income {
+  margin-top: 12px;
 }
 
 .note {

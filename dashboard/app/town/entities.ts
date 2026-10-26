@@ -53,6 +53,7 @@ export const sources: Record<string, { name: string; url: string }> = {
   limits: core('CustomerLimits'),
   loans: core('Loans'),
   guard: core('LendingGuard'),
+  rates: core('Rates'),
   officers: account,
   account,
   manager: { name: 'AccessManager', url: `${OZ}/access/manager/AccessManager.sol` },
@@ -82,8 +83,8 @@ const buildingInfo: Record<BuildingId, Omit<Entity, 'id' | 'kind' | 'title'>> = 
   },
   'town-hall': {
     concept: 'Governance. High-risk changes, such as granting roles or changing limits, are signed by the bank’s officers and wait out a time lock before they take effect.',
-    can: ['Grant and revoke staff roles', 'Schedule changes behind a time lock', 'Set who may call what'],
-    contracts: ['manager', 'timelock', 'officers', 'staffRoles'],
+    can: ['Grant and revoke staff roles', 'Schedule changes behind a time lock', 'Set who may call what', 'Apply the rates treasury and risk propose', 'Write off a loan in default'],
+    contracts: ['manager', 'timelock', 'officers', 'staffRoles', 'rates'],
   },
   'water-tower': {
     concept: 'The settlement account the bank holds at the clearing system. The water level is its balance: payments out drain it and payments in fill it.',
@@ -128,7 +129,12 @@ const buildingInfo: Record<BuildingId, Omit<Entity, 'id' | 'kind' | 'title'>> = 
   'lending-office': {
     concept:
       'Where loans are made. Lending creates money: a drawn loan puts new deposit tokens in the borrower’s account. The lending guard draws a loan only while the bank’s capital and liquidity stay above their minimums.',
-    can: ['Propose a loan, for a supervisor to approve within the lending caps', 'Draw it once the customer accepts', 'Refuse a drawdown that would breach a ratio'],
+    can: [
+      'Propose a loan, for a supervisor to approve within the lending caps',
+      'Draw it once the customer accepts',
+      'Refuse a drawdown that would breach a ratio',
+      'Collect instalments under the borrower’s mandate, and raise the allowance on a loan in arrears',
+    ],
     contracts: ['loans', 'guard'],
   },
   'clearing-house': {
@@ -149,7 +155,9 @@ const staffInfo: Record<string, { concept: string; can: string[] }> = {
   compliance: { concept: 'Checks the business against the rules.', can: ['Clear flagged payments', 'Place and lift holds', 'Approve the largest operations'] },
   'back office': { concept: 'Handles exceptions after the counter.', can: ['Handle payment exceptions', 'Reverse disputed operations'] },
   finance: { concept: 'Reconciles the books against outside statements.', can: ['Reconcile the ledger with clearing and custodian statements', 'Record cash counts'] },
-  risk: { concept: 'Watches for incidents.', can: ['Pause the system in an incident', 'Advise on limits'] },
+  risk: { concept: 'Watches for incidents.', can: ['Pause the system in an incident', 'Advise on limits', 'Propose loss allowance rates for governance to apply'] },
+  treasury: { concept: 'Prices the bank’s products and keeps its money where it is needed.', can: ['Propose savings and loan rates for governance to apply', 'Keep the settlement account funded'] },
+  scheduler: { concept: 'A script, not a person: it says when work is due, and the contracts decide what, to whom and how much.', can: ['Trigger the collection of loan instalments', 'Cannot choose an amount, a party or a date'] },
   support: { concept: 'Helps customers who lose devices or dispute an operation.', can: ['Freeze accounts and revoke devices', 'Open disputes', 'Cannot pay out to others'] },
   'credit officer': { concept: 'Arranges loans at the lending office.', can: ['Propose loans for a supervisor to approve', 'Cancel a loan not yet drawn'] },
   'IT security': { concept: 'Looks after machines and keys.', can: ['Enrol and retire ATMs and terminals', 'Rotate compromised keys', 'Approve grants of branch roles'] },

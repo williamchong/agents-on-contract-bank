@@ -83,7 +83,7 @@ export const staffPosts: StaffPost[] = [
   ...at('branch', ['teller', 'replacement teller', 'supervisor', 'branch manager', 'account opening officer']),
   ...at('vault', ['vault custodian']),
   ...at('lending-office', ['credit officer']),
-  ...at('head-office', ['compliance', 'back office', 'finance', 'risk', 'support', 'IT security']),
+  ...at('head-office', ['compliance', 'back office', 'finance', 'risk', 'treasury', 'support', 'IT security', 'scheduler']),
   { name: 'red team' },
 ]
 

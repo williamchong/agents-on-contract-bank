@@ -95,6 +95,11 @@ const reasons: Record<string, string> = {
   OwnLoan: 'staff may not lend to themselves',
   NotItsBorrower: 'only the borrower can accept the loan',
   NotCreditOfficer: 'the credit officer who proposed it has left',
+  MandateTooSmall: 'the customer’s mandate does not cover the loan’s instalments',
+  NotDrawn: 'the loan is not drawn',
+  NotInDefault: 'only a loan in default is written off',
+  NotThePaperProposed: 'it is not the proposal waiting',
+  NoPaper: 'a rate proposal must name its paper',
 }
 
 // A ratio refusal names the ratio and what the loan would have left it at, in basis points.
@@ -203,6 +208,21 @@ export function waiting(lines: Line[], name: (address: string) => string): Waiti
           if (item) item.what = item.what.replace('waiting for a supervisor', 'waiting for the customer to accept')
           break
         }
+        // One proposal of each kind waits at a time, and a new one replaces it, so each is kept by its kind.
+        case 'ProductRatesProposed': {
+          const r = a.rates as { savingsBps: string; loanBps: string }
+          add('Rates:products', `a savings rate of ${percent(r.savingsBps)} and a loan rate of ${percent(r.loanBps)}, waiting for governance`, line.seq)
+          break
+        }
+        case 'AllowanceRatesProposed':
+          add('Rates:allowance', 'new loss allowance rates, waiting for governance', line.seq)
+          break
+        case 'ProductRatesApplied':
+          open.delete('Rates:products')
+          break
+        case 'AllowanceRatesApplied':
+          open.delete('Rates:allowance')
+          break
         case 'DisputeOpened':
           add(k, `${name(String(a.customer))}’s dispute of ${money}, waiting for back office and compliance`, line.seq)
           break
@@ -252,11 +272,14 @@ export interface Movement {
 
 export function movements(line: Line): Movement[] {
   if (line.kind !== 'allowed') return []
-  // A loan's tokens are created by the ledger, but come from the lending office that drew it.
+  // A loan's tokens are created by the ledger, but come from the lending office that drew it; an instalment
+  // ends at the lending office, where the tokens it repays are destroyed.
   const lender = line.events.find((e) => e.name === 'LoanDrawn')?.address
+  const collector = line.events.find((e) => e.name === 'InstalmentCollected')?.address.toLowerCase()
   const source = (from: string) => (lender && from === ZERO ? lender : from)
   return line.events
     .filter((e) => e.contract === 'DepositToken' && e.name === 'Transfer')
+    .filter((e) => !(collector && String(e.args.from).toLowerCase() === collector && String(e.args.to) === ZERO))
     .map((e) => ({ from: source(String(e.args.from)), to: String(e.args.to), amount: BigInt(String(e.args.value)), channel: line.channel }))
 }
 
@@ -304,4 +327,39 @@ export function passbook(line: Line, d: Deployment, name: (address: string) => s
     fromTone: tone?.(m.from, m.to, line.channel),
     toTone: tone?.(m.to, m.from, line.channel),
   }))
+}
+
+export interface IncomeStatement {
+  interest: bigint
+  // The loss allowance charged to equity, less what was released, and write-offs beyond the allowance.
+  lossCharges: bigint
+  net: bigint
+}
+
+// Income and losses as the lending guard names its entries: interest as each instalment is collected,
+// and the allowance moving and write-offs as loans change stage. See docs/plan.md open question 28.
+export function incomeStatement(lines: Line[]): IncomeStatement {
+  let interest = 0n
+  let lossCharges = 0n
+  const big = (v: unknown) => BigInt(String(v))
+  for (const line of lines)
+    for (const e of line.events) {
+      if (e.contract !== 'LendingGuard') continue
+      switch (e.name) {
+        case 'InstalmentPosted':
+          interest += big(e.args.interest)
+          break
+        // A loan's performing allowance is charged as it is drawn.
+        case 'DrawnWithinRatios':
+          lossCharges += big(e.args.allowance)
+          break
+        case 'AllowanceMoved':
+          lossCharges += big(e.args.change)
+          break
+        case 'WriteOffPosted':
+          lossCharges += big(e.args.shortfall)
+          break
+      }
+    }
+  return { interest, lossCharges, net: interest - lossCharges }
 }
