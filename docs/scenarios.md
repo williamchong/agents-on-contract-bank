@@ -66,10 +66,22 @@ Jumping time moves block time, so the resume's time lock opens with it; see [ope
 | Scenario | Trigger | Control that fires | What the viewer sees | Passes when | Milestone |
 |---|---|---|---|---|---|
 | **Lending stopped by the capital ratio** | Loans are drawn until the next one would breach the capital ratio | Lending guard | The capital ratio falls towards its minimum, then a drawdown is refused naming it | The drawdown creates no tokens; a smaller loan within the ratio still goes through | 3 |
-| **Loan in arrears** | A borrower's account is empty when instalments fall due | Scheduled collection, loan status and the loss allowance | The collection fails, the loan goes into arrears and then default, the allowance rises and retained earnings fall | Status and allowance move at the set rates and the books balance | 3 |
+| **Loan in arrears** | A borrower cancels the loan's mandate, so instalments cannot be collected when they fall due | Scheduled collection, loan status and the loss allowance | The collection fails, the loan goes into arrears and then default, the allowance rises and retained earnings fall, and governance writes the loan off | Status and allowance move at the set rates, the write-off falls on the allowance and equity, and the books balance | 3 |
 | **Run on deposits** | Many customers withdraw and pay out at once | Payments queue when the settlement account is short; liquidity ratio | The queue grows, the liquidity ratio falls, treasury sells securities and the queue drains. The bank stays solvent throughout. | No payment is released beyond the settlement balance; every queued payment goes through once funded; lending is refused while the ratio is below its minimum | 3 |
 | **Buffer exhausted, then custodian silent** | Conversions outpace the custodian's confirmations. Later the custodian stops confirming. | Funds in transit capped by the buffer; mint guard on a stale confirmation | The reserve panel: funds in transit reach the buffer and conversions are refused; a confirmation restores them; then the confirmation ages out and all issuance stops | Supply never exceeds the confirmed reserve; redemption at par works throughout | 4 |
 | **Redemption surge** | Many holders redeem at once, one of them frozen | Conversion at par; funds due from the reserve not counted as liquid | Stablecoin outstanding and the reserve fall together. Funds due back rise, then clear. The frozen holder's redemption is shown as held, with its reason. | Every redemption is at par in one transaction; the custodian returns no more than was burned | 4 |
+
+The loan in arrears is 20,000 at 6%, repaid in twelve instalments of 1,721.33, drawn with its 1% allowance of 200. Its borrower cancels the mandate, and each jump of thirty days brings an instalment the collection cannot take:
+
+| Instalments unpaid | Stage | Allowance | Charged to equity in all |
+|---|---|---|---|
+| 0 | Performing | 200 | −200 |
+| 1 | In arrears | 2,000 | −2,000 |
+| 2 | In arrears | 2,000 | −2,000 |
+| 3 | In default | 12,000 | −12,000 |
+| Written off | | 0 | −20,000 |
+
+Equity falls by the whole loan: 12,000 through the allowance, and the 8,000 shortfall at the write-off. The capital ratio falls by about a fifth of a point; lending stopped by the capital ratio sizes its loans from the ratio as it finds it, so it still passes after.
 
 ## Guided tour
 
