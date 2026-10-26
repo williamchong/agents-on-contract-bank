@@ -27,6 +27,8 @@ import {CustomerLimits} from "../../contracts/core/CustomerLimits.sol";
 import {AccountRecovery} from "../../contracts/core/AccountRecovery.sol";
 import {DisputeReversal} from "../../contracts/core/DisputeReversal.sol";
 import {IncidentLog} from "../../contracts/core/IncidentLog.sol";
+import {LendingGuard} from "../../contracts/core/LendingGuard.sol";
+import {Loans} from "../../contracts/core/Loans.sol";
 
 /// @dev Deploys the bank as docs/roles.md describes it: governance is a time lock behind the
 /// officers' multi-signer account, holding the admin and governance roles, the staff roles module
@@ -36,7 +38,8 @@ import {IncidentLog} from "../../contracts/core/IncidentLog.sol";
 /// against the ledger, the cash module keeps the cash, and the assisted operations module holds
 /// transfers and payments out through a teller while they climb the approval ladder, the recovery
 /// module is fixed in customers' accounts, the dispute reversal module freezes and reverses disputed transfers, and finance
-/// reports incidents to the regulator in the incident log. The test contract deploys and wires the
+/// reports incidents to the regulator in the incident log, and the loans module draws loans through the
+/// lending guard within the two ratios. The test contract deploys and wires the
 /// contracts, hands the admin role to governance and gives up its own, and governance then posts
 /// the opening balance sheet in docs/scenarios.md and splits its cash as docs/roles.md does.
 abstract contract BankFixture is Test {
@@ -58,6 +61,14 @@ abstract contract BankFixture is Test {
     uint256 constant APP_LIMIT = 10_000 * HKD;
     uint256 constant UNREGISTERED_PAYEE_LIMIT = 2_000 * HKD;
     uint256 constant PAYEE_WAIT = 24 hours;
+    /// @dev Total capital 8% (Cap. 155L) and the category 2 liquidity ratio 25% (Cap. 155Q).
+    uint256 constant CAPITAL_MINIMUM_BPS = 800;
+    uint256 constant LIQUIDITY_MINIMUM_BPS = 2500;
+    uint256 constant PERFORMING_ALLOWANCE_BPS = 100;
+    uint256 constant LOAN_RATE_BPS = 600;
+    uint256 constant LOAN_INSTALMENTS = 12;
+    uint256 constant PER_CUSTOMER_LENDING_CAP = 600_000 * HKD;
+    uint256 constant TOTAL_LENDING_CAP = 12_000_000 * HKD;
 
     AccessManager manager;
     CustomerLimits limits;
@@ -73,6 +84,8 @@ abstract contract BankFixture is Test {
     AccountRecovery recovery;
     DisputeReversal disputes;
     IncidentLog incidents;
+    LendingGuard guard;
+    Loans loans;
     ERC7913P256Verifier p256;
     MultiSignerAccount officers;
     TimelockController timelock;
@@ -128,6 +141,14 @@ abstract contract BankFixture is Test {
             BranchApprovals.Ladder(LADDER_FIRST, LADDER_SECOND)
         );
         assisted = new AssistedOperations(address(manager), token, recovery, payments, BranchApprovals.Ladder(LADDER_FIRST, LADDER_SECOND));
+        guard = new LendingGuard(address(manager), ledger, attestations, CAPITAL_MINIMUM_BPS, LIQUIDITY_MINIMUM_BPS, PERFORMING_ALLOWANCE_BPS);
+        loans = new Loans(
+            address(manager),
+            guard,
+            recovery,
+            Loans.Terms(LOAN_RATE_BPS, LOAN_INSTALMENTS),
+            Loans.Caps(PER_CUSTOMER_LENDING_CAP, TOTAL_LENDING_CAP)
+        );
         teller1 = _staff("teller1");
         // How movements into the modules count, set while the deployer is still the admin.
         limits.setChannel(address(cash), CustomerLimits.Channel.Own);
@@ -167,6 +188,12 @@ abstract contract BankFixture is Test {
         _wire(address(limits), limits.setChannel.selector, Roles.GOVERNANCE);
         _wire(address(limits), limits.setLimits.selector, Roles.GOVERNANCE);
         _wire(address(incidents), incidents.report.selector, Roles.FINANCE);
+        _wire(address(guard), guard.drawdown.selector, Roles.LENDER);
+        _wire(address(guard), guard.setMinimums.selector, Roles.GOVERNANCE);
+        _wire(address(guard), guard.setAllowanceRate.selector, Roles.GOVERNANCE);
+        _wire(address(loans), loans.propose.selector, Roles.CREDIT_OFFICER);
+        _wire(address(loans), loans.setTerms.selector, Roles.GOVERNANCE);
+        _wire(address(loans), loans.setCaps.selector, Roles.GOVERNANCE);
 
         manager.grantRole(Roles.LEDGER, address(ledger), 0);
         manager.grantRole(Roles.STAFF_ADMIN, address(staffRoles), 0);
@@ -180,6 +207,8 @@ abstract contract BankFixture is Test {
         manager.grantRole(Roles.LIMIT_KEEPER, address(payments), 0);
         manager.grantRole(Roles.ENFORCER, address(disputes), 0);
         manager.grantRole(Roles.DISPUTE_HOLDER, address(disputes), 0);
+        manager.grantRole(Roles.BOOKKEEPER, address(guard), 0);
+        manager.grantRole(Roles.LENDER, address(loans), 0);
         manager.grantRole(Roles.BOOKKEEPER, treasury, 0);
         uint64[] memory staff = _staffAdministered();
         for (uint256 i = 0; i < staff.length; ++i) manager.setRoleAdmin(staff[i], Roles.STAFF_ADMIN);
@@ -438,6 +467,27 @@ abstract contract BankFixture is Test {
         lines[1] = GeneralLedger.Line(GeneralLedger.Account.Securities, -int128(amount));
         vm.prank(treasury);
         ledger.post(lines, "treasury");
+    }
+
+    /// @dev The clearing system and the custodian attest the ledger's settlement and securities
+    /// balances as of a minute ago, so both figures are current.
+    function _attestFigures() internal {
+        vm.warp(block.timestamp + 1 minutes);
+        uint256 asOf = block.timestamp - 1;
+        _attestFigure(GeneralLedger.Account.Settlement, asOf, clearingKey);
+        _attestFigure(GeneralLedger.Account.Securities, asOf, custodianKey);
+    }
+
+    function _attestFigure(GeneralLedger.Account account, uint256 asOf, uint256 key) private {
+        uint256 sequence_ = attestations.figure(account).sequence + 1;
+        Attestations.Statement memory m = Attestations.Statement(
+            keccak256(abi.encode("figure", account, sequence_)),
+            sequence_,
+            ledger.balanceAt(account, uint48(asOf)),
+            asOf,
+            keccak256(abi.encode("statement", account, sequence_))
+        );
+        attestations.acceptStatement(account, m, _signP256(key, attestations.hashStatement(m)));
     }
 
     function _assertBooksBalance() internal view {
