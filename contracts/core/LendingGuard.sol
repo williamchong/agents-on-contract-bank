@@ -6,15 +6,18 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {Attestations} from "./Attestations.sol";
 import {GeneralLedger} from "./GeneralLedger.sol";
+import {Rates} from "./Rates.sol";
 
 /// @dev The lending guard, the only path that posts a loan drawdown. It holds the bookkeeper role and
 /// posts the loan, the deposit tokens it creates for the borrower and the performing loan's allowance
 /// charged to equity as one entry, then refuses the whole drawdown unless the settlement and
-/// securities figures are current and both ratios still hold. Capital is checked first, so a drawdown
+/// securities figures are current and both ratios still hold. It posts every other entry for a loan
+/// too, on the loans module's word, and names each in an event the income statement is read from: an
+/// instalment collected, the allowance measured again and a write-off. Capital is checked first, so a drawdown
 /// that breaches both is refused naming capital, with the ratio it would have left. Ratios are compared
 /// by cross-multiplying, so rounding never decides a refusal, and a ratio exactly at its minimum
 /// passes. The ledger stays a book of record; checking the ratios on every drawdown is the one
-/// departure from a real bank. See open questions 9 and 25 in docs/plan.md.
+/// departure from a real bank. See open questions 9, 25 and 28 in docs/plan.md.
 contract LendingGuard is AccessManaged {
     using SafeCast for uint256;
     using SafeCast for int256;
@@ -23,15 +26,19 @@ contract LendingGuard is AccessManaged {
 
     GeneralLedger public immutable ledger;
     Attestations public immutable attestations;
+    Rates public immutable rates;
     uint256 public capitalMinimumBps;
     uint256 public liquidityMinimumBps;
-    /// @dev The loss allowance on a performing loan.
-    uint256 public allowanceBps;
 
     /// @dev A drawdown posted within both ratios, with what they stand at after it.
     event DrawnWithinRatios(bytes32 indexed ref, address indexed borrower, uint256 amount, uint256 allowance, uint256 capitalBps, uint256 liquidityBps);
+    /// @dev An instalment taken from the borrower: the principal off loans, the interest income.
+    event InstalmentPosted(bytes32 indexed ref, uint256 principal, uint256 interest);
+    /// @dev The allowance raised, charged to equity, or released to it.
+    event AllowanceMoved(bytes32 indexed ref, int256 change);
+    /// @dev A loan removed against its allowance, the shortfall charged to equity.
+    event WriteOffPosted(bytes32 indexed ref, uint256 principal, uint256 allowance, uint256 shortfall);
     event MinimumsSet(uint256 capitalBps, uint256 liquidityBps);
-    event AllowanceRateSet(uint256 bps);
 
     error CapitalRatioBelowMinimum(uint256 ratioBps, uint256 minimumBps);
     error LiquidityRatioBelowMinimum(uint256 ratioBps, uint256 minimumBps);
@@ -42,34 +49,32 @@ contract LendingGuard is AccessManaged {
         address manager,
         GeneralLedger ledger_,
         Attestations attestations_,
+        Rates rates_,
         uint256 capitalMinimumBps_,
-        uint256 liquidityMinimumBps_,
-        uint256 allowanceBps_
+        uint256 liquidityMinimumBps_
     ) AccessManaged(manager) {
         ledger = ledger_;
         attestations = attestations_;
+        rates = rates_;
         _setMinimums(capitalMinimumBps_, liquidityMinimumBps_);
-        _setAllowanceRate(allowanceBps_);
     }
 
     function setMinimums(uint256 capitalBps, uint256 liquidityBps) external restricted {
         _setMinimums(capitalBps, liquidityBps);
     }
 
-    function setAllowanceRate(uint256 bps) external restricted {
-        _setAllowanceRate(bps);
-    }
-
-    /// @dev Draws `amount` down to `borrower` under the loan's reference `ref`.
-    function drawdown(address borrower, uint256 amount, bytes32 ref) external restricted {
+    /// @dev Draws `amount` down to `borrower` under the loan's reference `ref`, and returns the
+    /// performing allowance posted with it.
+    function drawdown(address borrower, uint256 amount, bytes32 ref) external restricted returns (uint256 allowance) {
         _requireCurrent(GeneralLedger.Account.Settlement);
         _requireCurrent(GeneralLedger.Account.Securities);
 
-        uint256 allowance = Math.mulDiv(amount, allowanceBps, BPS, Math.Rounding.Ceil);
+        (uint256 performingBps, , ) = rates.allowance();
+        allowance = Math.mulDiv(amount, performingBps, BPS, Math.Rounding.Ceil);
         GeneralLedger.Line[] memory lines = new GeneralLedger.Line[](allowance > 0 ? 3 : 1);
-        lines[0] = GeneralLedger.Line(GeneralLedger.Account.Loans, amount.toInt256().toInt128());
+        lines[0] = GeneralLedger.Line(GeneralLedger.Account.Loans, _line(amount));
         if (allowance > 0) {
-            int128 a = allowance.toInt256().toInt128();
+            int128 a = _line(allowance);
             lines[1] = GeneralLedger.Line(GeneralLedger.Account.Equity, a);
             lines[2] = GeneralLedger.Line(GeneralLedger.Account.Allowance, -a);
         }
@@ -84,6 +89,37 @@ contract LendingGuard is AccessManaged {
         emit DrawnWithinRatios(ref, borrower, amount, allowance, capital, liquidity);
     }
 
+    /// @dev Destroys an instalment the caller collected, against the principal it repays and the
+    /// interest it earns.
+    function collect(bytes32 ref, uint256 principal, uint256 interest) external restricted {
+        GeneralLedger.Line[] memory lines = new GeneralLedger.Line[](interest > 0 ? 2 : 1);
+        lines[0] = GeneralLedger.Line(GeneralLedger.Account.Loans, -_line(principal));
+        if (interest > 0) lines[1] = GeneralLedger.Line(GeneralLedger.Account.Equity, -_line(interest));
+        ledger.postWithBurn(msg.sender, principal + interest, lines, ref);
+        emit InstalmentPosted(ref, principal, interest);
+    }
+
+    /// @dev Raises a loan's allowance by `change` against equity, or releases it when negative.
+    function measure(bytes32 ref, int256 change) external restricted {
+        int128 amount = change.toInt128();
+        GeneralLedger.Line[] memory lines = new GeneralLedger.Line[](2);
+        lines[0] = GeneralLedger.Line(GeneralLedger.Account.Equity, amount);
+        lines[1] = GeneralLedger.Line(GeneralLedger.Account.Allowance, -amount);
+        ledger.post(lines, ref);
+        emit AllowanceMoved(ref, change);
+    }
+
+    /// @dev Removes `principal` outstanding against the loan's `allowance`, the rest charged to equity.
+    function writeOff(bytes32 ref, uint256 principal, uint256 allowance) external restricted {
+        uint256 shortfall = principal - allowance;
+        GeneralLedger.Line[] memory lines = new GeneralLedger.Line[](shortfall > 0 ? 3 : 2);
+        lines[0] = GeneralLedger.Line(GeneralLedger.Account.Loans, -_line(principal));
+        lines[1] = GeneralLedger.Line(GeneralLedger.Account.Allowance, _line(allowance));
+        if (shortfall > 0) lines[2] = GeneralLedger.Line(GeneralLedger.Account.Equity, _line(shortfall));
+        ledger.post(lines, ref);
+        emit WriteOffPosted(ref, principal, allowance, shortfall);
+    }
+
     /// @dev Equity over loans net of the allowance, in basis points, rounded down. With no loans
     /// there is nothing to hold capital against, so the ratio is unbounded.
     function capitalRatioBps() external view returns (uint256) {
@@ -95,6 +131,10 @@ contract LendingGuard is AccessManaged {
     function liquidityRatioBps() external view returns (uint256) {
         (int256 liquid, int256 deposits) = _liquidity();
         return _ratio(liquid, deposits);
+    }
+
+    function _line(uint256 amount) private pure returns (int128) {
+        return amount.toInt256().toInt128();
     }
 
     function _requireCurrent(GeneralLedger.Account account) private view {
@@ -138,11 +178,5 @@ contract LendingGuard is AccessManaged {
         capitalMinimumBps = capitalBps;
         liquidityMinimumBps = liquidityBps;
         emit MinimumsSet(capitalBps, liquidityBps);
-    }
-
-    function _setAllowanceRate(uint256 bps) private {
-        if (bps > BPS) revert RateAboveWhole(bps);
-        allowanceBps = bps;
-        emit AllowanceRateSet(bps);
     }
 }

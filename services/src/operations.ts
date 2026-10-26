@@ -329,11 +329,22 @@ export function decideLoan(bank: Bank, ref: Hex, verdict: 'approve' | 'refuse'):
   return bank.act('supervisor', 'branch', `${verdict} loan ${ref.slice(0, 10)}`, [bank.call('Loans', bank.contracts.loans, verdict, [ref])])
 }
 
-// The borrower accepts the loan's terms from their own device, which draws it through the lending guard.
-export function acceptLoan(bank: Bank, customer: string, ref: Hex, amount: bigint): Promise<Outcome> {
-  return bank.act(customer, 'app', `accept a loan of ${hkd(amount)}`, [bank.call('Loans', bank.contracts.loans, 'accept', [ref])], {
-    attempt: { from: bank.contracts.loans, to: bank.account(customer), amount },
-  })
+// The borrower accepts the loan's terms from their own device, which draws it through the lending guard. The
+// same batch gives the loans module the mandate to take its instalments, on top of what it may already take
+// for their other loans.
+export async function acceptLoan(bank: Bank, customer: string, ref: Hex, amount: bigint): Promise<Outcome> {
+  const { loans, token } = bank.contracts
+  const account = bank.account(customer)
+  const [loan, mandate] = await Promise.all([
+    bank.read('Loans', loans, 'loan', [ref]),
+    bank.read('DepositToken', token, 'allowance', [account, loans]),
+  ])
+  const instalment = await bank.read('Loans', loans, 'annuity', [loan.amount, loan.terms])
+  const calls = [
+    bank.call('DepositToken', token, 'approve', [loans, mandate + instalment * loan.terms.instalments]),
+    bank.call('Loans', loans, 'accept', [ref]),
+  ]
+  return bank.act(customer, 'app', `accept a loan of ${hkd(amount)}`, calls, { attempt: { from: loans, to: account, amount } })
 }
 
 // The credit officer cancels a loan not yet drawn, such as one the lending guard refused.

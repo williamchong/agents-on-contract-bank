@@ -47,19 +47,27 @@ export const Settings = {
   payeeWait: 86_400n,
   // The branch approval ladder's steps.
   ladder: { first: 50_000n * HKD, second: 500_000n * HKD },
-  // The capital and liquidity minimums and the performing loan's allowance, in basis points.
+  // The capital and liquidity minimums, in basis points.
   capitalMinimum: 800n,
   liquidityMinimum: 2_500n,
-  performingAllowance: 100n,
-  // The loan rate a year in basis points, the number of monthly instalments, and the lending caps.
-  loanTerms: { rateBps: 600n, instalments: 12n },
+  // The savings and loan rates a year and the loss allowance by a loan's stage, in basis points.
+  productRates: { savingsBps: 100n, loanBps: 600n },
+  allowanceRates: { performingBps: 100n, arrearsBps: 1_000n, defaultBps: 6_000n },
+  // The number of monthly instalments and the time between them, and the lending caps.
+  loanSchedule: { instalments: 12n, period: 30n * 86_400n },
   lendingCaps: { perCustomer: 600_000n * HKD, total: 12_000_000n * HKD },
 }
 export type BankSettings = typeof Settings
 
 // On a public chain, whose clock cannot be moved, the run waits out each time lock in real time, so the
-// governance time lock and the payee waiting period are ten minutes, as docs/roles.md gives them.
-export const PublicChainSettings: BankSettings = { ...Settings, governanceDelay: 600n, payeeWait: 600n }
+// governance time lock, the payee waiting period and the time between instalments are ten minutes, as
+// docs/roles.md gives them.
+export const PublicChainSettings: BankSettings = {
+  ...Settings,
+  governanceDelay: 600n,
+  payeeWait: 600n,
+  loanSchedule: { ...Settings.loanSchedule, period: 600n },
+}
 
 // The partners' identifiers in the key register, as contracts/core/PartnerKeys.sol derives them, and the
 // keys they sign with.
@@ -95,6 +103,7 @@ export interface Contracts {
   incidents: Address
   guard: Address
   loans: Address
+  rates: Address
 }
 
 // The account a party acts from, the keys that sign for it unless others are named, and a customer's card.
@@ -116,6 +125,9 @@ export const Staff = {
   support: Roles.SUPPORT,
   'IT security': Roles.IT_SECURITY,
   'credit officer': Roles.CREDIT_OFFICER,
+  treasury: Roles.TREASURY,
+  // A script, not a person: it triggers work that is due and chooses nothing.
+  scheduler: Roles.SCHEDULER,
   'branch manager': atBranch(1n, BranchRole.BRANCH_MANAGER),
   teller: atBranch(1n, BranchRole.TELLER),
   supervisor: atBranch(1n, BranchRole.SUPERVISOR),
@@ -145,6 +157,8 @@ const governanceGrants = [
   'support',
   'IT security',
   'credit officer',
+  'treasury',
+  'scheduler',
   'branch manager',
   'branch 2 manager',
 ] as const
@@ -295,6 +309,7 @@ export const contractArtifacts: Record<keyof Contracts, ContractName> = {
   incidents: 'IncidentLog',
   guard: 'LendingGuard',
   loans: 'Loans',
+  rates: 'Rates',
 }
 
 const contractNames: Record<keyof Contracts, string> = {
@@ -317,6 +332,7 @@ const contractNames: Record<keyof Contracts, string> = {
   incidents: 'IncidentLog',
   guard: 'LendingGuard',
   loans: 'Loans',
+  rates: 'Rates',
 }
 
 // A short reference as a ledger entry or message carries it, such as "opening".
@@ -363,15 +379,9 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
     settings.ladder,
   ])
   const assisted = await deployer.deploy('AssistedOperations', [manager, token, recovery, payments, settings.ladder])
-  const guard = await deployer.deploy('LendingGuard', [
-    manager,
-    ledger,
-    attestations,
-    settings.capitalMinimum,
-    settings.liquidityMinimum,
-    settings.performingAllowance,
-  ])
-  const loans = await deployer.deploy('Loans', [manager, guard, recovery, settings.loanTerms, settings.lendingCaps])
+  const rates = await deployer.deploy('Rates', [manager, settings.productRates, settings.allowanceRates])
+  const guard = await deployer.deploy('LendingGuard', [manager, ledger, attestations, rates, settings.capitalMinimum, settings.liquidityMinimum])
+  const loans = await deployer.deploy('Loans', [manager, guard, recovery, rates, settings.loanSchedule, settings.lendingCaps])
   const contracts: Contracts = {
     verifier,
     officers,
@@ -392,6 +402,7 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
     incidents,
     guard,
     loans,
+    rates,
   }
   const bank = new Bank(chain, signer, timeline, contracts, settings)
   bank.add('governance officers', { account: officers, keys: officerKeys.slice(0, Number(settings.governanceThreshold)) })
@@ -413,13 +424,14 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
   // How movements into the modules count, set while the deployer is still the admin: not at all into
   // those that keep their own channel's limit, and against the app limit only into payments, which
   // checks the payee itself.
-  for (const module of [cash, assisted]) await deployer.write('CustomerLimits', limits, 'setChannel', [module, Channel.Own])
+  for (const module of [cash, assisted, loans]) await deployer.write('CustomerLimits', limits, 'setChannel', [module, Channel.Own])
   await deployer.write('CustomerLimits', limits, 'setChannel', [payments, Channel.PayeeCheckedThere])
   await wire(deployer, contracts)
   for (const name of Holders) await deployer.write('DepositToken', token, 'allowUser', [bank.account(name)])
   await deployer.write('DepositToken', token, 'allowUser', [payments])
   await deployer.write('DepositToken', token, 'allowUser', [cash])
   await deployer.write('DepositToken', token, 'allowUser', [assisted])
+  await deployer.write('DepositToken', token, 'allowUser', [loans])
   await deployer.write('AccessManager', manager, 'grantRole', [Roles.ADMIN, timelock, 0])
   await deployer.write('AccessManager', manager, 'grantRole', [Roles.GOVERNANCE, timelock, 0])
   await deployer.write('AccessManager', manager, 'renounceRole', [Roles.ADMIN, chain.relayer])
@@ -505,10 +517,17 @@ const wiring: [keyof Contracts, ContractName, string, bigint][] = [
   ['incidents', 'IncidentLog', 'report', Roles.FINANCE],
   ['guard', 'LendingGuard', 'drawdown', Roles.LENDER],
   ['guard', 'LendingGuard', 'setMinimums', Roles.GOVERNANCE],
-  ['guard', 'LendingGuard', 'setAllowanceRate', Roles.GOVERNANCE],
+  ['guard', 'LendingGuard', 'collect', Roles.LENDER],
+  ['guard', 'LendingGuard', 'measure', Roles.LENDER],
+  ['guard', 'LendingGuard', 'writeOff', Roles.LENDER],
   ['loans', 'Loans', 'propose', Roles.CREDIT_OFFICER],
-  ['loans', 'Loans', 'setTerms', Roles.GOVERNANCE],
+  ['loans', 'Loans', 'collectDue', Roles.SCHEDULER],
+  ['loans', 'Loans', 'writeOff', Roles.GOVERNANCE],
   ['loans', 'Loans', 'setCaps', Roles.GOVERNANCE],
+  ['rates', 'Rates', 'proposeProductRates', Roles.TREASURY],
+  ['rates', 'Rates', 'proposeAllowanceRates', Roles.RISK],
+  ['rates', 'Rates', 'applyProductRates', Roles.GOVERNANCE],
+  ['rates', 'Rates', 'applyAllowanceRates', Roles.GOVERNANCE],
 ]
 
 // Every staff and machine role, for each branch, which the staff roles module administers.

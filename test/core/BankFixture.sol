@@ -29,6 +29,7 @@ import {DisputeReversal} from "../../contracts/core/DisputeReversal.sol";
 import {IncidentLog} from "../../contracts/core/IncidentLog.sol";
 import {LendingGuard} from "../../contracts/core/LendingGuard.sol";
 import {Loans} from "../../contracts/core/Loans.sol";
+import {Rates} from "../../contracts/core/Rates.sol";
 
 /// @dev Deploys the bank as docs/roles.md describes it: governance is a time lock behind the
 /// officers' multi-signer account, holding the admin and governance roles, the staff roles module
@@ -38,8 +39,9 @@ import {Loans} from "../../contracts/core/Loans.sol";
 /// against the ledger, the cash module keeps the cash, and the assisted operations module holds
 /// transfers and payments out through a teller while they climb the approval ladder, the recovery
 /// module is fixed in customers' accounts, the dispute reversal module freezes and reverses disputed transfers, and finance
-/// reports incidents to the regulator in the incident log, and the loans module draws loans through the
-/// lending guard within the two ratios. The test contract deploys and wires the
+/// reports incidents to the regulator in the incident log, the loans module draws loans through the
+/// lending guard within the two ratios and collects their instalments, and the rates contract holds the
+/// rates treasury and risk propose and governance applies. The test contract deploys and wires the
 /// contracts, hands the admin role to governance and gives up its own, and governance then posts
 /// the opening balance sheet in docs/scenarios.md and splits its cash as docs/roles.md does.
 abstract contract BankFixture is Test {
@@ -65,8 +67,12 @@ abstract contract BankFixture is Test {
     uint256 constant CAPITAL_MINIMUM_BPS = 800;
     uint256 constant LIQUIDITY_MINIMUM_BPS = 2500;
     uint256 constant PERFORMING_ALLOWANCE_BPS = 100;
+    uint256 constant ARREARS_ALLOWANCE_BPS = 1_000;
+    uint256 constant DEFAULT_ALLOWANCE_BPS = 6_000;
+    uint256 constant SAVINGS_RATE_BPS = 100;
     uint256 constant LOAN_RATE_BPS = 600;
     uint256 constant LOAN_INSTALMENTS = 12;
+    uint256 constant INSTALMENT_PERIOD = 30 days;
     uint256 constant PER_CUSTOMER_LENDING_CAP = 600_000 * HKD;
     uint256 constant TOTAL_LENDING_CAP = 12_000_000 * HKD;
 
@@ -86,6 +92,7 @@ abstract contract BankFixture is Test {
     IncidentLog incidents;
     LendingGuard guard;
     Loans loans;
+    Rates rates;
     ERC7913P256Verifier p256;
     MultiSignerAccount officers;
     TimelockController timelock;
@@ -141,18 +148,25 @@ abstract contract BankFixture is Test {
             BranchApprovals.Ladder(LADDER_FIRST, LADDER_SECOND)
         );
         assisted = new AssistedOperations(address(manager), token, recovery, payments, BranchApprovals.Ladder(LADDER_FIRST, LADDER_SECOND));
-        guard = new LendingGuard(address(manager), ledger, attestations, CAPITAL_MINIMUM_BPS, LIQUIDITY_MINIMUM_BPS, PERFORMING_ALLOWANCE_BPS);
+        rates = new Rates(
+            address(manager),
+            Rates.ProductRates(SAVINGS_RATE_BPS, LOAN_RATE_BPS),
+            Rates.AllowanceRates(PERFORMING_ALLOWANCE_BPS, ARREARS_ALLOWANCE_BPS, DEFAULT_ALLOWANCE_BPS)
+        );
+        guard = new LendingGuard(address(manager), ledger, attestations, rates, CAPITAL_MINIMUM_BPS, LIQUIDITY_MINIMUM_BPS);
         loans = new Loans(
             address(manager),
             guard,
             recovery,
-            Loans.Terms(LOAN_RATE_BPS, LOAN_INSTALMENTS),
+            rates,
+            Loans.Schedule(LOAN_INSTALMENTS, INSTALMENT_PERIOD),
             Loans.Caps(PER_CUSTOMER_LENDING_CAP, TOTAL_LENDING_CAP)
         );
         teller1 = _staff("teller1");
         // How movements into the modules count, set while the deployer is still the admin.
         limits.setChannel(address(cash), CustomerLimits.Channel.Own);
         limits.setChannel(address(assisted), CustomerLimits.Channel.Own);
+        limits.setChannel(address(loans), CustomerLimits.Channel.Own);
         limits.setChannel(address(payments), CustomerLimits.Channel.PayeeCheckedThere);
 
         _wire(address(token), token.mint.selector, Roles.LEDGER);
@@ -190,10 +204,17 @@ abstract contract BankFixture is Test {
         _wire(address(incidents), incidents.report.selector, Roles.FINANCE);
         _wire(address(guard), guard.drawdown.selector, Roles.LENDER);
         _wire(address(guard), guard.setMinimums.selector, Roles.GOVERNANCE);
-        _wire(address(guard), guard.setAllowanceRate.selector, Roles.GOVERNANCE);
+        _wire(address(guard), guard.collect.selector, Roles.LENDER);
+        _wire(address(guard), guard.measure.selector, Roles.LENDER);
+        _wire(address(guard), guard.writeOff.selector, Roles.LENDER);
         _wire(address(loans), loans.propose.selector, Roles.CREDIT_OFFICER);
-        _wire(address(loans), loans.setTerms.selector, Roles.GOVERNANCE);
+        _wire(address(loans), loans.collectDue.selector, Roles.SCHEDULER);
+        _wire(address(loans), loans.writeOff.selector, Roles.GOVERNANCE);
         _wire(address(loans), loans.setCaps.selector, Roles.GOVERNANCE);
+        _wire(address(rates), rates.proposeProductRates.selector, Roles.TREASURY);
+        _wire(address(rates), rates.proposeAllowanceRates.selector, Roles.RISK);
+        _wire(address(rates), rates.applyProductRates.selector, Roles.GOVERNANCE);
+        _wire(address(rates), rates.applyAllowanceRates.selector, Roles.GOVERNANCE);
 
         manager.grantRole(Roles.LEDGER, address(ledger), 0);
         manager.grantRole(Roles.STAFF_ADMIN, address(staffRoles), 0);
@@ -220,6 +241,7 @@ abstract contract BankFixture is Test {
         token.allowUser(address(payments));
         token.allowUser(address(cash));
         token.allowUser(address(assisted));
+        token.allowUser(address(loans));
 
         manager.grantRole(Roles.ADMIN, governance, 0);
         manager.grantRole(Roles.GOVERNANCE, governance, 0);
@@ -237,6 +259,17 @@ abstract contract BankFixture is Test {
     /// for its delay, and it is then carried out.
     function _govern(address target, bytes memory data) internal {
         _execute(target, data, _schedule(target, data, _quorum()));
+    }
+
+    /// @dev Risk proposes allowance rates under a paper, and governance applies them.
+    function _setAllowanceRates(uint256 performing, uint256 arrears, uint256 defaulted) internal {
+        address risk = makeAddr("risk");
+        vm.prank(address(staffRoles));
+        manager.grantRole(Roles.RISK, risk, 0);
+        bytes32 paper = keccak256(abi.encode("allowance paper", performing, arrears, defaulted));
+        vm.prank(risk);
+        rates.proposeAllowanceRates(Rates.AllowanceRates(performing, arrears, defaulted), paper);
+        _govern(address(rates), abi.encodeCall(Rates.applyAllowanceRates, (paper)));
     }
 
     /// @dev Waits out the time lock's delay and carries out a scheduled decision.

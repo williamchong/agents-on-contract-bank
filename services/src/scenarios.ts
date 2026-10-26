@@ -738,7 +738,8 @@ async function largestLoanWithinCapital(bank: Bank): Promise<bigint> {
   const [equityBalance, loans, allowance] = await Promise.all([Ledger.Equity, Ledger.Loans, Ledger.Allowance].map((a) => ledgerBalance(bank, a)))
   const equity = -equityBalance!
   const netLoans = loans! + allowance!
-  const { capitalMinimum: m, performingAllowance: a } = bank.settings
+  const m = bank.settings.capitalMinimum
+  const a = bank.settings.allowanceRates.performingBps
   const headroom = equity * BPS - m * netLoans
   if (headroom <= 0n) return 0n
   const loan = (headroom * BPS) / (m * (BPS - a) + a * BPS)

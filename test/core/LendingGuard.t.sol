@@ -91,7 +91,7 @@ contract LendingGuardTest is BankFixture {
 
     /// @dev With no allowance, lending exactly to the minimum passes and a cent more is refused.
     function test_Boundary_ExactMinimumPassesOneMoreRefused() public {
-        _govern(address(guard), abi.encodeCall(LendingGuard.setAllowanceRate, (0)));
+        _setAllowanceRates(0, ARREARS_ALLOWANCE_BPS, DEFAULT_ALLOWANCE_BPS);
         _attestFigures();
         int256 equity = -ledger.balanceOf(GeneralLedger.Account.Equity);
         int256 netLoans = ledger.balanceOf(GeneralLedger.Account.Loans) + ledger.balanceOf(GeneralLedger.Account.Allowance);
@@ -161,23 +161,27 @@ contract LendingGuardTest is BankFixture {
 
     // Roles
 
-    function test_Roles_OnlyTheLenderDrawsAndOnlyGovernanceSetsRates() public {
+    function test_Roles_OnlyTheLenderPostsAndOnlyGovernanceSetsMinimums() public {
         vm.startPrank(borrower);
         vm.expectRevert(abi.encodeWithSelector(IAccessManaged.AccessManagedUnauthorized.selector, borrower));
         guard.drawdown(borrower, LOAN, "loan");
         vm.expectRevert(abi.encodeWithSelector(IAccessManaged.AccessManagedUnauthorized.selector, borrower));
-        guard.setMinimums(0, 0);
+        guard.collect("loan", 1, 0);
         vm.expectRevert(abi.encodeWithSelector(IAccessManaged.AccessManagedUnauthorized.selector, borrower));
-        guard.setAllowanceRate(0);
+        guard.measure("loan", 1);
+        vm.expectRevert(abi.encodeWithSelector(IAccessManaged.AccessManagedUnauthorized.selector, borrower));
+        guard.writeOff("loan", 1, 0);
+        vm.expectRevert(abi.encodeWithSelector(IAccessManaged.AccessManagedUnauthorized.selector, borrower));
+        guard.setMinimums(0, 0);
         vm.stopPrank();
     }
 
-    function test_Governance_RatesCappedAtWhole() public {
+    function test_Governance_MinimumsCappedAtWhole() public {
         vm.startPrank(governance);
         vm.expectRevert(abi.encodeWithSelector(LendingGuard.RateAboveWhole.selector, BPS + 1));
         guard.setMinimums(BPS + 1, LIQUIDITY_MINIMUM_BPS);
         vm.expectRevert(abi.encodeWithSelector(LendingGuard.RateAboveWhole.selector, BPS + 1));
-        guard.setAllowanceRate(BPS + 1);
+        guard.setMinimums(CAPITAL_MINIMUM_BPS, BPS + 1);
         vm.stopPrank();
     }
 
