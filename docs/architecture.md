@@ -323,7 +323,7 @@ Some entries move no tokens:
 | Redemption funds arrive from the custodian | Due from reserve falls, settlement account rises |
 | Excess reserve withdrawn | Reserve surplus falls, settlement account rises |
 
-- **Lending guard.** A loan creates money backed by a loan, not by funds received. The ledger refuses a drawdown unless both ratios still hold after it:
+- **Lending guard.** A loan creates money backed by a loan, not by funds received. The ledger is a book of record, so drawdowns are posted only through the lending guard, which refuses one unless both ratios still hold after it; the lending caps are checked when the loan is approved. See [open question 25](plan.md#open-questions).
   - **Capital ratio.** Equity over loans net of the loss allowance, at or above a minimum.
   - **Liquidity ratio.** Settlement balance, cash and liquid securities over deposit tokens, at or above a minimum. The reserve surplus and funds due from the reserve are not counted; they are not the bank's to spend until they reach the settlement account.
 
@@ -478,7 +478,7 @@ Payments run through a simulated clearing system in which the bank holds a settl
 | Role required for each function | Access manager, with the role numbers in [roles](roles.md#access-manager-roles) |
 | Branch scoping | Roles defined per branch; operations check the caller's branch |
 | The books balance | General ledger: deposit tokens are created and destroyed only with a balanced entry |
-| Lending within the capital and liquidity ratios | Lending guard in the general ledger |
+| Lending within the capital and liquidity ratios | Lending guard, the only path that posts a drawdown to the general ledger |
 | Stablecoin within the confirmed reserve | Mint guard on the stablecoin |
 | Money created against an outside credit, and attested figures | Payments module and attested figures check the partner's signature against its registered key; the adapter holds no role |
 | Scheduled work | A trigger-only role; the contracts work out amounts, parties and dates from their own state, and each trigger runs once per period |

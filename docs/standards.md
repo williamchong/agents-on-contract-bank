@@ -79,15 +79,15 @@ Accounts built on `Account` are compatible with ERC-4337, though the bundler flo
 
 ## Written here
 
-1. **General ledger.** Double-entry accounts for assets, liabilities and equity; the only contract that may create or destroy deposit tokens; the history of the balances held off chain; the loss allowance; the capital and liquidity ratios and the lending guard.
+1. **General ledger.** Double-entry accounts for assets, liabilities and equity; the only contract that may create or destroy deposit tokens; the history of the balances held off chain; the loss allowance; the capital and liquidity ratios.
 2. **Operations.** Cash deposit and withdrawal with the ATM hold and confirmation, cash moved between the vault, drawers and the ATM, and cash counts, each move and count under the vault custodian and a supervisor.
 3. **Payments.** Payments in and out through the clearing system, the check of its signature on each credit and rejection, registered payees, the queue when the settlement account is short, suspense, mandates for standing orders.
 4. **Assisted operations.** Acting on a paper instruction at a branch, with the approval ladder and the slip hash recorded.
 5. **Other bank-initiated movement.** Support moves between a customer's own accounts and dispute reversal, each wired to the forced transfer. Also the register of named holds behind the token's single frozen amount.
 6. **Account recovery.** The one module allowed to change a customer account's signers, and nothing else.
 7. **Second-person approval.** Amount-based, with the approver required to differ from the maker.
-8. **Rates and interest.** Bank-set savings and loan rates; paying savings interest into the vault.
-9. **Lending.** Loans that create deposit tokens through the ledger, instalments, arrears and the loan status the allowance follows, write-off.
+8. **Rates and interest.** Bank-set savings, loan and loss allowance rates, proposed by treasury or risk and applied by governance; paying savings interest into the vault.
+9. **Lending.** The lending guard, the only path that posts a drawdown; loans that create deposit tokens through the ledger, instalments, arrears and the loan status the allowance follows, write-off.
 10. **Stablecoin conversion and reserve bookkeeping.** Conversion at par both ways, confirmed reserve at the custodian, buffer, funds in transit, funds due back after redemptions, the bank's surplus, excess-only withdrawal, and the function that reports the reserve to the mint guard.
 11. **Partner keys.** The register of partners' signing keys that the payments module and the attested figures contract check against.
 12. **Attested figures.** Partners' signed statements of the assets held off chain, each compared with the ledger's balance at its date, and whether each figure is current.

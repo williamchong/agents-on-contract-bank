@@ -123,6 +123,10 @@ Every amount and waiting period the matrix below refers to, in Hong Kong dollars
 | Per-customer lending cap | 600,000 | Loans outstanding to one customer | Demo value, well above the 25% of capital the large exposure rule allows, so that [tour beat 5](scenarios.md#guided-tour) is stopped by the capital ratio. See [HKMA mapping](hkma-mapping.md#prudential-rules). |
 | Total lending cap | 12,000,000 | Loans outstanding in all | Demo value, above the 11,100,000 tour beat 5 reaches, so the capital ratio is what stops it |
 | Capital and liquidity minimums | 8% and 25% | Every loan drawdown | Real Hong Kong figures on simplified ratios; see [open question 9](plan.md#open-questions) |
+| Loan rate and savings rate | 6% and 1% a year | A loan keeps the rate it was drawn at; savings pay the current rate each day | Demo values; see [open question 26](plan.md#open-questions) |
+| Loan term | 12 equal instalments, 30 days apart locally, minutes apart on Base Sepolia | Every loan | Monthly instalments over a year, as a personal loan; Base Sepolia's clock cannot be moved |
+| Arrears and default | Arrears from the first missed instalment, default at the third | Loan status | Ninety days past due, as HKFRS 9 presumes default; see [HKMA mapping](hkma-mapping.md#prudential-rules) |
+| Loss allowance rates | 1% performing, 10% in arrears, 60% in default | Loans outstanding by status | Illustrative rates for unsecured lending |
 | Daily issuance cap | 1,000,000 per day | Stablecoin issued in all | Demo value |
 | Governance signatures | 3 of the 4 governance signers | Every governance decision | Demo value |
 | Governance time lock | 2 days locally, 10 minutes on Base Sepolia | Every governance decision, after its signatures | Demo value; Base Sepolia's clock cannot be moved, see [open question 11](plan.md#open-questions) |
@@ -217,7 +221,7 @@ The scheduler says when; the contracts decide what, to whom and how much. A trig
 | Issue cash to drawer or ATM | Vault custodian | Supervisor | | Role, approval |
 | Count cash and record the count | Vault custodian | Supervisor | | Role, approval |
 | Bank surplus cash to the settlement account | Vault custodian | Supervisor | | Role, approval |
-| Move funds between the settlement account and liquid securities | Treasury | Finance | Liquidity ratio | Role, approval |
+| Move funds between the settlement account and liquid securities | Treasury | Finance | Liquidity ratio | Role, approval; the books move on the custodian's signed settlement confirmation, see [open question 27](plan.md#open-questions) |
 | Top up the reserve buffer | Treasury | Finance | | Role, approval |
 | Return reserve released by redemptions | Custodian, under a standing instruction | None | Up to the amount burned | Partner signature; no role |
 | Withdraw excess reserve | Treasury | Governance | Above target only | Role, governance |
