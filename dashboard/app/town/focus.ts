@@ -30,6 +30,8 @@ export function addressEntity(d: Deployment, address: string, other: string, cha
       return 'branch'
     case 'Post office':
       return 'post-office'
+    case 'Lending office':
+      return 'lending-office'
   }
   return Object.values(d.contracts).some((c) => c.toLowerCase() === a) ? 'head-office' : undefined
 }
@@ -46,7 +48,13 @@ export function actorEntity(d: Deployment, line: Line): EntityId | undefined {
 
 // Where a refusal stands: at the channel it came through, or the house of the customer who tried it.
 export function refusalEntity(d: Deployment, line: Line): EntityId {
-  const byChannel: Record<string, BuildingId> = { atm: 'atm', branch: 'branch', partner: 'clearing-house', admin: 'town-hall' }
+  const byChannel: Record<string, BuildingId> = {
+    atm: 'atm',
+    branch: 'branch',
+    partner: 'clearing-house',
+    admin: 'town-hall',
+    'lending office': 'lending-office',
+  }
   if (byChannel[line.channel]) return byChannel[line.channel]!
   return housedCustomers(d).includes(line.actor) ? customerId(line.actor) : 'head-office'
 }

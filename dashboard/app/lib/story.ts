@@ -88,10 +88,26 @@ const reasons: Record<string, string> = {
   AlreadyActed: 'each step needs a different person',
   DispenseInProgress: 'a dispense is still in progress',
   DispenseTimedOut: 'the dispense timed out',
+  FigureNotCurrent: 'a figure the ratios rest on has not been reconciled lately',
+  PerCustomerCapExceeded: 'it would take the customer over the per-customer lending cap',
+  TotalCapExceeded: 'it would take the bank over its total lending cap',
+  OfficerCannotApprove: 'the credit officer cannot approve their own proposal',
+  OwnLoan: 'staff may not lend to themselves',
+  NotItsBorrower: 'only the borrower can accept the loan',
+  NotCreditOfficer: 'the credit officer who proposed it has left',
 }
+
+// A ratio refusal names the ratio and what the loan would have left it at, in basis points.
+const ratioNames: Record<string, string> = { CapitalRatioBelowMinimum: 'capital', LiquidityRatioBelowMinimum: 'liquidity' }
+const percent = (bps: unknown) => `${(Number(bps) / 100).toFixed(2)}%`
 
 export function reasonOf(line: Line): string {
   const error = line.reason?.error ?? 'Unknown'
+  const ratio = ratioNames[error]
+  if (ratio && line.reason) {
+    const [left, minimum] = line.reason.args
+    return `the ${ratio} ratio would fall to ${percent(left)}, below its minimum of ${percent(minimum)}`
+  }
   return reasons[error] ?? error.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase()
 }
 
@@ -179,6 +195,14 @@ export function waiting(lines: Line[], name: (address: string) => string): Waiti
         case 'OrderProposed':
           add(k, `a cash order, waiting for a supervisor`, line.seq)
           break
+        case 'LoanProposed':
+          add(k, `a loan of ${money} to ${name(String(a.borrower))}, waiting for a supervisor`, line.seq)
+          break
+        case 'LoanApproved': {
+          const item = open.get(k)
+          if (item) item.what = item.what.replace('waiting for a supervisor', 'waiting for the customer to accept')
+          break
+        }
         case 'DisputeOpened':
           add(k, `${name(String(a.customer))}’s dispute of ${money}, waiting for back office and compliance`, line.seq)
           break
@@ -204,6 +228,9 @@ export function waiting(lines: Line[], name: (address: string) => string): Waiti
         case 'OrderCancelled':
         case 'DisputeReversed':
         case 'DisputeRejected':
+        case 'LoanDrawn':
+        case 'LoanRefused':
+        case 'LoanCancelled':
           open.delete(k)
           break
         case 'Lifted':
@@ -225,9 +252,12 @@ export interface Movement {
 
 export function movements(line: Line): Movement[] {
   if (line.kind !== 'allowed') return []
+  // A loan's tokens are created by the ledger, but come from the lending office that drew it.
+  const lender = line.events.find((e) => e.name === 'LoanDrawn')?.address
+  const source = (from: string) => (lender && from === ZERO ? lender : from)
   return line.events
     .filter((e) => e.contract === 'DepositToken' && e.name === 'Transfer')
-    .map((e) => ({ from: String(e.args.from), to: String(e.args.to), amount: BigInt(String(e.args.value)), channel: line.channel }))
+    .map((e) => ({ from: source(String(e.args.from)), to: String(e.args.to), amount: BigInt(String(e.args.value)), channel: line.channel }))
 }
 
 // The movement a refused line would have made, for the bank map to play up to the refusal. Lines recorded
@@ -239,7 +269,7 @@ export function attempted(line: Line): Movement | undefined {
 
 export const ZERO = '0x0000000000000000000000000000000000000000'
 
-export type Holder = 'Another bank' | 'Cash' | 'ATM' | 'Branch' | 'Post office'
+export type Holder = 'Another bank' | 'Cash' | 'ATM' | 'Branch' | 'Post office' | 'Lending office'
 
 // Where a movement's side sits when it is not a customer: money made or destroyed came from or went to
 // another bank or cash, and money the bank holds waits at the ATM, the branch or the post office.
@@ -249,6 +279,7 @@ export function holder(d: Deployment, address: string, other: string, channel: s
   if (a === d.contracts.cash?.toLowerCase()) return 'ATM'
   if (a === d.contracts.assisted?.toLowerCase()) return 'Branch'
   if (a === d.contracts.payments?.toLowerCase()) return 'Post office'
+  if (a === d.contracts.loans?.toLowerCase()) return 'Lending office'
   return undefined
 }
 

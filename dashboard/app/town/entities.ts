@@ -51,6 +51,8 @@ export const sources: Record<string, { name: string; url: string }> = {
   disputes: core('DisputeReversal'),
   incidents: core('IncidentLog'),
   limits: core('CustomerLimits'),
+  loans: core('Loans'),
+  guard: core('LendingGuard'),
   officers: account,
   account,
   manager: { name: 'AccessManager', url: `${OZ}/access/manager/AccessManager.sol` },
@@ -123,6 +125,12 @@ const buildingInfo: Record<BuildingId, Omit<Entity, 'id' | 'kind' | 'title'>> = 
     can: ['Park an unmatched payment', 'Return it to the sending bank'],
     contracts: ['payments'],
   },
+  'lending-office': {
+    concept:
+      'Where loans are made. Lending creates money: a drawn loan puts new deposit tokens in the borrower’s account. The lending guard draws a loan only while the bank’s capital and liquidity stay above their minimums.',
+    can: ['Propose a loan, for a supervisor to approve within the lending caps', 'Draw it once the customer accepts', 'Refuse a drawdown that would breach a ratio'],
+    contracts: ['loans', 'guard'],
+  },
   'clearing-house': {
     concept: 'Other banks, through the clearing system. Its messages are signed with registered keys, so a forged advice is refused.',
     can: ['Send credit advices', 'Carry payments out', 'Issue settlement statements'],
@@ -143,6 +151,7 @@ const staffInfo: Record<string, { concept: string; can: string[] }> = {
   finance: { concept: 'Reconciles the books against outside statements.', can: ['Reconcile the ledger with clearing and custodian statements', 'Record cash counts'] },
   risk: { concept: 'Watches for incidents.', can: ['Pause the system in an incident', 'Advise on limits'] },
   support: { concept: 'Helps customers who lose devices or dispute an operation.', can: ['Freeze accounts and revoke devices', 'Open disputes', 'Cannot pay out to others'] },
+  'credit officer': { concept: 'Arranges loans at the lending office.', can: ['Propose loans for a supervisor to approve', 'Cancel a loan not yet drawn'] },
   'IT security': { concept: 'Looks after machines and keys.', can: ['Enrol and retire ATMs and terminals', 'Rotate compromised keys', 'Approve grants of branch roles'] },
   'red team': { concept: 'An attacker with a teller role at another branch, trying to exceed it or steal funds. Every attempt should be refused.', can: ['Try anything; the chain decides'] },
 }
@@ -248,6 +257,8 @@ export function concerns(id: EntityId, line: Line, d: Deployment): boolean {
       return line.events.some((e) => e.name === 'CreditReceived' && Number(e.args.status) === PaymentStatus.Suspense)
     case 'clearing-house':
       return line.channel === 'partner'
+    case 'lending-office':
+      return line.channel === 'lending office' || on('Loans')
   }
 }
 
@@ -283,6 +294,11 @@ export function figuresOf(id: EntityId, s: BankState | undefined): { label: stri
       return [{ label: 'Liquid securities', value: hkd(s.ledger.Securities) }]
     case 'post-office':
       return [{ label: 'Payments waiting', value: hkd(s.inPayments) }]
+    case 'lending-office':
+      return [
+        { label: 'Loans', value: hkd(s.ledger.Loans) },
+        { label: 'Loss allowance', value: hkd(-s.ledger.Allowance) },
+      ]
   }
   return []
 }

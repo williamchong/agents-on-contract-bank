@@ -1,7 +1,7 @@
 // The colour of each entity by what it does, the same in the passbook, the story's sentences and the town, so
 // who took part in a line can be told at a glance. Alike roles share a hue: blue for customers, orange for the
-// branch and its cash, violet for head office and governance, teal for payments and other banks, and red for
-// the attacker. Money keeps its gold. See docs/architecture.md#bank-map.
+// branch, the lending office and the cash, violet for head office and governance, teal for payments and other
+// banks, and red for the attacker. Money keeps its gold. See docs/architecture.md#bank-map.
 
 import type { Deployment, Line } from '~/lib/story'
 import { parse, staffId, type EntityId } from './entities'
@@ -14,7 +14,7 @@ export type Tone = 'customer' | 'branch' | 'head-office' | 'payments' | 'attacke
 // takes the theme's --tone-* instead.
 export const tones: Record<Tone, { color: string; key: string }> = {
   customer: { color: '#3f6fa8', key: 'Blue: customers' },
-  branch: { color: '#d0702c', key: 'Orange: the branch, its cash and its staff' },
+  branch: { color: '#d0702c', key: 'Orange: the branch and the lending office, their cash and their staff' },
   'head-office': { color: '#8a63c2', key: 'Violet: head office, governance and their staff' },
   payments: { color: '#2a9d8f', key: 'Teal: payments and other banks' },
   attacker: { color: '#c0392b', key: 'Red: the red team, an attacker' },

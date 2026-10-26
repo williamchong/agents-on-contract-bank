@@ -19,6 +19,7 @@ export type BuildingId =
   | 'compliance-yard'
   | 'suspense-lot'
   | 'clearing-house'
+  | 'lending-office'
 
 export interface Building {
   id: BuildingId
@@ -49,6 +50,7 @@ export const buildings: Building[] = [
   { id: 'compliance-yard', label: 'Compliance yard', shape: 'lot', position: [9.5, 0, 6], size: [2.5, 0.05, 2], color: '#8fd3c6', tone: 'payments' },
   { id: 'suspense-lot', label: 'Suspense lot', shape: 'lot', position: [9.5, 0, 2], size: [2.5, 0.05, 2], color: '#c2ded8', tone: 'payments' },
   { id: 'clearing-house', label: 'Clearing house', shape: 'block', position: [17, 0, 4], size: [3, 2.2, 2.5], color: '#4f9f95', tone: 'payments' },
+  { id: 'lending-office', label: 'Lending office', shape: 'block', position: [-2.5, 0, -10], size: [2.5, 1.8, 2.2], color: '#e8b48a', tone: 'branch' },
 ]
 
 // Customers' houses stand in a street south of the branch; the map sizes each one by its balance.
@@ -62,6 +64,9 @@ export const roads: Road[] = [
   // The street of houses.
   { from: [-7, 7.5], to: [7, 7.5] },
   { from: [0, 4], to: [0, 7.5] },
+  // Up from the head office to the lending office.
+  { from: [0, -1.5], to: [0, -10] },
+  { from: [0, -10], to: [-1.25, -10] },
 ]
 
 // Staff work inside the building they belong to: the branch's people at the branch, the vault custodian at
@@ -77,6 +82,7 @@ const at = (building: BuildingId, names: string[]): StaffPost[] => names.map((na
 export const staffPosts: StaffPost[] = [
   ...at('branch', ['teller', 'replacement teller', 'supervisor', 'branch manager', 'account opening officer']),
   ...at('vault', ['vault custodian']),
+  ...at('lending-office', ['credit officer']),
   ...at('head-office', ['compliance', 'back office', 'finance', 'risk', 'support', 'IT security']),
   { name: 'red team' },
 ]
