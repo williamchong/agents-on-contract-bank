@@ -52,7 +52,7 @@ Withdrawals and outgoing payments use the same signed authorisation as transfers
 | Need | Standard or contract | Library | Notes |
 |---|---|---|---|
 | Savings account | ERC-4626: `ERC4626` | Main | A vault of deposit tokens; shares grow in value as the bank pays interest in. Shares are not transferable between holders. A share offset of six decimals guards against a first saver inflating the share price. |
-| Standing orders | A mandate signed with EIP-712, checked on each payment | Written here | No widely used standard fits a recurring payment under a mandate |
+| Standing orders | The customer's own signed setup, with an ERC-20 allowance for its payments, as loan instalments are taken | Written here | No widely used standard fits a recurring payment under a mandate; an EIP-712 mandate checked on each payment was set aside, see [open question 30](plan.md#open-questions) |
 
 ### Accounts and signatures
 

@@ -181,7 +181,7 @@ Cash opens split as 250,000 in the vault, 50,000 in the teller's drawer and 200,
 | Payment out via teller | Teller | Device, card or paper | Branch approval ladder, then compliance clearance at or above the screening threshold | Settlement account must cover it | Role, ladder, screening in the payments module |
 | Payment in | Clearing system, by a signed credit advice the adapter relays | None | Compliance clearance at or above the screening threshold; held by the payments module until then | Any payer; each reference once | Partner signature, unique reference, screening; no role |
 | Clear or return a screened payment | Compliance | None | | That payment's amount, to its own beneficiary or back to its sender | Role; payments module |
-| Set up or cancel a standing order | Customer, teller | Device, card or paper | Supervisor if on paper | Each payment within the mandate | Account signature or role, approval |
+| Set up or cancel a standing order | Customer, teller | Device, card or paper | Supervisor if on paper | Each payment within the mandate; only to a payee on the customer's register and in effect; its payments count against neither daily limit | Account signature or role, approval, payee register |
 | Convert deposit to stablecoin | Customer, teller | Device, card or paper | Supervisor if on paper | Mint guard; buffer must cover funds in transit; daily issuance cap | Account signature or role, approval; mint guard, rate limiter |
 | Redeem stablecoin to deposit | Customer, teller | Device, card or paper | Supervisor if on paper | None | Account signature or role, approval |
 | Reverse a disputed operation | Back office | | Compliance | What is still in the recipient's account, including their savings | Role, approval, forced transfer path |
@@ -214,7 +214,7 @@ The scheduler says when; the contracts decide what, to whom and how much. A trig
 |---|---|---|---|
 | Pay savings interest | Scheduler | The amount, from the savings rate and the vault's holdings | Once per business day; a late trigger pays every day missed, oldest first |
 | Collect a loan instalment | Scheduler, naming the loan | Amount and date, from the loan, under the borrower's mandate; a failed collection sets the loan's status and loss allowance | Once per instalment; a late trigger collects every instalment due, oldest first |
-| Pay a standing order | Scheduler | Payee, amount and date, from the mandate | Once per due date |
+| Pay a standing order | Scheduler, naming the order | Payee, amount and date, from the mandate; a payment the account cannot cover is missed | Once per due date; a late trigger pays every date due, oldest first |
 | Close the day | Scheduler | The business day, from block time, ending at midnight Hong Kong time; closing it pays its savings interest, the only work due by business day | Once per day; a jump of several days closes each in turn |
 
 ### Reserve, cash and infrastructure

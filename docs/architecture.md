@@ -354,7 +354,7 @@ A separate, optional product. A customer converts part of their deposit balance 
 |---|---|---|
 | **Savings account** | Pays deposit tokens into a vault, receives shares that grow in value, withdraws at any time | An interest-bearing deposit. The vault holds the deposit tokens. The bank pays interest each business day as it closes the day, by creating deposit tokens into the vault at the savings rate it has set, which raises the value of each share. |
 | **Loan** | Borrows, repays in instalments with interest | A credit officer proposes and an approver signs off, at the bank's loan rate. The drawdown creates deposit tokens in the borrower's account, within the lending guard. A missed instalment puts the loan in arrears and raises its loss allowance; write-off is a governance action against the allowance. |
-| **Standing order** | Signs a mandate once: payee, amount, frequency | The scheduler triggers each payment under the mandate. The customer can cancel it at any time. |
+| **Standing order** | Sets it up once to a registered payee: amount and number of monthly payments, with the allowance for them | The scheduler triggers each payment under the mandate, inside the bank or through payments to another bank; one the account cannot cover is missed. The customer can cancel it at any time. |
 | **Stablecoin** | Converts deposit balance to stablecoin and back | See [the stablecoin](#the-stablecoin). |
 
 - **The bank sets the rates.** Savings and loan rates are business decisions, not the output of a formula. Treasury proposes them and governance approves. A change applies from then on; a loan keeps the rate it was drawn at.
