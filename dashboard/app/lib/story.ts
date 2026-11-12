@@ -105,6 +105,7 @@ const reasons: Record<string, string> = {
   NotActive: 'the standing order is no longer active',
   NotItsPayer: 'only the payer can cancel the order',
   EnforcedPause: 'the bank is paused, so no money moves',
+  UnknownSale: 'there is no approved sale of that amount waiting',
   TimelockUnexpectedOperationState: 'governance’s time lock has not yet run its course',
 }
 

@@ -56,6 +56,7 @@ export const sources: Record<string, { name: string; url: string }> = {
   rates: core('Rates'),
   savings: core('Savings'),
   orders: core('StandingOrders'),
+  sales: core('SecuritiesSales'),
   officers: account,
   account,
   manager: { name: 'AccessManager', url: `${OZ}/access/manager/AccessManager.sol` },
@@ -116,8 +117,8 @@ const buildingInfo: Record<BuildingId, Omit<Entity, 'id' | 'kind' | 'title'>> = 
   },
   custodian: {
     concept: 'Holds the bank’s liquid securities, the assets it can sell quickly to meet withdrawals.',
-    can: ['Confirm holdings', 'Report yield'],
-    contracts: ['ledger', 'attestations'],
+    can: ['Confirm holdings', 'Report yield', 'Settle a sale of securities delivery against payment, and confirm it'],
+    contracts: ['ledger', 'attestations', 'sales'],
   },
   'post-office': {
     concept: 'The payments module. Payments to and from other banks pass through here, queued until the settlement account covers them.',
@@ -164,7 +165,7 @@ const staffInfo: Record<string, { concept: string; can: string[] }> = {
   'back office': { concept: 'Handles exceptions after the counter.', can: ['Handle payment exceptions', 'Reverse disputed operations'] },
   finance: { concept: 'Reconciles the books against outside statements.', can: ['Reconcile the ledger with clearing and custodian statements', 'Record cash counts'] },
   risk: { concept: 'Watches for incidents.', can: ['Pause the system in an incident', 'Advise on limits', 'Propose loss allowance rates for governance to apply'] },
-  treasury: { concept: 'Prices the bank’s products and keeps its money where it is needed.', can: ['Propose savings and loan rates for governance to apply', 'Keep the settlement account funded'] },
+  treasury: { concept: 'Prices the bank’s products and keeps its money where it is needed.', can: ['Propose savings and loan rates for governance to apply', 'Keep the settlement account funded', 'Instruct a sale of securities for finance to approve'] },
   scheduler: { concept: 'A script, not a person: it says when work is due, and the contracts decide what, to whom and how much.', can: ['Trigger the collection of loan instalments', 'Cannot choose an amount, a party or a date'] },
   support: { concept: 'Helps customers who lose devices or dispute an operation.', can: ['Freeze accounts and revoke devices', 'Open disputes', 'Cannot pay out to others'] },
   'credit officer': { concept: 'Arranges loans at the lending office.', can: ['Propose loans for a supervisor to approve', 'Cancel a loan not yet drawn'] },

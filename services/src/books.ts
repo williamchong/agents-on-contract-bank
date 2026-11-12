@@ -74,6 +74,7 @@ export const Customers = ['Alice', 'Bob', 'Carol', 'Dave'] as const
 export type CustomerName = (typeof Customers)[number]
 // Every holder on the opening balance sheet: the four customers the story follows, and the rest together.
 export const Holders = [...Customers, 'other customers'] as const
+export type HolderName = (typeof Holders)[number]
 
 export const Opening = {
   deposits: {

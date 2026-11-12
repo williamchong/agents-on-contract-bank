@@ -23,6 +23,7 @@ import type { PartnerKeys$Type } from '../../artifacts/contracts/core/PartnerKey
 import type { Payments$Type } from '../../artifacts/contracts/core/Payments.sol/artifacts.js'
 import type { Rates$Type } from '../../artifacts/contracts/core/Rates.sol/artifacts.js'
 import type { Savings$Type } from '../../artifacts/contracts/core/Savings.sol/artifacts.js'
+import type { SecuritiesSales$Type } from '../../artifacts/contracts/core/SecuritiesSales.sol/artifacts.js'
 import type { StandingOrders$Type } from '../../artifacts/contracts/core/StandingOrders.sol/artifacts.js'
 import type { StaffRoles$Type } from '../../artifacts/contracts/core/StaffRoles.sol/artifacts.js'
 
@@ -47,6 +48,7 @@ interface Artifacts {
   Payments: Payments$Type
   Rates: Rates$Type
   Savings: Savings$Type
+  SecuritiesSales: SecuritiesSales$Type
   StandingOrders: StandingOrders$Type
   StaffRoles: StaffRoles$Type
 }
@@ -75,6 +77,7 @@ const sources: Record<ContractName, string> = {
   Payments: 'contracts/core/Payments.sol',
   Rates: 'contracts/core/Rates.sol',
   Savings: 'contracts/core/Savings.sol',
+  SecuritiesSales: 'contracts/core/SecuritiesSales.sol',
   StandingOrders: 'contracts/core/StandingOrders.sol',
   StaffRoles: 'contracts/core/StaffRoles.sol',
 }

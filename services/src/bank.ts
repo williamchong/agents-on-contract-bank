@@ -106,6 +106,7 @@ export interface Contracts {
   rates: Address
   savings: Address
   orders: Address
+  sales: Address
 }
 
 // The account a party acts from, the keys that sign for it unless others are named, and a customer's card.
@@ -314,6 +315,7 @@ export const contractArtifacts: Record<keyof Contracts, ContractName> = {
   rates: 'Rates',
   savings: 'Savings',
   orders: 'StandingOrders',
+  sales: 'SecuritiesSales',
 }
 
 const contractNames: Record<keyof Contracts, string> = {
@@ -339,6 +341,7 @@ const contractNames: Record<keyof Contracts, string> = {
   rates: 'Rates',
   savings: 'Savings',
   orders: 'StandingOrders',
+  sales: 'SecuritiesSales',
 }
 
 // A short reference as a ledger entry or message carries it, such as "opening".
@@ -390,6 +393,7 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
   const guard = await deployer.deploy('LendingGuard', [manager, ledger, attestations, rates, settings.capitalMinimum, settings.liquidityMinimum])
   const loans = await deployer.deploy('Loans', [manager, guard, recovery, rates, settings.loanSchedule, settings.lendingCaps])
   const orders = await deployer.deploy('StandingOrders', [manager, payments, settings.loanSchedule.period])
+  const sales = await deployer.deploy('SecuritiesSales', [manager, ledger, partnerKeys])
   const contracts: Contracts = {
     verifier,
     officers,
@@ -413,6 +417,7 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
     rates,
     savings,
     orders,
+    sales,
   }
   const bank = new Bank(chain, signer, timeline, contracts, settings)
   bank.add('governance officers', { account: officers, keys: officerKeys.slice(0, Number(settings.governanceThreshold)) })
@@ -546,6 +551,8 @@ const wiring: [keyof Contracts, ContractName, string, bigint][] = [
   ['savings', 'Savings', 'setFrozenTokens', Roles.FREEZER],
   ['savings', 'Savings', 'forcedTransfer', Roles.ENFORCER],
   ['orders', 'StandingOrders', 'payDue', Roles.SCHEDULER],
+  ['sales', 'SecuritiesSales', 'instruct', Roles.TREASURY],
+  ['sales', 'SecuritiesSales', 'approve', Roles.FINANCE],
 ]
 
 // Every staff and machine role, for each branch, which the staff roles module administers.
@@ -576,6 +583,7 @@ async function wire(deployer: Deployer, c: Contracts): Promise<void> {
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.BOOKKEEPER, c.guard, 0])
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.LENDER, c.loans, 0])
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.BOOKKEEPER, c.savings, 0])
+  await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.BOOKKEEPER, c.sales, 0])
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.PAYMENT_ORIGINATOR, c.orders, 0])
   for (const role of administered) await deployer.write('AccessManager', c.manager, 'setRoleAdmin', [role, Roles.STAFF_ADMIN])
 }

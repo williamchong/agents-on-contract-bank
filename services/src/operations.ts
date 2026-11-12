@@ -3,7 +3,8 @@
 
 import { encodeAbiParameters, keccak256, numberToHex, pad, toBytes, zeroAddress, zeroHash, type Address, type Hex } from 'viem'
 import { ref, type Bank } from './bank.ts'
-import { atm, drawer, hkd, Holders, Ledger, LoanStatus, OrderStatus, percent, vault, type CustomerName, type Location } from './books.ts'
+import { atm, drawer, hkd, Holders, Ledger, LoanStatus, OrderStatus, percent, vault, type CustomerName, type HolderName, type Location } from './books.ts'
+import type { Custodian } from './custodian.ts'
 import type { Outcome } from './submission.ts'
 
 // Reads
@@ -80,7 +81,7 @@ export function registerCustomerAsPayee(bank: Bank, customer: CustomerName, paye
 
 // A payment to someone at another bank, whom `payee` names as the story says it. The payee's details stay
 // with the bank; the chain sees their hash.
-export function payOut(bank: Bank, from: CustomerName, payee: string, amount: bigint): Promise<Outcome> {
+export function payOut(bank: Bank, from: HolderName, payee: string, amount: bigint): Promise<Outcome> {
   const c = bank.contracts
   return bank.act(
     from,
@@ -324,6 +325,19 @@ export function reportIncident(bank: Bank, kind: IncidentKind, subject: Hex, rep
 // Anyone may release payments waiting in the queue: the release chooses nothing.
 export function releasePayments(bank: Bank, max = 50n): Promise<Outcome> {
   return bank.act('back office', 'head office', 'release queued payments', [bank.call('Payments', bank.contracts.payments, 'release', [max])])
+}
+
+// A sale is booked on the custodian's confirmation, not the dealer's word; see open question 27.
+export async function sellSecurities(bank: Bank, custodian: Custodian, amount: bigint): Promise<Outcome> {
+  const { sales } = bank.contracts
+  const instructed = await bank.act('treasury', 'head office', `instruct a sale of ${hkd(amount)} of securities`, [
+    bank.call('SecuritiesSales', sales, 'instruct', [amount]),
+  ])
+  if (!instructed.ok) return instructed
+  const ref = eventArg<Hex>(instructed, 'SaleInstructed', 'ref')
+  const approved = await bank.act('finance', 'head office', `approve the sale of ${hkd(amount)} of securities`, [bank.call('SecuritiesSales', sales, 'approve', [ref])])
+  if (!approved.ok) return approved
+  return custodian.relay(await custodian.settle(ref, amount))
 }
 
 // Lending

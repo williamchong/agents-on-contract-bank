@@ -7,7 +7,7 @@ import { carryOut, govern, grantThroughBranch, scheduleDecision, Staff, type Ban
 import { DisputeStatus, drawer, HKD, hkd, Holders, Ledger, LoanStage, LoanStatus, OperationStatus, Opening, OrderStatus, PaymentStatus, vault } from './books.ts'
 import { advance } from './chain.ts'
 import type { Clearing } from './clearing.ts'
-import { custodianStatement } from './custodian.ts'
+import type { Custodian } from './custodian.ts'
 import {
   authorise,
   balanceOf,
@@ -38,6 +38,7 @@ import {
   ledgerBalance,
   moveCash,
   openDispute,
+  payeeHash,
   payOut,
   places,
   approveRecovery,
@@ -47,6 +48,7 @@ import {
   proposeRecovery,
   proposeReversal,
   releasePayments,
+  sellSecurities,
   registerPayee,
   reportDispense,
   reportIncident,
@@ -71,6 +73,7 @@ export interface Check {
 export interface Context {
   bank: Bank
   clearing: Clearing
+  custodian: Custodian
 }
 
 // The groups adverse scenarios are listed in; see docs/scenarios.md#adverse-scenarios.
@@ -121,7 +124,7 @@ async function invariants(bank: Bank): Promise<Check[]> {
 // bank is paused, when that work waits for the resume; the clearing system and the custodian issue their statements of the day, and
 // finance relays them to be compared with the ledger. The clearing system's is the one returned.
 export async function closeDay(ctx: Context): Promise<Outcome> {
-  const { bank, clearing } = ctx
+  const { bank, clearing, custodian } = ctx
   await operator(bank, 'close the business day')
   if (!(await bank.read('DepositToken', bank.contracts.token, 'paused', []))) {
     await payInterest(bank)
@@ -133,7 +136,7 @@ export async function closeDay(ctx: Context): Promise<Outcome> {
   await advance(bank.chain, 60n)
   const statement = await clearing.statement(asOf)
   // Lending stops on a securities figure that is not current, so a refused statement is not passed over.
-  const holdings = await custodianStatement(bank, asOf)
+  const holdings = await custodian.statement(asOf)
   if (!holdings.ok) throw new Error(`The custodian's statement was refused: ${holdings.error}`)
   return statement
 }
@@ -887,6 +890,81 @@ export const presets: Preset[] = [
   },
 
   {
+    name: 'Run on deposits',
+    kind: 'adverse',
+    group: 'Financial stress',
+    building: 'post-office',
+    panel: 'balance sheet',
+    summary: 'Customers pay out more at once than the settlement account holds; the payments queue until treasury sells securities, and then drain.',
+    control: 'Payments queue when the settlement account is short; liquidity ratio; a sale of securities booked on the custodian’s settlement confirmation',
+    async run(ctx) {
+      const { bank, clearing, custodian } = ctx
+      const { payments } = bank.contracts
+      const queued = async () => {
+        const [tail, head] = await Promise.all([bank.read('Payments', payments, 'queueTail', []), bank.read('Payments', payments, 'queueHead', [])])
+        return tail - head
+      }
+      const settlement = () => ledgerBalance(bank, Ledger.Settlement)
+      const ratioBefore = await liquidityRatio(bank)
+      // The other customers, together, pay out more than the settlement account holds, each payment below
+      // the screening threshold so that compliance does not hold it.
+      const [queuedBefore, settlementBefore] = await Promise.all([queued(), settlement()])
+      const payment = bank.settings.screeningThreshold - 1_000n * HKD
+      const count = (settlementBefore + RUN_MARGIN + payment - 1n) / payment
+      const paidOut = count * payment
+      const hash = payeeHash('their accounts at other banks')
+      const paid = await bank.act(
+        'other customers',
+        'app',
+        `pay out ${count} payments of ${hkd(payment)} to accounts at other banks`,
+        [bank.call('DepositToken', bank.contracts.token, 'approve', [payments, paidOut]), ...Array.from({ length: Number(count) }, () => bank.call('Payments', payments, 'pay', [payment, hash]))],
+        { attempt: { from: bank.account('other customers'), to: payments, amount: paidOut } },
+      )
+      if (!paid.ok) throw new Error(`The run could not pay out: ${paid.error}`)
+      const queueGrew = await queued()
+      await releasePayments(bank, 200n)
+      const stuck = await queued()
+      const leftInSettlement = await settlement()
+      const ratioFell = await liquidityRatio(bank)
+      const needed = stuck * payment - leftInSettlement
+      const sale = ((needed + SALE_ROUND - 1n) / SALE_ROUND) * SALE_ROUND
+      const sold = await sellSecurities(bank, custodian, sale)
+      await releasePayments(bank, 200n)
+      const drained = await queued()
+      const closed = await closeDay(ctx)
+      const holdings = await bank.read('Attestations', bank.contracts.attestations, 'figure', [Ledger.Securities])
+      const ratioAfter = await liquidityRatio(bank)
+      const minimum = bank.settings.liquidityMinimum
+      // Capital is checked first, so on a bank whose capital is already used up, as tour beat 5 leaves it,
+      // the refusal names capital.
+      const capitalRoom = (await largestLoanWithinCapital(bank)) >= ROUTINE_LOAN
+      const attempt = ratioAfter < minimum ? await lend(bank, (await mostRoom(bank)).name, ROUTINE_LOAN) : undefined
+      if (attempt?.ref && !attempt.outcome.ok) await cancelLoan(bank, attempt.ref)
+      const loan = attempt?.outcome
+      // The run subsides: the money comes back from the other banks, and compliance clears it in, so the
+      // liquidity ratio is back above its minimum for the next scenario.
+      const back = await clearing.creditAdvice(bank.account('other customers'), paidOut)
+      const returned = await clearing.relayCredit(back, `relay a payment of ${hkd(paidOut)} back to the other customers`)
+      const cleared = returned.ok ? await compliance(bank, 'clearIncoming', back.message.endToEndId, 'clear the money coming back in') : returned
+      return [
+        check('the payments out join the queue', queueGrew - queuedBefore === count, `${queueGrew - queuedBefore} of ${count} queued`),
+        check('the queue stops where the settlement account runs short', stuck > 0n && leftInSettlement < payment, `${stuck} left, ${hkd(leftInSettlement)} in settlement`),
+        check('no payment is released beyond the settlement balance', (queueGrew - stuck) * payment <= settlementBefore, `${hkd((queueGrew - stuck) * payment)} released of ${hkd(settlementBefore)}`),
+        check('the liquidity ratio falls as the payments leave', ratioFell < ratioBefore, `${ratioBefore} to ${ratioFell} bps`),
+        allowed('treasury sells securities, booked on the custodian’s confirmation', sold),
+        check('every queued payment goes through once funded', drained === 0n),
+        check('the next statements of the clearing system and the custodian match', matched(closed, 'StatementAccepted') === true && holdings.matched),
+        loan === undefined
+          ? check('lending is refused while the liquidity ratio is below its minimum', false, `the ratio is ${ratioAfter} bps, above ${minimum}`)
+          : refusedWith('lending is refused while the liquidity ratio is below its minimum', loan, capitalRoom ? 'LiquidityRatioBelowMinimum' : 'CapitalRatioBelowMinimum'),
+        check('the bank stays solvent throughout', (await capitalRatio(bank)) >= bank.settings.capitalMinimum),
+        allowed('the money comes back once the run subsides', cleared),
+        check('the liquidity ratio recovers above its minimum', (await liquidityRatio(bank)) >= minimum),
+        ...(await invariants(bank)),
+      ]
+    },
+  },
+  {
     name: 'Lending stopped by the capital ratio',
     kind: 'adverse',
     group: 'Financial stress',
@@ -939,6 +1017,9 @@ export const presets: Preset[] = [
 const LOAN = 500_000n * HKD
 const SMALL_LOAN = 300_000n * HKD
 const LOAN_STEP = 1_000n * HKD
+// How far the run on deposits goes past the settlement balance, and the round amounts treasury sells in.
+const RUN_MARGIN = 300_000n * HKD
+const SALE_ROUND = 100_000n * HKD
 const BPS = 10_000n
 // The loan lending and savings draws each day, and the loan in arrears in docs/scenarios.md.
 const ROUTINE_LOAN = 10_000n * HKD

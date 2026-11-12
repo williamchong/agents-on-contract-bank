@@ -31,6 +31,7 @@ import {LendingGuard} from "../../contracts/core/LendingGuard.sol";
 import {Loans} from "../../contracts/core/Loans.sol";
 import {Rates} from "../../contracts/core/Rates.sol";
 import {Savings} from "../../contracts/core/Savings.sol";
+import {SecuritiesSales} from "../../contracts/core/SecuritiesSales.sol";
 import {StandingOrders} from "../../contracts/core/StandingOrders.sol";
 
 /// @dev Deploys the bank as docs/roles.md describes it: governance is a time lock behind the
@@ -98,6 +99,7 @@ abstract contract BankFixture is Test {
     Rates rates;
     Savings savings;
     StandingOrders orders;
+    SecuritiesSales sales;
     ERC7913P256Verifier p256;
     MultiSignerAccount officers;
     TimelockController timelock;
@@ -114,7 +116,7 @@ abstract contract BankFixture is Test {
     address otherCustomers = makeAddr("otherCustomers");
     /// @dev A bank-owned account, such as pending withdrawals.
     address pending = makeAddr("pending");
-    /// @dev Stands in for treasury's own module, still to come, holding the bookkeeper role.
+    /// @dev Treasury posting straight to the ledger, to set up balances; a real sale goes through SecuritiesSales.
     address treasury = makeAddr("treasury");
     /// @dev Branch 1's first teller and its ATM, whose drawer and machine hold cash at opening.
     address teller1;
@@ -169,6 +171,7 @@ abstract contract BankFixture is Test {
             Loans.Caps(PER_CUSTOMER_LENDING_CAP, TOTAL_LENDING_CAP)
         );
         orders = new StandingOrders(address(manager), payments, INSTALMENT_PERIOD);
+        sales = new SecuritiesSales(address(manager), ledger, partnerKeys);
         teller1 = _staff("teller1");
         // How movements into the modules count, set while the deployer is still the admin.
         limits.setChannel(address(cash), CustomerLimits.Channel.Own);
@@ -230,12 +233,15 @@ abstract contract BankFixture is Test {
         _wire(address(savings), savings.setFrozenTokens.selector, Roles.FREEZER);
         _wire(address(savings), savings.forcedTransfer.selector, Roles.ENFORCER);
         _wire(address(orders), orders.payDue.selector, Roles.SCHEDULER);
+        _wire(address(sales), sales.instruct.selector, Roles.TREASURY);
+        _wire(address(sales), sales.approve.selector, Roles.FINANCE);
 
         manager.grantRole(Roles.LEDGER, address(ledger), 0);
         manager.grantRole(Roles.STAFF_ADMIN, address(staffRoles), 0);
         manager.grantRole(Roles.FREEZER, address(holds), 0);
         manager.grantRole(Roles.BOOKKEEPER, address(payments), 0);
         manager.grantRole(Roles.BOOKKEEPER, address(cash), 0);
+        manager.grantRole(Roles.BOOKKEEPER, address(sales), 0);
         manager.grantRole(Roles.ENFORCER, address(cash), 0);
         manager.grantRole(Roles.ENFORCER, address(assisted), 0);
         manager.grantRole(Roles.PAYMENT_ORIGINATOR, address(assisted), 0);

@@ -10,6 +10,7 @@ import { deployBank, Staff, type Bank } from './bank.ts'
 import { drawer, Holders } from './books.ts'
 import { advance, type Chain } from './chain.ts'
 import { Clearing } from './clearing.ts'
+import { Custodian } from './custodian.ts'
 import { DAY, HK_OFFSET, hongKongDay, locationId, places } from './operations.ts'
 import { closeDay, operator, presets, ScenarioGroups, type Check, type Context, type Panel } from './scenarios.ts'
 import { Timeline, toJson, type Line } from './timeline.ts'
@@ -41,6 +42,7 @@ export class Control {
   private readonly chain: Chain
   private bank!: Bank
   private clearing!: Clearing
+  private custodian!: Custodian
   private readonly timeline = new Timeline()
   // Slow enough by default for an audience to see each step, a waiting item before it is approved; kept
   // across a reset.
@@ -73,6 +75,7 @@ export class Control {
     this.timeline.clear()
     this.bank.submission.pace = this.pace
     this.clearing = await Clearing.open(this.bank)
+    this.custodian = await Custodian.open(this.bank, this.clearing)
   }
 
   async listen(): Promise<void> {
@@ -251,7 +254,7 @@ export class Control {
   }
 
   private context(): Context {
-    return { bank: this.bank, clearing: this.clearing }
+    return { bank: this.bank, clearing: this.clearing, custodian: this.custodian }
   }
 
   // Runs a command with its card; a quiet one shows its card only if it fails.

@@ -61,4 +61,15 @@ export const beats: Beat[] = [
     claim: 'No member of staff acts alone, and a wrong is reversed on the record',
     run: (ctx) => preset('Forged paper slip').run(ctx),
   },
+  {
+    number: 5,
+    title: 'Money creation and stress',
+    pointAt:
+      'The capital ratio falling to its minimum and the refused drawdown; then the payment queue growing and draining as treasury sells securities, the water tower emptying and vans queueing at the post office gate',
+    claim: 'Lending creates money only within limits; a bank can be solvent and still run short',
+    async run(ctx) {
+      const lending = await preset('Lending stopped by the capital ratio').run(ctx)
+      return [...lending, ...(await preset('Run on deposits').run(ctx))]
+    },
+  },
 ]

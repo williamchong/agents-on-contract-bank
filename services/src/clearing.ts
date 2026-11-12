@@ -89,6 +89,12 @@ export class Clearing {
     }
   }
 
+  // The cash leg of a sale of the bank's securities the custodian settles: the clearing system credits the
+  // bank's settlement account as the bills are delivered. Returns when it settled.
+  settleDelivery(amount: bigint): Promise<bigint> {
+    return this.move(amount)
+  }
+
   // A payment from another bank's customer: the clearing system credits the bank and sends the advice.
   // `creditor` is the account the payer named, which may be no account of the bank's. A forger's advice,
   // signed by another key, moves nothing in the clearing system's books.

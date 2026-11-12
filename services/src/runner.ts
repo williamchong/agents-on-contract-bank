@@ -5,6 +5,7 @@
 import { deployBank, type Bank } from './bank.ts'
 import { revertTo, snapshot, type Chain } from './chain.ts'
 import { Clearing } from './clearing.ts'
+import { Custodian } from './custodian.ts'
 import { Control, type Card } from './control.ts'
 import { presets, type Check, type Preset } from './scenarios.ts'
 import type { Line } from './timeline.ts'
@@ -31,8 +32,9 @@ export async function runPresets(chain: Chain, only?: (p: Preset) => boolean): P
     start = await snapshot(chain)
     const from = bank.timeline.lines.length
     const clearing = await Clearing.open(bank)
+    const custodian = await Custodian.open(bank, clearing)
     try {
-      const checks = await preset.run({ bank, clearing })
+      const checks = await preset.run({ bank, clearing, custodian })
       results.push({ preset, checks, passed: checks.every((c) => c.pass), lines: bank.timeline.lines.slice(from) })
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e)
