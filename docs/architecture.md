@@ -352,7 +352,7 @@ A separate, optional product. A customer converts part of their deposit balance 
 
 | Product | What the customer does | How it works |
 |---|---|---|
-| **Savings account** | Pays deposit tokens into a vault, receives shares that grow in value, withdraws at any time | An interest-bearing deposit. The vault holds the deposit tokens. The bank pays interest each day by creating deposit tokens into the vault at the savings rate it has set, which raises the value of each share. |
+| **Savings account** | Pays deposit tokens into a vault, receives shares that grow in value, withdraws at any time | An interest-bearing deposit. The vault holds the deposit tokens. The bank pays interest each business day as it closes the day, by creating deposit tokens into the vault at the savings rate it has set, which raises the value of each share. |
 | **Loan** | Borrows, repays in instalments with interest | A credit officer proposes and an approver signs off, at the bank's loan rate. The drawdown creates deposit tokens in the borrower's account, within the lending guard. A missed instalment puts the loan in arrears and raises its loss allowance; write-off is a governance action against the allowance. |
 | **Standing order** | Signs a mandate once: payee, amount, frequency | The scheduler triggers each payment under the mandate. The customer can cancel it at any time. |
 | **Stablecoin** | Converts deposit balance to stablecoin and back | See [the stablecoin](#the-stablecoin). |

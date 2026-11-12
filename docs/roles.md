@@ -212,10 +212,10 @@ The scheduler says when; the contracts decide what, to whom and how much. A trig
 
 | Action | Triggered by | Decided by the contracts | Runs |
 |---|---|---|---|
-| Pay savings interest | Scheduler | The amount, from the savings rate and the vault's balance | Once per day |
+| Pay savings interest | Scheduler | The amount, from the savings rate and the vault's holdings | Once per business day; a late trigger pays every day missed, oldest first |
 | Collect a loan instalment | Scheduler, naming the loan | Amount and date, from the loan, under the borrower's mandate; a failed collection sets the loan's status and loss allowance | Once per instalment; a late trigger collects every instalment due, oldest first |
 | Pay a standing order | Scheduler | Payee, amount and date, from the mandate | Once per due date |
-| Close the day | Scheduler | The business day, from block time | Once per day; a jump of several days closes each in turn |
+| Close the day | Scheduler | The business day, from block time, ending at midnight Hong Kong time; closing it pays its savings interest, the only work due by business day | Once per day; a jump of several days closes each in turn |
 
 ### Reserve, cash and infrastructure
 
