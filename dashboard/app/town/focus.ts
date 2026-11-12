@@ -27,11 +27,14 @@ export function addressEntity(d: Deployment, address: string, other: string, cha
     case 'ATM':
       return channel === 'atm' ? 'atm' : 'branch'
     case 'Branch':
+    case 'Savings':
       return 'branch'
     case 'Post office':
       return 'post-office'
     case 'Lending office':
       return 'lending-office'
+    case 'Head office':
+      return 'head-office'
   }
   return Object.values(d.contracts).some((c) => c.toLowerCase() === a) ? 'head-office' : undefined
 }

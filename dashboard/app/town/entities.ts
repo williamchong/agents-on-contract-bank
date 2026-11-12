@@ -54,6 +54,7 @@ export const sources: Record<string, { name: string; url: string }> = {
   loans: core('Loans'),
   guard: core('LendingGuard'),
   rates: core('Rates'),
+  savings: core('Savings'),
   officers: account,
   account,
   manager: { name: 'AccessManager', url: `${OZ}/access/manager/AccessManager.sol` },
@@ -93,8 +94,13 @@ const buildingInfo: Record<BuildingId, Omit<Entity, 'id' | 'kind' | 'title'>> = 
   },
   branch: {
     concept: 'Where tellers serve customers at the counter. Large or paper-based operations wait here for a supervisor, then the branch manager or compliance, to approve them.',
-    can: ['Take cash in and pay it out', 'Act on a customer’s card, device or paper slip', 'Hold an operation until its approvers sign'],
-    contracts: ['assisted', 'cash', 'limits'],
+    can: [
+      'Take cash in and pay it out',
+      'Act on a customer’s card, device or paper slip',
+      'Hold an operation until its approvers sign',
+      'Keep customers’ savings, which earn interest as each day closes',
+    ],
+    contracts: ['assisted', 'cash', 'limits', 'savings'],
   },
   vault: {
     concept: 'The branch’s cash. The vault custodian issues it to the tellers’ drawers and the ATM, counts it, and banks any surplus.',
@@ -293,6 +299,7 @@ export function figuresOf(id: EntityId, s: BankState | undefined): { label: stri
       return [
         { label: 'In the drawers', value: hkd(drawers) },
         { label: 'Awaiting approval', value: hkd(s.awaitingApproval) },
+        { label: 'Savings', value: hkd(s.savings) },
       ]
     case 'vault':
       return [{ label: 'Cash', value: hkd(s.cash.vault) }]

@@ -10,7 +10,7 @@ import { deployBank, Staff, type Bank } from './bank.ts'
 import { drawer, Holders } from './books.ts'
 import { advance, type Chain } from './chain.ts'
 import { Clearing } from './clearing.ts'
-import { locationId, places } from './operations.ts'
+import { DAY, HK_OFFSET, hongKongDay, locationId, places } from './operations.ts'
 import { closeDay, operator, presets, ScenarioGroups, type Check, type Context, type Panel } from './scenarios.ts'
 import { Timeline, toJson, type Line } from './timeline.ts'
 import { beats } from './tour.ts'
@@ -194,7 +194,7 @@ export class Control {
   // Moves block time on to 9 in the morning of the next weekday, Hong Kong time, as the contracts count days.
   private async nextBusinessDay(): Promise<void> {
     const now = await this.bank.now()
-    let day = (now + HK_OFFSET) / DAY + 1n
+    let day = hongKongDay(now) + 1n
     // 1 January 1970 was a Thursday, so a day number plus 4, modulo 7, is 0 on a Sunday and 6 on a Saturday.
     while ((day + 4n) % 7n === 0n || (day + 4n) % 7n === 6n) day++
     const opening = day * DAY - HK_OFFSET + 9n * 3600n
@@ -302,8 +302,6 @@ export class Control {
 }
 
 const MAX_PACE = 10_000
-const DAY = 86_400n
-const HK_OFFSET = 8n * 3600n
 
 // A span of block time as the story says it: whole days, or minutes.
 function describeSpan(seconds: bigint): string {

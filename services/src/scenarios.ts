@@ -24,6 +24,9 @@ import {
   decide,
   emitted,
   operationOf,
+  payInterest,
+  payIntoSavings,
+  withdrawSavings,
   eventArg,
   lend,
   ledgerBalance,
@@ -107,12 +110,13 @@ async function invariants(bank: Bank): Promise<Check[]> {
   return [check('the books balance', await booksBalance(bank)), check('the cash split sums to the ledger', await cashSplitMatchesLedger(bank))]
 }
 
-// Closes the business day as the scenario clock does: the scheduler triggers the collection of every loan
-// with an instalment come due, the clearing system and the custodian issue their statements of the day, and
+// Closes the business day as the scenario clock does: the scheduler pays the day's savings interest and
+// triggers the collection of every loan with an instalment come due, the clearing system and the custodian issue their statements of the day, and
 // finance relays them to be compared with the ledger. The clearing system's is the one returned.
 export async function closeDay(ctx: Context): Promise<Outcome> {
   const { bank, clearing } = ctx
   await operator(bank, 'close the business day')
+  await payInterest(bank)
   await collectInstalments(bank)
   const asOf = await bank.now()
   // A statement must be dated before the block that accepts it.
@@ -288,12 +292,31 @@ export const presets: Preset[] = [
   {
     name: 'Lending and savings',
     kind: 'routine',
-    waitsFor: ['the savings vault, with interest paid each day', 'standing orders'],
+    waitsFor: ['standing orders'],
     async run(ctx) {
       const { bank } = ctx
+      const { savings } = bank.contracts
+      // A saver pays into savings and leaves it there for a month, as each day's close pays its interest.
+      const saver = (await balanceOf(bank, 'Carol')) >= ROUTINE_SAVING ? 'Carol' : 'Bob'
+      const vaultBefore = await bank.read('Savings', savings, 'totalAssets', [])
+      const paidIn = await payIntoSavings(bank, saver, ROUTINE_SAVING)
+      const shares = emitted(paidIn, 'Deposit') ? eventArg<bigint>(paidIn, 'Deposit', 'shares') : 0n
       // A month of instalments is collected first: repayments and interest are what make room to lend again
       // after lending has stopped at the capital ratio.
       const collected = await nextInstalment(ctx)
+      const [vaultAfter, worth] = await Promise.all([
+        bank.read('Savings', savings, 'totalAssets', []),
+        bank.read('Savings', savings, 'previewRedeem', [shares]),
+      ])
+      const interest = vaultAfter - vaultBefore - ROUTINE_SAVING
+      // What the vault reports paying as the days closed, each day's entry against equity.
+      const reported = bank.timeline.lines
+        .filter((l) => l.seq > paidIn.line.seq)
+        .flatMap((l) => l.events)
+        .filter((e) => e.contract === 'Savings' && e.name === 'InterestPaid')
+        .reduce((sum, e) => sum + BigInt(e.args.amount as bigint), 0n)
+      // The saver takes back what they paid in and leaves the interest saving.
+      const withdrawn = await withdrawSavings(bank, saver, ROUTINE_SAVING)
       const { name } = await mostRoom(bank)
       const [loansBefore, supplyBefore] = await Promise.all([ledgerBalance(bank, Ledger.Loans), supply(bank)])
       const loan = await lend(bank, name, ROUTINE_LOAN)
@@ -306,6 +329,10 @@ export const presets: Preset[] = [
       const drawn = loan.ref ? await bank.read('Loans', bank.contracts.loans, 'loan', [loan.ref]) : undefined
       const { capitalMinimum, liquidityMinimum } = bank.settings
       return [
+        allowed(`${saver} pays into savings`, paidIn),
+        check("a month's savings interest is paid into the vault as each day closes", interest > 0n && interest === reported),
+        check("the saver's shares are worth more than they paid in", worth > ROUTINE_SAVING),
+        allowed('they withdraw what they paid in, leaving the interest saving', withdrawn),
         check("the month's instalments collected, the reconciliation line reports a match", matched(collected, 'StatementAccepted') === true),
         allowed('a loan is proposed, approved, accepted and drawn', loan.outcome),
         check('loans and deposits rise together at the drawdown', together),
@@ -849,6 +876,8 @@ const LOAN_STEP = 1_000n * HKD
 const BPS = 10_000n
 // The loan lending and savings draws each day, and the loan in arrears in docs/scenarios.md.
 const ROUTINE_LOAN = 10_000n * HKD
+// What the saver in lending and savings pays in for the month.
+const ROUTINE_SAVING = 20_000n * HKD
 const ARREARS_LOAN = 20_000n * HKD
 
 // The customer with the most room left under the per-customer lending cap, and how much, the first in

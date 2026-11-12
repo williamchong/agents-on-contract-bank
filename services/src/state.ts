@@ -18,6 +18,8 @@ export interface BankState {
   ledger: Record<Account, bigint>
   cash: { vault: bigint; drawer: bigint; atm: bigint; replacementDrawer: bigint }
   inPayments: bigint
+  // Customers' savings: the deposit tokens the savings vault holds, interest included.
+  savings: bigint
   // Customers' money held at the branch for operations waiting for their approvers.
   awaitingApproval: bigint
   // The clearing system's latest statement of the settlement account, compared with the ledger.
@@ -28,7 +30,7 @@ export interface BankState {
 // Where the bank's contracts, customers and cash locations are, as the control service's deployment gives
 // them.
 export interface BankAddresses {
-  contracts: Partial<Record<'token' | 'ledger' | 'cash' | 'payments' | 'assisted' | 'attestations', string>>
+  contracts: Partial<Record<'token' | 'ledger' | 'cash' | 'payments' | 'assisted' | 'attestations' | 'savings', string>>
   customers: Record<string, string>
   cash: Record<string, string>
 }
@@ -56,7 +58,7 @@ export async function readBank(
   const cashAt = (id: string) => client.readContract({ address: c.cash!, abi, functionName: 'cashAt', args: [id as Hex], ...at })
   const waiting = (address: Address) => client.readContract({ address, abi, functionName: 'waitingTotal', ...at })
   const names = Object.keys(d.customers).filter((n) => n !== 'other customers')
-  const [balances, ledger, vault, drawer, atm, replacementDrawer, inPayments, assisted, atCash, figure, current] = await Promise.all([
+  const [balances, ledger, vault, drawer, atm, replacementDrawer, inPayments, savings, assisted, atCash, figure, current] = await Promise.all([
     Promise.all(names.map((n) => balanceOf(d.customers[n] as Address))),
     client.readContract({ address: c.ledger!, abi, functionName: 'balances', ...at }),
     cashAt(d.cash.vault!),
@@ -64,6 +66,8 @@ export async function readBank(
     cashAt(d.cash.atm!),
     cashAt(d.cash.replacementDrawer!),
     balanceOf(c.payments!),
+    // A recording made before the savings vault has none.
+    c.savings ? balanceOf(c.savings) : 0n,
     waiting(c.assisted!),
     waiting(c.cash!),
     client.readContract({ address: c.attestations!, abi, functionName: 'figure', args: [0], ...at }),
@@ -76,6 +80,7 @@ export async function readBank(
     ledger: Object.fromEntries(Accounts.map((a, i) => [a, ledger[i]!])) as Record<Account, bigint>,
     cash: { vault, drawer, atm, replacementDrawer },
     inPayments,
+    savings,
     awaitingApproval: assisted + atCash,
     statement: figure.sequence === 0n ? undefined : { asOf: figure.asOf, matched: figure.matched, current },
     booksBalance: ledger.reduce((a, b) => a + b, 0n) === 0n,
@@ -93,6 +98,7 @@ export function parseBankState(raw: unknown): BankState {
     ledger: Object.fromEntries(Accounts.map((a) => [a, big(s.ledger[a])])) as Record<Account, bigint>,
     cash: { vault: big(s.cash.vault), drawer: big(s.cash.drawer), atm: big(s.cash.atm), replacementDrawer: big(s.cash.replacementDrawer) },
     inPayments: big(s.inPayments),
+    savings: big(s.savings ?? 0),
     awaitingApproval: big(s.awaitingApproval),
     statement: s.statement && { asOf: big(s.statement.asOf), matched: s.statement.matched, current: s.statement.current },
     booksBalance: s.booksBalance,

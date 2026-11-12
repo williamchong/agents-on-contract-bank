@@ -387,6 +387,43 @@ export async function collectInstalments(bank: Bank): Promise<Outcome[]> {
   return outcomes
 }
 
+// The customer pays into their savings from their own device: the vault takes the deposit tokens and issues
+// shares, which grow in value as interest is paid. Moving money into one's own savings counts against no limit.
+export function payIntoSavings(bank: Bank, customer: string, amount: bigint): Promise<Outcome> {
+  const { savings, token } = bank.contracts
+  const account = bank.account(customer)
+  return bank.act(customer, 'app', `pay ${hkd(amount)} into savings`, [
+    bank.call('DepositToken', token, 'approve', [savings, amount]),
+    bank.call('Savings', savings, 'deposit', [amount, account]),
+  ], { attempt: { from: account, to: savings, amount } })
+}
+
+export function withdrawSavings(bank: Bank, customer: string, amount: bigint): Promise<Outcome> {
+  const { savings } = bank.contracts
+  const account = bank.account(customer)
+  return bank.act(customer, 'app', `withdraw ${hkd(amount)} from savings`, [bank.call('Savings', savings, 'withdraw', [amount, account, account])], {
+    attempt: { from: savings, to: account, amount },
+  })
+}
+
+export const DAY = 86_400n
+// Hong Kong keeps eight hours ahead of UTC all year.
+export const HK_OFFSET = 8n * 3600n
+
+// The day block time `time` falls on, counted from the epoch in Hong Kong time, as the contracts count days.
+export function hongKongDay(time: bigint): bigint {
+  return (time + HK_OFFSET) / DAY
+}
+
+// Closing the business day pays its savings interest, and that of any day missed, into the vault. The vault
+// works out the days and the amount; the scheduler is only told the day has not been closed yet.
+export async function payInterest(bank: Bank): Promise<Outcome | undefined> {
+  const { savings } = bank.contracts
+  const [paid, now] = await Promise.all([bank.read('Savings', savings, 'lastPaidDay', []), bank.now()])
+  if (BigInt(paid) >= hongKongDay(now)) return undefined
+  return bank.act('scheduler', 'scheduler', 'pay the savings interest of the day', [bank.call('Savings', savings, 'payInterestDue', [])])
+}
+
 // Treasury proposes new savings and loan rates under the hash of its pricing paper, for governance to apply.
 export function proposeRates(bank: Bank, rates: { savingsBps: bigint; loanBps: bigint }, paper: Hex): Promise<Outcome> {
   return bank.act('treasury', 'head office', `propose a savings rate of ${percent(rates.savingsBps)} and a loan rate of ${percent(rates.loanBps)}`, [

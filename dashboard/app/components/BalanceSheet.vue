@@ -17,6 +17,8 @@ interface Row {
   amount: bigint
   // How long ago the figure was attested, and whether it matched the ledger.
   attested?: { age: string; matched: boolean }
+  // A part of the row worth naming, such as the savings within deposits.
+  part?: string
 }
 
 // The latest count at each place, and the newest of them.
@@ -52,7 +54,10 @@ const sheet = computed(() => {
       row('Loans', 'Loans', l.Loans),
       row('Loan loss allowance', 'Allowance', l.Allowance),
     ],
-    liabilities: [row('Deposits', 'Deposits', -l.Deposits), row('Equity', 'Equity', -l.Equity)],
+    liabilities: [
+      { ...row('Deposits', 'Deposits', -l.Deposits), part: s.savings ? `of which savings ${hkd(s.savings)}` : undefined },
+      row('Equity', 'Equity', -l.Equity),
+    ],
     ratios: ratios(l),
   }
 })
@@ -82,7 +87,10 @@ const movedRows = computed(() => new Set(props.moved.map((i) => Accounts[i])))
       <table>
         <caption>Liabilities and equity</caption>
         <tr v-for="r in sheet.liabilities" :key="r.name" :class="{ moved: movedRows.has(r.account) }">
-          <th scope="row">{{ r.name }}</th>
+          <th scope="row">
+            {{ r.name }}
+            <small v-if="r.part">{{ r.part }}</small>
+          </th>
           <td class="money">{{ hkd(r.amount) }}</td>
         </tr>
         <tr class="total">
@@ -96,6 +104,10 @@ const movedRows = computed(() => new Set(props.moved.map((i) => Accounts[i])))
       <tr>
         <th scope="row">Loan interest</th>
         <td class="money">{{ hkd(income.interest) }}</td>
+      </tr>
+      <tr>
+        <th scope="row">Savings interest</th>
+        <td class="money">{{ hkd(-income.savingsInterest) }}</td>
       </tr>
       <tr>
         <th scope="row">Loan loss charges</th>

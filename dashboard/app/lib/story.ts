@@ -273,8 +273,10 @@ export interface Movement {
 export function movements(line: Line): Movement[] {
   if (line.kind !== 'allowed') return []
   // A loan's tokens are created by the ledger, but come from the lending office that drew it; an instalment
-  // ends at the lending office, where the tokens it repays are destroyed.
-  const lender = line.events.find((e) => e.name === 'LoanDrawn')?.address
+  // ends at the lending office, where the tokens it repays are destroyed. Savings interest comes from the
+  // ledger at head office, out of the bank's equity.
+  const first = (name: string) => line.events.find((e) => e.name === name)?.address
+  const lender = first('LoanDrawn') ?? (first('InterestPaid') && first('EntryPosted'))
   const collector = line.events.find((e) => e.name === 'InstalmentCollected')?.address.toLowerCase()
   const source = (from: string) => (lender && from === ZERO ? lender : from)
   return line.events
@@ -292,7 +294,7 @@ export function attempted(line: Line): Movement | undefined {
 
 export const ZERO = '0x0000000000000000000000000000000000000000'
 
-export type Holder = 'Another bank' | 'Cash' | 'ATM' | 'Branch' | 'Post office' | 'Lending office'
+export type Holder = 'Another bank' | 'Cash' | 'ATM' | 'Branch' | 'Post office' | 'Lending office' | 'Savings' | 'Head office'
 
 // Where a movement's side sits when it is not a customer: money made or destroyed came from or went to
 // another bank or cash, and money the bank holds waits at the ATM, the branch or the post office.
@@ -303,6 +305,8 @@ export function holder(d: Deployment, address: string, other: string, channel: s
   if (a === d.contracts.assisted?.toLowerCase()) return 'Branch'
   if (a === d.contracts.payments?.toLowerCase()) return 'Post office'
   if (a === d.contracts.loans?.toLowerCase()) return 'Lending office'
+  if (a === d.contracts.savings?.toLowerCase()) return 'Savings'
+  if (a === d.contracts.ledger?.toLowerCase()) return 'Head office'
   return undefined
 }
 
@@ -331,19 +335,24 @@ export function passbook(line: Line, d: Deployment, name: (address: string) => s
 
 export interface IncomeStatement {
   interest: bigint
+  // Paid into savings as each business day closes.
+  savingsInterest: bigint
   // The loss allowance charged to equity, less what was released, and write-offs beyond the allowance.
   lossCharges: bigint
   net: bigint
 }
 
 // Income and losses as the lending guard names its entries: interest as each instalment is collected,
-// and the allowance moving and write-offs as loans change stage. See docs/plan.md open question 28.
+// and the allowance moving and write-offs as loans change stage; and the savings interest the vault pays
+// as each day closes. See docs/plan.md open questions 28 and 29.
 export function incomeStatement(lines: Line[]): IncomeStatement {
   let interest = 0n
+  let savingsInterest = 0n
   let lossCharges = 0n
   const big = (v: unknown) => BigInt(String(v))
   for (const line of lines)
     for (const e of line.events) {
+      if (e.contract === 'Savings' && e.name === 'InterestPaid') savingsInterest += big(e.args.amount)
       if (e.contract !== 'LendingGuard') continue
       switch (e.name) {
         case 'InstalmentPosted':
@@ -361,5 +370,5 @@ export function incomeStatement(lines: Line[]): IncomeStatement {
           break
       }
     }
-  return { interest, lossCharges, net: interest - lossCharges }
+  return { interest, savingsInterest, lossCharges, net: interest - savingsInterest - lossCharges }
 }
