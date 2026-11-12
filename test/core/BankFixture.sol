@@ -31,6 +31,7 @@ import {LendingGuard} from "../../contracts/core/LendingGuard.sol";
 import {Loans} from "../../contracts/core/Loans.sol";
 import {Rates} from "../../contracts/core/Rates.sol";
 import {Savings} from "../../contracts/core/Savings.sol";
+import {StandingOrders} from "../../contracts/core/StandingOrders.sol";
 
 /// @dev Deploys the bank as docs/roles.md describes it: governance is a time lock behind the
 /// officers' multi-signer account, holding the admin and governance roles, the staff roles module
@@ -43,7 +44,7 @@ import {Savings} from "../../contracts/core/Savings.sol";
 /// reports incidents to the regulator in the incident log, the loans module draws loans through the
 /// lending guard within the two ratios and collects their instalments, and the rates contract holds the
 /// rates treasury and risk propose and governance applies, and the savings vault pays each business day's
-/// interest as the day closes. The test contract deploys and wires the
+/// interest as the day closes, and the standing orders module pays each order monthly. The test contract deploys and wires the
 /// contracts, hands the admin role to governance and gives up its own, and governance then posts
 /// the opening balance sheet in docs/scenarios.md and splits its cash as docs/roles.md does.
 abstract contract BankFixture is Test {
@@ -96,6 +97,7 @@ abstract contract BankFixture is Test {
     Loans loans;
     Rates rates;
     Savings savings;
+    StandingOrders orders;
     ERC7913P256Verifier p256;
     MultiSignerAccount officers;
     TimelockController timelock;
@@ -166,12 +168,14 @@ abstract contract BankFixture is Test {
             Loans.Schedule(LOAN_INSTALMENTS, INSTALMENT_PERIOD),
             Loans.Caps(PER_CUSTOMER_LENDING_CAP, TOTAL_LENDING_CAP)
         );
+        orders = new StandingOrders(address(manager), payments, INSTALMENT_PERIOD);
         teller1 = _staff("teller1");
         // How movements into the modules count, set while the deployer is still the admin.
         limits.setChannel(address(cash), CustomerLimits.Channel.Own);
         limits.setChannel(address(assisted), CustomerLimits.Channel.Own);
         limits.setChannel(address(loans), CustomerLimits.Channel.Own);
         limits.setChannel(address(savings), CustomerLimits.Channel.Own);
+        limits.setChannel(address(orders), CustomerLimits.Channel.Own);
         limits.setChannel(address(payments), CustomerLimits.Channel.PayeeCheckedThere);
 
         _wire(address(token), token.mint.selector, Roles.LEDGER);
@@ -223,6 +227,7 @@ abstract contract BankFixture is Test {
         _wire(address(savings), savings.payInterestDue.selector, Roles.SCHEDULER);
         _wire(address(savings), savings.setFrozenTokens.selector, Roles.FREEZER);
         _wire(address(savings), savings.forcedTransfer.selector, Roles.ENFORCER);
+        _wire(address(orders), orders.payDue.selector, Roles.SCHEDULER);
 
         manager.grantRole(Roles.LEDGER, address(ledger), 0);
         manager.grantRole(Roles.STAFF_ADMIN, address(staffRoles), 0);
@@ -239,6 +244,7 @@ abstract contract BankFixture is Test {
         manager.grantRole(Roles.BOOKKEEPER, address(guard), 0);
         manager.grantRole(Roles.LENDER, address(loans), 0);
         manager.grantRole(Roles.BOOKKEEPER, address(savings), 0);
+        manager.grantRole(Roles.PAYMENT_ORIGINATOR, address(orders), 0);
         manager.grantRole(Roles.BOOKKEEPER, treasury, 0);
         uint64[] memory staff = _staffAdministered();
         for (uint256 i = 0; i < staff.length; ++i) manager.setRoleAdmin(staff[i], Roles.STAFF_ADMIN);
@@ -252,6 +258,7 @@ abstract contract BankFixture is Test {
         token.allowUser(address(assisted));
         token.allowUser(address(loans));
         token.allowUser(address(savings));
+        token.allowUser(address(orders));
 
         manager.grantRole(Roles.ADMIN, governance, 0);
         manager.grantRole(Roles.GOVERNANCE, governance, 0);

@@ -105,6 +105,7 @@ export interface Contracts {
   loans: Address
   rates: Address
   savings: Address
+  orders: Address
 }
 
 // The account a party acts from, the keys that sign for it unless others are named, and a customer's card.
@@ -312,6 +313,7 @@ export const contractArtifacts: Record<keyof Contracts, ContractName> = {
   loans: 'Loans',
   rates: 'Rates',
   savings: 'Savings',
+  orders: 'StandingOrders',
 }
 
 const contractNames: Record<keyof Contracts, string> = {
@@ -336,6 +338,7 @@ const contractNames: Record<keyof Contracts, string> = {
   loans: 'Loans',
   rates: 'Rates',
   savings: 'Savings',
+  orders: 'StandingOrders',
 }
 
 // A short reference as a ledger entry or message carries it, such as "opening".
@@ -386,6 +389,7 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
   const assisted = await deployer.deploy('AssistedOperations', [manager, token, recovery, payments, settings.ladder])
   const guard = await deployer.deploy('LendingGuard', [manager, ledger, attestations, rates, settings.capitalMinimum, settings.liquidityMinimum])
   const loans = await deployer.deploy('Loans', [manager, guard, recovery, rates, settings.loanSchedule, settings.lendingCaps])
+  const orders = await deployer.deploy('StandingOrders', [manager, payments, settings.loanSchedule.period])
   const contracts: Contracts = {
     verifier,
     officers,
@@ -408,6 +412,7 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
     loans,
     rates,
     savings,
+    orders,
   }
   const bank = new Bank(chain, signer, timeline, contracts, settings)
   bank.add('governance officers', { account: officers, keys: officerKeys.slice(0, Number(settings.governanceThreshold)) })
@@ -429,7 +434,7 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
   // How movements into the modules count, set while the deployer is still the admin: not at all into
   // those that keep their own channel's limit, and against the app limit only into payments, which
   // checks the payee itself.
-  for (const module of [cash, assisted, loans, savings]) await deployer.write('CustomerLimits', limits, 'setChannel', [module, Channel.Own])
+  for (const module of [cash, assisted, loans, savings, orders]) await deployer.write('CustomerLimits', limits, 'setChannel', [module, Channel.Own])
   await deployer.write('CustomerLimits', limits, 'setChannel', [payments, Channel.PayeeCheckedThere])
   await wire(deployer, contracts)
   for (const name of Holders) await deployer.write('DepositToken', token, 'allowUser', [bank.account(name)])
@@ -438,6 +443,7 @@ export async function deployBank(chain: Chain, timeline = new Timeline()): Promi
   await deployer.write('DepositToken', token, 'allowUser', [assisted])
   await deployer.write('DepositToken', token, 'allowUser', [loans])
   await deployer.write('DepositToken', token, 'allowUser', [savings])
+  await deployer.write('DepositToken', token, 'allowUser', [orders])
   await deployer.write('AccessManager', manager, 'grantRole', [Roles.ADMIN, timelock, 0])
   await deployer.write('AccessManager', manager, 'grantRole', [Roles.GOVERNANCE, timelock, 0])
   await deployer.write('AccessManager', manager, 'renounceRole', [Roles.ADMIN, chain.relayer])
@@ -537,6 +543,7 @@ const wiring: [keyof Contracts, ContractName, string, bigint][] = [
   ['savings', 'Savings', 'payInterestDue', Roles.SCHEDULER],
   ['savings', 'Savings', 'setFrozenTokens', Roles.FREEZER],
   ['savings', 'Savings', 'forcedTransfer', Roles.ENFORCER],
+  ['orders', 'StandingOrders', 'payDue', Roles.SCHEDULER],
 ]
 
 // Every staff and machine role, for each branch, which the staff roles module administers.
@@ -567,6 +574,7 @@ async function wire(deployer: Deployer, c: Contracts): Promise<void> {
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.BOOKKEEPER, c.guard, 0])
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.LENDER, c.loans, 0])
   await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.BOOKKEEPER, c.savings, 0])
+  await deployer.write('AccessManager', c.manager, 'grantRole', [Roles.PAYMENT_ORIGINATOR, c.orders, 0])
   for (const role of administered) await deployer.write('AccessManager', c.manager, 'setRoleAdmin', [role, Roles.STAFF_ADMIN])
 }
 
