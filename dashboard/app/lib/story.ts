@@ -274,14 +274,23 @@ export function movements(line: Line): Movement[] {
   if (line.kind !== 'allowed') return []
   // A loan's tokens are created by the ledger, but come from the lending office that drew it; an instalment
   // ends at the lending office, where the tokens it repays are destroyed. Savings interest comes from the
-  // ledger at head office, out of the bank's equity.
+  // ledger at head office, out of the bank's equity. A standing order's payment passes through its module,
+  // so it is drawn from the payer straight to the payee, or to the post office for another bank. The scheduler
+  // pays one order per line, so every payment on it has the same payer.
   const first = (name: string) => line.events.find((e) => e.name === name)?.address
   const lender = first('LoanDrawn') ?? (first('InterestPaid') && first('EntryPosted'))
-  const collector = line.events.find((e) => e.name === 'InstalmentCollected')?.address.toLowerCase()
-  const source = (from: string) => (lender && from === ZERO ? lender : from)
-  return line.events
-    .filter((e) => e.contract === 'DepositToken' && e.name === 'Transfer')
+  const collector = first('InstalmentCollected')?.toLowerCase()
+  const relay = first('OrderPaid')?.toLowerCase()
+  const transfers = line.events.filter((e) => e.contract === 'DepositToken' && e.name === 'Transfer')
+  const payer = relay && transfers.find((e) => String(e.args.to).toLowerCase() === relay)?.args.from
+  const source = (from: string) => {
+    if (lender && from === ZERO) return lender
+    if (payer && from.toLowerCase() === relay) return String(payer)
+    return from
+  }
+  return transfers
     .filter((e) => !(collector && String(e.args.from).toLowerCase() === collector && String(e.args.to) === ZERO))
+    .filter((e) => !(relay && String(e.args.to).toLowerCase() === relay))
     .map((e) => ({ from: source(String(e.args.from)), to: String(e.args.to), amount: BigInt(String(e.args.value)), channel: line.channel }))
 }
 

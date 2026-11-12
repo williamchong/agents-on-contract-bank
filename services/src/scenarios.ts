@@ -4,7 +4,7 @@
 
 import { isAddressEqual, keccak256, numberToHex, toBytes, zeroAddress, type Address, type Hex } from 'viem'
 import { govern, grantThroughBranch, Staff, type Bank } from './bank.ts'
-import { DisputeStatus, drawer, HKD, hkd, Holders, Ledger, LoanStage, LoanStatus, OperationStatus, Opening, PaymentStatus, vault } from './books.ts'
+import { DisputeStatus, drawer, HKD, hkd, Holders, Ledger, LoanStage, LoanStatus, OperationStatus, Opening, OrderStatus, PaymentStatus, vault } from './books.ts'
 import { advance } from './chain.ts'
 import type { Clearing } from './clearing.ts'
 import { custodianStatement } from './custodian.ts'
@@ -24,8 +24,13 @@ import {
   decide,
   emitted,
   operationOf,
+  orderRefs,
+  customerPayee,
   payInterest,
   payIntoSavings,
+  payStandingOrders,
+  registerCustomerAsPayee,
+  setUpStandingOrder,
   withdrawSavings,
   eventArg,
   lend,
@@ -111,12 +116,13 @@ async function invariants(bank: Bank): Promise<Check[]> {
 }
 
 // Closes the business day as the scenario clock does: the scheduler pays the day's savings interest and
-// triggers the collection of every loan with an instalment come due, the clearing system and the custodian issue their statements of the day, and
+// every standing order due, and triggers the collection of every loan with an instalment come due, the clearing system and the custodian issue their statements of the day, and
 // finance relays them to be compared with the ledger. The clearing system's is the one returned.
 export async function closeDay(ctx: Context): Promise<Outcome> {
   const { bank, clearing } = ctx
   await operator(bank, 'close the business day')
   await payInterest(bank)
+  await payStandingOrders(bank)
   await collectInstalments(bank)
   const asOf = await bank.now()
   // A statement must be dated before the block that accepts it.
@@ -292,10 +298,14 @@ export const presets: Preset[] = [
   {
     name: 'Lending and savings',
     kind: 'routine',
-    waitsFor: ['standing orders'],
     async run(ctx) {
       const { bank } = ctx
-      const { savings } = bank.contracts
+      const { savings, limits } = bank.contracts
+      // Carol pays Dave each month by standing order, so she registers him as a payee now; the month of savings
+      // below outlasts its waiting period, so he is in effect when she sets the order up.
+      if (!(await bank.read('CustomerLimits', limits, 'isPayee', [bank.account('Carol'), customerPayee(bank, 'Dave')]))) {
+        await registerCustomerAsPayee(bank, 'Carol', 'Dave')
+      }
       // A saver pays into savings and leaves it there for a month, as each day's close pays its interest.
       const saver = (await balanceOf(bank, 'Carol')) >= ROUTINE_SAVING ? 'Carol' : 'Bob'
       const vaultBefore = await bank.read('Savings', savings, 'totalAssets', [])
@@ -310,11 +320,7 @@ export const presets: Preset[] = [
       ])
       const interest = vaultAfter - vaultBefore - ROUTINE_SAVING
       // What the vault reports paying as the days closed, each day's entry against equity.
-      const reported = bank.timeline.lines
-        .filter((l) => l.seq > paidIn.line.seq)
-        .flatMap((l) => l.events)
-        .filter((e) => e.contract === 'Savings' && e.name === 'InterestPaid')
-        .reduce((sum, e) => sum + BigInt(e.args.amount as bigint), 0n)
+      const reported = eventsSince(bank, paidIn.line.seq, 'Savings', 'InterestPaid').reduce((sum, e) => sum + BigInt(e.args.amount as bigint), 0n)
       // The saver takes back what they paid in and leaves the interest saving.
       const withdrawn = await withdrawSavings(bank, saver, ROUTINE_SAVING)
       const { name } = await mostRoom(bank)
@@ -324,8 +330,13 @@ export const presets: Preset[] = [
         loan.outcome.ok &&
         (await ledgerBalance(bank, Ledger.Loans)) === loansBefore + ROUTINE_LOAN &&
         (await supply(bank)) === supplyBefore + ROUTINE_LOAN
-      // A month on, the day's close collects the first instalment under the borrower's mandate.
+      // Carol's standing order to Dave, set up once and kept from run to run, as a standing order is.
+      const existing = await carolsOrderToDave(bank)
+      const order = existing ? { ref: existing, outcome: undefined } : await setUpRoutineOrder(bank)
+      const mark = bank.timeline.lines.at(-1)?.seq ?? 0
+      // A month on, the day's close collects the first instalment under the borrower's mandate and pays the order.
       const close = await nextInstalment(ctx)
+      const orderPaid = order.ref !== undefined && eventsSince(bank, mark, 'StandingOrders', 'OrderPaid').some((e) => e.args.ref === order.ref)
       const drawn = loan.ref ? await bank.read('Loans', bank.contracts.loans, 'loan', [loan.ref]) : undefined
       const { capitalMinimum, liquidityMinimum } = bank.settings
       return [
@@ -342,6 +353,8 @@ export const presets: Preset[] = [
         ),
         check('the ratios stay above their minimums', (await capitalRatio(bank)) >= capitalMinimum && (await liquidityRatio(bank)) >= liquidityMinimum),
         check('at the first instalment the reconciliation line reports a match', matched(close, 'StatementAccepted') === true),
+        ...(order.outcome ? [allowed('Carol sets up a monthly standing order to Dave, her registered payee', order.outcome)] : []),
+        check("the month's close pays Dave under Carol's standing order", orderPaid),
         ...(await invariants(bank)),
       ]
     },
@@ -660,7 +673,7 @@ export const presets: Preset[] = [
     building: 'branch',
     panel: 'story',
     summary: 'An attacker tries one trick after another to exceed their role or steal money, and every attempt should be refused.',
-    control: 'Access manager, branch scoping, approval logic, rate limiter, one-use numbers, allow-list, payee register',
+    control: 'Access manager, branch scoping, approval logic, rate limiter, one-use numbers, allow-list, payee register, standing order payees',
     async run(ctx) {
       const { bank } = ctx
       const c = bank.contracts
@@ -699,6 +712,8 @@ export const presets: Preset[] = [
       // With Alice's phone in hand: more than the app limit, then a stranger above the small limit.
       const overAppLimit = await transfer(bank, 'Alice', 'Bob', bank.settings.appLimit + HKD)
       const strangerPaid = await payOut(bank, 'Alice', "the red team's account at another bank", bank.settings.unregisteredPayeeLimit + HKD)
+      // A standing order would pay the stranger month after month past both limits, so it needs a registered payee.
+      const strangerOrder = await setUpStandingOrder(bank, 'Alice', { elsewhere: "the red team's account at another bank" }, bank.settings.appLimit, 12n)
       return [
         // It holds no approving role, so the ladder refuses it before it could approve its own.
         refusedWith('approving its own operation is refused', approveOwn, 'NotApprover'),
@@ -708,6 +723,7 @@ export const presets: Preset[] = [
         refusedWith('sending to an account that is not onboarded is refused, naming the allow-list', notOnboarded, 'ERC20UserRestricted'),
         refusedWith('more than the app limit is refused', overAppLimit, 'DailyLimitExceeded'),
         refusedWith('a payee never registered is paid no more than the small limit', strangerPaid, 'DailyLimitExceeded'),
+        refusedWith('a standing order to a payee never registered is refused', strangerOrder, 'PayeeNotInEffect'),
         check('no balance changes', (await customerTotal(bank)) + (await supply(bank)) === total),
         ...(await invariants(bank)),
       ]
@@ -878,6 +894,33 @@ const BPS = 10_000n
 const ROUTINE_LOAN = 10_000n * HKD
 // What the saver in lending and savings pays in for the month.
 const ROUTINE_SAVING = 20_000n * HKD
+// Carol's monthly standing order to Dave, and its number of payments.
+const ROUTINE_ORDER = 500n * HKD
+const ROUTINE_ORDER_PAYMENTS = 12n
+
+// The events of one kind the timeline recorded after line `seq`.
+function eventsSince(bank: Bank, seq: number, contract: string, name: string) {
+  return bank.timeline.lines
+    .filter((l) => l.seq > seq)
+    .flatMap((l) => l.events)
+    .filter((e) => e.contract === contract && e.name === name)
+}
+
+// Carol's active standing order to Dave, if a run before set one up.
+async function carolsOrderToDave(bank: Bank): Promise<Hex | undefined> {
+  const { orders } = bank.contracts
+  for (const ref of (await orderRefs(bank)).reverse()) {
+    const o = await bank.read('StandingOrders', orders, 'order', [ref])
+    if (o.status === OrderStatus.Active && isAddressEqual(o.payer, bank.account('Carol')) && isAddressEqual(o.to, bank.account('Dave'))) return ref
+  }
+  return undefined
+}
+
+// Carol's standing order to Dave, set up afresh, with its reference if it was allowed.
+async function setUpRoutineOrder(bank: Bank): Promise<{ ref?: Hex; outcome: Outcome }> {
+  const outcome = await setUpStandingOrder(bank, 'Carol', { customer: 'Dave' }, ROUTINE_ORDER, ROUTINE_ORDER_PAYMENTS)
+  return { ref: refOf(outcome, 'OrderSetUp'), outcome }
+}
 const ARREARS_LOAN = 20_000n * HKD
 
 // The customer with the most room left under the per-customer lending cap, and how much, the first in

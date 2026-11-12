@@ -55,6 +55,7 @@ export const sources: Record<string, { name: string; url: string }> = {
   guard: core('LendingGuard'),
   rates: core('Rates'),
   savings: core('Savings'),
+  orders: core('StandingOrders'),
   officers: account,
   account,
   manager: { name: 'AccessManager', url: `${OZ}/access/manager/AccessManager.sol` },
@@ -99,8 +100,9 @@ const buildingInfo: Record<BuildingId, Omit<Entity, 'id' | 'kind' | 'title'>> = 
       'Act on a customer’s card, device or paper slip',
       'Hold an operation until its approvers sign',
       'Keep customers’ savings, which earn interest as each day closes',
+      'Pay each standing order monthly to the registered payee it names',
     ],
-    contracts: ['assisted', 'cash', 'limits', 'savings'],
+    contracts: ['assisted', 'cash', 'limits', 'savings', 'orders'],
   },
   vault: {
     concept: 'The branch’s cash. The vault custodian issues it to the tellers’ drawers and the ATM, counts it, and banks any surplus.',

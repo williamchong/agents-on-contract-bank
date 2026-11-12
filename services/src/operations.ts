@@ -1,9 +1,9 @@
 // What each scripted actor can do, through its own account and the channel it acts from. AI agents get the
 // same operations as tools at milestone 5; see docs/roles.md.
 
-import { encodeAbiParameters, keccak256, numberToHex, toBytes, zeroAddress, type Address, type Hex } from 'viem'
+import { encodeAbiParameters, keccak256, numberToHex, pad, toBytes, zeroAddress, zeroHash, type Address, type Hex } from 'viem'
 import { ref, type Bank } from './bank.ts'
-import { atm, drawer, hkd, Holders, Ledger, LoanStatus, percent, vault, type CustomerName, type Location } from './books.ts'
+import { atm, drawer, hkd, Holders, Ledger, LoanStatus, OrderStatus, percent, vault, type CustomerName, type Location } from './books.ts'
 import type { Outcome } from './submission.ts'
 
 // Reads
@@ -64,6 +64,17 @@ export function transfer(bank: Bank, from: CustomerName, to: string, amount: big
 export function registerPayee(bank: Bank, customer: CustomerName, payee: string): Promise<Outcome> {
   return bank.act(customer, 'app', `register ${payee} as a payee`, [
     bank.call('CustomerLimits', bank.contracts.limits, 'registerPayee', [payeeHash(payee)]),
+  ])
+}
+
+// The payee another customer of the bank is registered under: their address, as CustomerLimits.payeeOf has it.
+export function customerPayee(bank: Bank, customer: CustomerName): Hex {
+  return pad(bank.account(customer), { size: 32 })
+}
+
+export function registerCustomerAsPayee(bank: Bank, customer: CustomerName, payee: CustomerName): Promise<Outcome> {
+  return bank.act(customer, 'app', `register ${payee} as a payee`, [
+    bank.call('CustomerLimits', bank.contracts.limits, 'registerPayee', [customerPayee(bank, payee)]),
   ])
 }
 
@@ -359,13 +370,17 @@ export function cancelMandate(bank: Bank, customer: string, ref: Hex): Promise<O
   ])
 }
 
+// The first `count` references a module numbered in turn, as keccak256(chain id, module, number).
+function numberedRefs(bank: Bank, module: Address, count: bigint): Hex[] {
+  return Array.from({ length: Number(count) }, (_, i) =>
+    keccak256(encodeAbiParameters([{ type: 'uint256' }, { type: 'address' }, { type: 'uint256' }], [BigInt(bank.chain.chainId), module, BigInt(i + 1)])),
+  )
+}
+
 // Every loan the module holds, by the reference Loans.propose gave each in turn.
 export async function loanRefs(bank: Bank): Promise<Hex[]> {
   const { loans } = bank.contracts
-  const count = await bank.read('Loans', loans, 'loanCount', [])
-  return Array.from({ length: Number(count) }, (_, i) =>
-    keccak256(encodeAbiParameters([{ type: 'uint256' }, { type: 'address' }, { type: 'uint256' }], [BigInt(bank.chain.chainId), loans, BigInt(i + 1)])),
-  )
+  return numberedRefs(bank, loans, await bank.read('Loans', loans, 'loanCount', []))
 }
 
 // The scheduler triggers the collection of each drawn loan with an instalment come due since its last
@@ -422,6 +437,45 @@ export async function payInterest(bank: Bank): Promise<Outcome | undefined> {
   const [paid, now] = await Promise.all([bank.read('Savings', savings, 'lastPaidDay', []), bank.now()])
   if (BigInt(paid) >= hongKongDay(now)) return undefined
   return bank.act('scheduler', 'scheduler', 'pay the savings interest of the day', [bank.call('Savings', savings, 'payInterestDue', [])])
+}
+
+// Whom a standing order pays: another customer of the bank, or someone at another bank named as the story says it.
+export type OrderPayee = { customer: CustomerName } | { elsewhere: string }
+
+// The customer sets up a monthly standing order from their app, and allows the module what all their orders
+// still to be paid will take.
+export async function setUpStandingOrder(bank: Bank, customer: CustomerName, payee: OrderPayee, amount: bigint, payments: bigint): Promise<Outcome> {
+  const { orders, token } = bank.contracts
+  const [to, hash, name] = 'customer' in payee ? [bank.account(payee.customer), zeroHash, payee.customer] : [zeroAddress, payeeHash(payee.elsewhere), payee.elsewhere]
+  const committed = await bank.read('StandingOrders', orders, 'committed', [bank.account(customer)])
+  return bank.act(customer, 'app', `set up a standing order of ${hkd(amount)} a month to ${name}, ${payments} payments`, [
+    bank.call('DepositToken', token, 'approve', [orders, committed + amount * payments]),
+    bank.call('StandingOrders', orders, 'setUp', [to, hash, amount, payments]),
+  ])
+}
+
+// Every standing order the module holds, by the reference StandingOrders.setUp gave each in turn.
+export async function orderRefs(bank: Bank): Promise<Hex[]> {
+  const { orders } = bank.contracts
+  return numberedRefs(bank, orders, await bank.read('StandingOrders', orders, 'orderCount', []))
+}
+
+// The scheduler triggers each active standing order with a payment come due; the module works out what is
+// due and pays it, or misses it.
+export async function payStandingOrders(bank: Bank): Promise<Outcome[]> {
+  const { orders } = bank.contracts
+  const refs = await orderRefs(bank)
+  const found = await Promise.all(
+    refs.map(async (ref) => {
+      const [order, due] = await Promise.all([bank.read('StandingOrders', orders, 'order', [ref]), bank.read('StandingOrders', orders, 'paymentsDue', [ref])])
+      return order.status === OrderStatus.Active && due > order.tried
+    }),
+  )
+  const outcomes: Outcome[] = []
+  for (const ref of refs.filter((_, i) => found[i])) {
+    outcomes.push(await bank.act('scheduler', 'scheduler', `pay standing order ${ref.slice(0, 10)}`, [bank.call('StandingOrders', orders, 'payDue', [ref])]))
+  }
+  return outcomes
 }
 
 // Treasury proposes new savings and loan rates under the hash of its pricing paper, for governance to apply.

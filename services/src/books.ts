@@ -64,6 +64,8 @@ export const DisputeStatus = { None: 0, Open: 1, Proposed: 2, Reversed: 3, Rejec
 // Loans.Status and Loans.Stage, in their order.
 export const LoanStatus = { None: 0, Proposed: 1, Approved: 2, Drawn: 3, Refused: 4, Cancelled: 5, Repaid: 6, WrittenOff: 7 } as const
 export const LoanStage = { Performing: 0, Arrears: 1, Default: 2 } as const
+// StandingOrders.Status, in its order.
+export const OrderStatus = { None: 0, Active: 1, Cancelled: 2, Completed: 3 } as const
 
 // BranchApprovals.Status, in its order.
 export const OperationStatus = { None: 0, Waiting: 1, CarriedOut: 2, Refused: 3, Cancelled: 4 } as const
