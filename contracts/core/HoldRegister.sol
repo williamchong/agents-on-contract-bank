@@ -4,16 +4,19 @@ pragma solidity ^0.8.27;
 import {AccessManager} from "@openzeppelin/contracts/access/manager/AccessManager.sol";
 import {ERC20Restricted} from "@openzeppelin/community-contracts/contracts/token/ERC20/extensions/ERC20Restricted.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {DepositToken} from "./DepositToken.sol";
 import {Roles} from "./Roles.sol";
+import {Savings} from "./Savings.sol";
 
 /// @dev The register of named holds, holding the freezer role: an account's frozen amount is the
 /// sum of its open holds. Support, compliance or a supervisor places a hold; a compliance hold is
 /// lifted only by compliance, and any other by a supervisor or compliance. The dispute reversal module
 /// places and lifts holds of its own, which only it lifts, when compliance approves or rejects the
-/// dispute, so a dispute can never lose its hold while it is still open. Who may call is decided
-/// here, not by the access manager, because who lifts depends on who placed. See the access
-/// manager roles in docs/roles.md.
+/// dispute, so a dispute can never lose its hold while it is still open. A hold freezes the current
+/// account first and the savings shares for what it does not cover. Who may call is decided here, not
+/// by the access manager, because who lifts depends on who placed. See the access manager roles in
+/// docs/roles.md and open question 29 in docs/plan.md.
 contract HoldRegister {
     using EnumerableSet for EnumerableSet.UintSet;
 
@@ -27,6 +30,7 @@ contract HoldRegister {
 
     AccessManager public immutable manager;
     DepositToken public immutable token;
+    Savings public immutable savings;
 
     uint256 public holdCount;
     mapping(uint256 id => Hold) private _holds;
@@ -48,9 +52,10 @@ contract HoldRegister {
     error NoSuchHold(uint256 id);
     error ZeroAmount();
 
-    constructor(AccessManager manager_, DepositToken token_) {
+    constructor(AccessManager manager_, DepositToken token_, Savings savings_) {
         manager = manager_;
         token = token_;
+        savings = savings_;
     }
 
     function hold(uint256 id) external view returns (Hold memory) {
@@ -98,10 +103,18 @@ contract HoldRegister {
         emit Lifted(id, h.account, msg.sender);
     }
 
-    /// @dev Freezes the account's held total on the deposit token. Savings shares will take what the
-    /// account's deposit tokens do not cover.
+    /// @dev Freezes the account's held total: the shares that withdrawing what its deposit tokens do not
+    /// cover would take, as many as it has, and on the deposit token the rest of the hold, which may
+    /// exceed the balance so money still to arrive is held too. As interest raises the frozen shares'
+    /// value, their cover only grows.
     function _apply(address account) private {
-        token.setFrozenTokens(account, heldOf[account]);
+        uint256 held = heldOf[account];
+        uint256 balance = token.balanceOf(account);
+        uint256 shares;
+        if (held > balance) shares = Math.min(savings.balanceOf(account), savings.previewWithdraw(held - balance));
+        uint256 covered = shares == 0 ? 0 : Math.min(savings.previewRedeem(shares), held);
+        if (shares != savings.getFrozenTokens(account)) savings.setFrozenTokens(account, shares);
+        if (held - covered != token.getFrozenTokens(account)) token.setFrozenTokens(account, held - covered);
     }
 
     function _mayLift(uint64 placedAs, uint64 asRole) private pure returns (bool) {

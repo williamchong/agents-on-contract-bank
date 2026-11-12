@@ -30,6 +30,7 @@ import {IncidentLog} from "../../contracts/core/IncidentLog.sol";
 import {LendingGuard} from "../../contracts/core/LendingGuard.sol";
 import {Loans} from "../../contracts/core/Loans.sol";
 import {Rates} from "../../contracts/core/Rates.sol";
+import {Savings} from "../../contracts/core/Savings.sol";
 
 /// @dev Deploys the bank as docs/roles.md describes it: governance is a time lock behind the
 /// officers' multi-signer account, holding the admin and governance roles, the staff roles module
@@ -41,7 +42,8 @@ import {Rates} from "../../contracts/core/Rates.sol";
 /// module is fixed in customers' accounts, the dispute reversal module freezes and reverses disputed transfers, and finance
 /// reports incidents to the regulator in the incident log, the loans module draws loans through the
 /// lending guard within the two ratios and collects their instalments, and the rates contract holds the
-/// rates treasury and risk propose and governance applies. The test contract deploys and wires the
+/// rates treasury and risk propose and governance applies, and the savings vault pays each business day's
+/// interest as the day closes. The test contract deploys and wires the
 /// contracts, hands the admin role to governance and gives up its own, and governance then posts
 /// the opening balance sheet in docs/scenarios.md and splits its cash as docs/roles.md does.
 abstract contract BankFixture is Test {
@@ -93,6 +95,7 @@ abstract contract BankFixture is Test {
     LendingGuard guard;
     Loans loans;
     Rates rates;
+    Savings savings;
     ERC7913P256Verifier p256;
     MultiSignerAccount officers;
     TimelockController timelock;
@@ -133,7 +136,13 @@ abstract contract BankFixture is Test {
         token = new DepositToken(address(manager), limits);
         ledger = new GeneralLedger(address(manager), token);
         staffRoles = new StaffRoles(manager, officers);
-        holds = new HoldRegister(manager, token);
+        rates = new Rates(
+            address(manager),
+            Rates.ProductRates(SAVINGS_RATE_BPS, LOAN_RATE_BPS),
+            Rates.AllowanceRates(PERFORMING_ALLOWANCE_BPS, ARREARS_ALLOWANCE_BPS, DEFAULT_ALLOWANCE_BPS)
+        );
+        savings = new Savings(address(manager), token, ledger, rates);
+        holds = new HoldRegister(manager, token, savings);
         partnerKeys = new PartnerKeys(address(manager));
         payments = new Payments(address(manager), ledger, partnerKeys, SCREENING_THRESHOLD);
         attestations = new Attestations(address(manager), ledger, partnerKeys, STATEMENT_MAX_AGE);
@@ -148,11 +157,6 @@ abstract contract BankFixture is Test {
             BranchApprovals.Ladder(LADDER_FIRST, LADDER_SECOND)
         );
         assisted = new AssistedOperations(address(manager), token, recovery, payments, BranchApprovals.Ladder(LADDER_FIRST, LADDER_SECOND));
-        rates = new Rates(
-            address(manager),
-            Rates.ProductRates(SAVINGS_RATE_BPS, LOAN_RATE_BPS),
-            Rates.AllowanceRates(PERFORMING_ALLOWANCE_BPS, ARREARS_ALLOWANCE_BPS, DEFAULT_ALLOWANCE_BPS)
-        );
         guard = new LendingGuard(address(manager), ledger, attestations, rates, CAPITAL_MINIMUM_BPS, LIQUIDITY_MINIMUM_BPS);
         loans = new Loans(
             address(manager),
@@ -167,6 +171,7 @@ abstract contract BankFixture is Test {
         limits.setChannel(address(cash), CustomerLimits.Channel.Own);
         limits.setChannel(address(assisted), CustomerLimits.Channel.Own);
         limits.setChannel(address(loans), CustomerLimits.Channel.Own);
+        limits.setChannel(address(savings), CustomerLimits.Channel.Own);
         limits.setChannel(address(payments), CustomerLimits.Channel.PayeeCheckedThere);
 
         _wire(address(token), token.mint.selector, Roles.LEDGER);
@@ -215,6 +220,9 @@ abstract contract BankFixture is Test {
         _wire(address(rates), rates.proposeAllowanceRates.selector, Roles.RISK);
         _wire(address(rates), rates.applyProductRates.selector, Roles.GOVERNANCE);
         _wire(address(rates), rates.applyAllowanceRates.selector, Roles.GOVERNANCE);
+        _wire(address(savings), savings.payInterestDue.selector, Roles.SCHEDULER);
+        _wire(address(savings), savings.setFrozenTokens.selector, Roles.FREEZER);
+        _wire(address(savings), savings.forcedTransfer.selector, Roles.ENFORCER);
 
         manager.grantRole(Roles.LEDGER, address(ledger), 0);
         manager.grantRole(Roles.STAFF_ADMIN, address(staffRoles), 0);
@@ -230,6 +238,7 @@ abstract contract BankFixture is Test {
         manager.grantRole(Roles.DISPUTE_HOLDER, address(disputes), 0);
         manager.grantRole(Roles.BOOKKEEPER, address(guard), 0);
         manager.grantRole(Roles.LENDER, address(loans), 0);
+        manager.grantRole(Roles.BOOKKEEPER, address(savings), 0);
         manager.grantRole(Roles.BOOKKEEPER, treasury, 0);
         uint64[] memory staff = _staffAdministered();
         for (uint256 i = 0; i < staff.length; ++i) manager.setRoleAdmin(staff[i], Roles.STAFF_ADMIN);
@@ -242,6 +251,7 @@ abstract contract BankFixture is Test {
         token.allowUser(address(cash));
         token.allowUser(address(assisted));
         token.allowUser(address(loans));
+        token.allowUser(address(savings));
 
         manager.grantRole(Roles.ADMIN, governance, 0);
         manager.grantRole(Roles.GOVERNANCE, governance, 0);

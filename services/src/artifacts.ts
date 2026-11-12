@@ -22,6 +22,7 @@ import type { MultiSignerAccount$Type } from '../../artifacts/contracts/core/Mul
 import type { PartnerKeys$Type } from '../../artifacts/contracts/core/PartnerKeys.sol/artifacts.js'
 import type { Payments$Type } from '../../artifacts/contracts/core/Payments.sol/artifacts.js'
 import type { Rates$Type } from '../../artifacts/contracts/core/Rates.sol/artifacts.js'
+import type { Savings$Type } from '../../artifacts/contracts/core/Savings.sol/artifacts.js'
 import type { StaffRoles$Type } from '../../artifacts/contracts/core/StaffRoles.sol/artifacts.js'
 
 interface Artifacts {
@@ -44,6 +45,7 @@ interface Artifacts {
   PartnerKeys: PartnerKeys$Type
   Payments: Payments$Type
   Rates: Rates$Type
+  Savings: Savings$Type
   StaffRoles: StaffRoles$Type
 }
 
@@ -70,6 +72,7 @@ const sources: Record<ContractName, string> = {
   PartnerKeys: 'contracts/core/PartnerKeys.sol',
   Payments: 'contracts/core/Payments.sol',
   Rates: 'contracts/core/Rates.sol',
+  Savings: 'contracts/core/Savings.sol',
   StaffRoles: 'contracts/core/StaffRoles.sol',
 }
 
