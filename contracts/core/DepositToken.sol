@@ -5,6 +5,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC20TransferAuthorization} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20TransferAuthorization.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {AccessManaged} from "@openzeppelin/contracts/access/manager/AccessManaged.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ERC20uRWA} from "@openzeppelin/community-contracts/contracts/token/ERC20/extensions/ERC20uRWA.sol";
 import {CustomerLimits} from "./CustomerLimits.sol";
 
@@ -12,9 +13,10 @@ import {CustomerLimits} from "./CustomerLimits.sol";
 /// cents. Freezes, the allow-list, the block-list and forced transfers come from ERC-7943, and
 /// customer-signed transfers from EIP-3009. Every privileged call is decided by the access
 /// manager; only the general ledger may create or destroy tokens. Every movement out of a customer's
-/// account that is not forced is counted against their daily limits, however it was started. See
-/// docs/standards.md and open question 20 in docs/plan.md.
-contract DepositToken is ERC20, EIP712, ERC20TransferAuthorization, ERC20uRWA, AccessManaged {
+/// account that is not forced is counted against their daily limits, however it was started. Risk may
+/// pause it in an incident, which stops every movement, the bank's own included, and only governance
+/// resumes it. See docs/standards.md and open questions 20 and 31 in docs/plan.md.
+contract DepositToken is ERC20, EIP712, ERC20TransferAuthorization, ERC20uRWA, AccessManaged, Pausable {
     CustomerLimits public immutable customerLimits;
 
     error NotAdmitted(address account);
@@ -37,6 +39,14 @@ contract DepositToken is ERC20, EIP712, ERC20TransferAuthorization, ERC20uRWA, A
 
     function burn(address from, uint256 amount) external restricted {
         _burn(from, amount);
+    }
+
+    function pause() external restricted {
+        _pause();
+    }
+
+    function unpause() external restricted {
+        _unpause();
     }
 
     /// @dev Admits an onboarded customer or a bank-owned account.
@@ -80,6 +90,7 @@ contract DepositToken is ERC20, EIP712, ERC20TransferAuthorization, ERC20uRWA, A
     /// @dev A transfer, an allowance spent or a signed authorisation all end here, so the customer's
     /// limits see every movement they started. Creation, destruction and forced transfers are the bank's.
     function _update(address from, address to, uint256 amount) internal override(ERC20, ERC20uRWA) {
+        _requireNotPaused();
         super._update(from, to, amount);
         if (from != address(0) && to != address(0) && !_isForcedTransfer()) customerLimits.countMovement(from, to, amount);
     }

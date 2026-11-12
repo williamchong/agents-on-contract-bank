@@ -4,6 +4,7 @@ pragma solidity ^0.8.27;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {AccessManaged} from "@openzeppelin/contracts/access/manager/AccessManaged.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ERC20uRWA} from "@openzeppelin/community-contracts/contracts/token/ERC20/extensions/ERC20uRWA.sol";
 import {DailyLimit} from "./DailyLimit.sol";
@@ -17,8 +18,9 @@ import {Rates} from "./Rates.sol";
 /// deposit token's allow-list, so a customer is admitted once. Closing the business day pays its
 /// interest: the scheduler triggers the vault, which pays each day since the one it last paid at the
 /// savings rate in force when it pays, creating deposit tokens into the vault against equity, so every share is worth
-/// more. A business day ends at midnight Hong Kong time, as the daily limits do. See open questions 6 and
-/// 29 in docs/plan.md.
+/// more. A business day ends at midnight Hong Kong time, as the daily limits do. Shares follow the deposit
+/// token's pause, so one pause stops both, and no interest is paid while it lasts; the days it held up are
+/// paid once the bank resumes. See open questions 6, 29 and 31 in docs/plan.md.
 contract Savings is ERC4626, ERC20uRWA, AccessManaged {
     using SafeCast for uint256;
     using SafeCast for int256;
@@ -54,6 +56,7 @@ contract Savings is ERC4626, ERC20uRWA, AccessManaged {
     /// may trigger it freely. The scheduler closes each day as it ends, so the days missed are few; a
     /// catch-up of years would not fit in a block, which the demo's jumps never ask for.
     function payInterestDue() external restricted {
+        _requireTokenNotPaused();
         uint64 today = DailyLimit.today();
         uint64 day = lastPaidDay;
         if (day >= today) return;
@@ -133,7 +136,12 @@ contract Savings is ERC4626, ERC20uRWA, AccessManaged {
 
     function _checkFreezer(address, uint256) internal view override {}
 
+    function _requireTokenNotPaused() private view {
+        if (DepositToken(asset()).paused()) revert Pausable.EnforcedPause();
+    }
+
     function _update(address from, address to, uint256 amount) internal override(ERC20, ERC20uRWA) {
+        _requireTokenNotPaused();
         if (from != address(0) && to != address(0) && !_isForcedTransfer()) revert SharesNotTransferable();
         super._update(from, to, amount);
     }

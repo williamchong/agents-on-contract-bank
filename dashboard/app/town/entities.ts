@@ -85,7 +85,7 @@ const buildingInfo: Record<BuildingId, Omit<Entity, 'id' | 'kind' | 'title'>> = 
   },
   'town-hall': {
     concept: 'Governance. High-risk changes, such as granting roles or changing limits, are signed by the bank’s officers and wait out a time lock before they take effect.',
-    can: ['Grant and revoke staff roles', 'Schedule changes behind a time lock', 'Set who may call what', 'Apply the rates treasury and risk propose', 'Write off a loan in default'],
+    can: ['Grant and revoke staff roles', 'Schedule changes behind a time lock', 'Set who may call what', 'Apply the rates treasury and risk propose', 'Write off a loan in default', 'Resume the bank after risk pauses it'],
     contracts: ['manager', 'timelock', 'officers', 'staffRoles', 'rates'],
   },
   'water-tower': {

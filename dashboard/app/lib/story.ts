@@ -95,11 +95,17 @@ const reasons: Record<string, string> = {
   OwnLoan: 'staff may not lend to themselves',
   NotItsBorrower: 'only the borrower can accept the loan',
   NotCreditOfficer: 'the credit officer who proposed it has left',
-  MandateTooSmall: 'the customer’s mandate does not cover the loan’s instalments',
+  MandateTooSmall: 'the customer’s mandate does not cover what it would take',
   NotDrawn: 'the loan is not drawn',
   NotInDefault: 'only a loan in default is written off',
   NotThePaperProposed: 'it is not the proposal waiting',
   NoPaper: 'a rate proposal must name its paper',
+  PayeeNotInEffect: 'the payee is not on the customer’s register, or is still in its waiting period',
+  NotACustomer: 'a standing order inside the bank pays only another customer',
+  NotActive: 'the standing order is no longer active',
+  NotItsPayer: 'only the payer can cancel the order',
+  EnforcedPause: 'the bank is paused, so no money moves',
+  TimelockUnexpectedOperationState: 'governance’s time lock has not yet run its course',
 }
 
 // A ratio refusal names the ratio and what the loan would have left it at, in basis points.

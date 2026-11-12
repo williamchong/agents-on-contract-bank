@@ -5,6 +5,7 @@ import {AccessManaged} from "@openzeppelin/contracts/access/manager/AccessManage
 import {IAccessManager} from "@openzeppelin/contracts/access/manager/IAccessManager.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {AccountRecovery} from "./AccountRecovery.sol";
 import {DepositToken} from "./DepositToken.sol";
 import {LendingGuard} from "./LendingGuard.sol";
@@ -253,6 +254,8 @@ contract Loans is AccessManaged {
     /// @dev Collects every instalment of the loan due by now, oldest first, until one cannot be taken,
     /// then sets its stage and measures its allowance again. A second trigger finds nothing more due.
     function collectDue(bytes32 ref) external restricted {
+        // A collection the pause would refuse is no missed instalment; it is collected once the bank resumes.
+        if (token.paused()) revert Pausable.EnforcedPause();
         Loan storage l = _loans[ref];
         if (l.status != Status.Drawn) revert NotDrawn(ref, l.status);
         uint256 due = instalmentsDue(ref);

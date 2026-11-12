@@ -3,7 +3,7 @@
 // that exists and lists the rest in `waitsFor`, so the score never claims more than was run.
 
 import { isAddressEqual, keccak256, numberToHex, toBytes, zeroAddress, type Address, type Hex } from 'viem'
-import { govern, grantThroughBranch, Staff, type Bank } from './bank.ts'
+import { carryOut, govern, grantThroughBranch, scheduleDecision, Staff, type Bank } from './bank.ts'
 import { DisputeStatus, drawer, HKD, hkd, Holders, Ledger, LoanStage, LoanStatus, OperationStatus, Opening, OrderStatus, PaymentStatus, vault } from './books.ts'
 import { advance } from './chain.ts'
 import type { Clearing } from './clearing.ts'
@@ -26,6 +26,7 @@ import {
   operationOf,
   orderRefs,
   customerPayee,
+  DAY,
   payInterest,
   payIntoSavings,
   payStandingOrders,
@@ -116,14 +117,17 @@ async function invariants(bank: Bank): Promise<Check[]> {
 }
 
 // Closes the business day as the scenario clock does: the scheduler pays the day's savings interest and
-// every standing order due, and triggers the collection of every loan with an instalment come due, the clearing system and the custodian issue their statements of the day, and
+// every standing order due, and triggers the collection of every loan with an instalment come due, unless the
+// bank is paused, when that work waits for the resume; the clearing system and the custodian issue their statements of the day, and
 // finance relays them to be compared with the ledger. The clearing system's is the one returned.
 export async function closeDay(ctx: Context): Promise<Outcome> {
   const { bank, clearing } = ctx
   await operator(bank, 'close the business day')
-  await payInterest(bank)
-  await payStandingOrders(bank)
-  await collectInstalments(bank)
+  if (!(await bank.read('DepositToken', bank.contracts.token, 'paused', []))) {
+    await payInterest(bank)
+    await payStandingOrders(bank)
+    await collectInstalments(bank)
+  }
   const asOf = await bank.now()
   // A statement must be dated before the block that accepts it.
   await advance(bank.chain, 60n)
@@ -773,6 +777,52 @@ export const presets: Preset[] = [
         ),
         check('once the fee is refunded, the next statement matches', matched(next, 'StatementAccepted') === true),
         check('the vault counted again matches', matched(recount, 'CashCounted') === true),
+        ...(await invariants(bank)),
+      ]
+    },
+  },
+  {
+    name: 'Pause and resume',
+    kind: 'adverse',
+    group: 'Operational incident',
+    building: 'town-hall',
+    panel: 'story',
+    summary: 'Risk stops the bank in an incident, then tries to start it again itself; only governance can, and only after its time lock.',
+    control: 'Pause by risk on the deposit token, where every movement ends; resume only by governance multi-signature and time lock',
+    async run(ctx) {
+      const { bank } = ctx
+      const { token } = bank.contracts
+      const total = (await customerTotal(bank)) + (await supply(bank))
+      const paused = await bank.act('risk', 'head office', 'pause the bank in an incident', [bank.call('DepositToken', token, 'pause', [])])
+      // Customers, the branch and the savings vault are all stopped where every movement ends.
+      const transferred = await transfer(bank, 'Alice', 'Bob', 100n * HKD)
+      const cashIn = await cashDeposit(bank, 'Bob', 100n * HKD)
+      const saved = await payIntoSavings(bank, 'Carol', 100n * HKD)
+      // A day passes paused: the scheduler's trigger is refused, so the day's interest is held up, not lost.
+      await advance(bank.chain, DAY)
+      const interestPaused = await payInterest(bank)
+      const unchanged = (await customerTotal(bank)) + (await supply(bank)) === total
+      const riskResumes = await bank.act('risk', 'head office', 'resume the bank itself', [bank.call('DepositToken', token, 'unpause', [])])
+      const decision = await scheduleDecision(bank, 'governance officers', 'resume the bank', [bank.call('DepositToken', token, 'unpause', [])])
+      const early = await carryOut(bank, decision)
+      await advance(bank.chain, bank.settings.governanceDelay)
+      const resumed = await carryOut(bank, decision)
+      // Later presets run on the same bank, so it is never left paused, whatever the checks find.
+      if (await bank.read('DepositToken', token, 'paused', [])) await govern(bank, 'governance officers', 'resume the bank', [bank.call('DepositToken', token, 'unpause', [])])
+      const after = await transfer(bank, 'Alice', 'Bob', 100n * HKD)
+      const caughtUp = await payInterest(bank)
+      return [
+        allowed('risk pauses the bank', paused),
+        refusedWith('a transfer is refused as paused', transferred, 'EnforcedPause'),
+        refusedWith('a cash deposit at the counter is refused as paused', cashIn, 'EnforcedPause'),
+        refusedWith('paying into savings is refused as paused', saved, 'EnforcedPause'),
+        interestPaused ? refusedWith('the scheduler is refused while paused, so nothing is missed', interestPaused, 'EnforcedPause') : check('the scheduler is refused while paused, so nothing is missed', false, 'no interest was due'),
+        check('nothing moves while paused', unchanged),
+        refusedWith('risk cannot resume', riskResumes, 'AccessManagedUnauthorized'),
+        refusedWith("governance's resume waits for its time lock", early, 'TimelockUnexpectedOperationState'),
+        allowed('governance resumes after the time lock', resumed),
+        allowed('money moves again', after),
+        caughtUp ? allowed('the interest held up is paid once the bank resumes', caughtUp) : check('the interest held up is paid once the bank resumes', false, 'none was due'),
         ...(await invariants(bank)),
       ]
     },

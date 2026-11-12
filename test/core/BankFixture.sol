@@ -184,6 +184,8 @@ abstract contract BankFixture is Test {
         _wire(address(token), token.setFrozenTokens.selector, Roles.FREEZER);
         _wire(address(token), token.blockUser.selector, Roles.COMPLIANCE);
         _wire(address(token), token.unblockUser.selector, Roles.GOVERNANCE);
+        _wire(address(token), token.pause.selector, Roles.RISK);
+        _wire(address(token), token.unpause.selector, Roles.GOVERNANCE);
         _wire(address(ledger), ledger.post.selector, Roles.BOOKKEEPER);
         _wire(address(ledger), ledger.postWithMint.selector, Roles.BOOKKEEPER);
         _wire(address(ledger), ledger.postWithBurn.selector, Roles.BOOKKEEPER);
@@ -280,13 +282,30 @@ abstract contract BankFixture is Test {
 
     /// @dev Risk proposes allowance rates under a paper, and governance applies them.
     function _setAllowanceRates(uint256 performing, uint256 arrears, uint256 defaulted) internal {
-        address risk = makeAddr("risk");
-        vm.prank(address(staffRoles));
-        manager.grantRole(Roles.RISK, risk, 0);
+        address risk = _risk();
         bytes32 paper = keccak256(abi.encode("allowance paper", performing, arrears, defaulted));
         vm.prank(risk);
         rates.proposeAllowanceRates(Rates.AllowanceRates(performing, arrears, defaulted), paper);
         _govern(address(rates), abi.encodeCall(Rates.applyAllowanceRates, (paper)));
+    }
+
+    /// @dev Risk pauses the bank in an incident.
+    function _pauseBank() internal {
+        vm.prank(_risk());
+        token.pause();
+    }
+
+    /// @dev The risk desk, granted its role the first time it is needed.
+    function _risk() internal returns (address risk) {
+        risk = makeAddr("risk");
+        if (_holds(Roles.RISK, risk)) return risk;
+        vm.prank(address(staffRoles));
+        manager.grantRole(Roles.RISK, risk, 0);
+    }
+
+    /// @dev Governance resumes the bank, through its signatures and time lock.
+    function _resumeBank() internal {
+        _govern(address(token), abi.encodeCall(DepositToken.unpause, ()));
     }
 
     /// @dev Waits out the time lock's delay and carries out a scheduled decision.

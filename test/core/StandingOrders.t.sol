@@ -3,6 +3,7 @@ pragma solidity ^0.8.27;
 
 import {Vm} from "forge-std/Vm.sol";
 import {IAccessManaged} from "@openzeppelin/contracts/access/manager/IAccessManaged.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {Roles} from "../../contracts/core/Roles.sol";
 import {Payments} from "../../contracts/core/Payments.sol";
 import {StandingOrders} from "../../contracts/core/StandingOrders.sol";
@@ -248,6 +249,21 @@ contract StandingOrdersTest is BankFixture {
         vm.prank(scheduler);
         vm.expectRevert(abi.encodeWithSelector(StandingOrders.NotActive.selector, ref, StandingOrders.Status.Completed));
         orders.payDue(ref);
+    }
+
+    /// @dev A payment the pause refuses is not missed: it is paid once governance resumes the bank.
+    function test_Pay_WaitsOutAPause() public {
+        bytes32 ref = _setUp(bob, RENT, PAYMENTS);
+        uint256 bobBefore = token.balanceOf(bob);
+        vm.warp(block.timestamp + INSTALMENT_PERIOD);
+        _pauseBank();
+        vm.prank(scheduler);
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        orders.payDue(ref);
+        _resumeBank();
+        _payDue(ref);
+        assertEq(orders.order(ref).paid, 1);
+        assertEq(token.balanceOf(bob), bobBefore + RENT);
     }
 
     function test_Pay_OnlyTheScheduler() public {

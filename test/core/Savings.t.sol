@@ -3,6 +3,7 @@ pragma solidity ^0.8.27;
 
 import {IAccessManaged} from "@openzeppelin/contracts/access/manager/IAccessManaged.sol";
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ERC20Freezable} from "@openzeppelin/community-contracts/contracts/token/ERC20/extensions/ERC20Freezable.sol";
 import {Roles} from "../../contracts/core/Roles.sol";
 import {CustomerLimits} from "../../contracts/core/CustomerLimits.sol";
@@ -147,6 +148,35 @@ contract SavingsTest is BankFixture {
         _closeDay();
         assertEq(ledger.entryCount(), entries, "a zero rate posts nothing");
         assertEq(savings.totalAssets(), SAVED);
+    }
+
+    /// @dev No interest while the bank is paused, and the days it held up are paid once it resumes.
+    function test_Interest_WaitsOutAPause() public {
+        _payIn(alice, SAVED);
+        uint64 from = savings.lastPaidDay();
+        _pauseBank();
+        vm.warp(block.timestamp + 1 days);
+        vm.prank(scheduler);
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        savings.payInterestDue();
+        _resumeBank();
+        _closeDay();
+        assertGt(savings.lastPaidDay(), from + 1, "the day held up and the time lock's days");
+        assertGe(savings.totalAssets(), SAVED + 2 * DAY_INTEREST);
+    }
+
+    function test_Pause_StopsSharesMovingEvenByForce() public {
+        uint256 shares = _payIn(alice, SAVED);
+        _pauseBank();
+        vm.prank(alice);
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        savings.redeem(shares, alice, alice);
+        address enforcer = makeAddr("enforcer");
+        vm.prank(governance);
+        manager.grantRole(Roles.ENFORCER, enforcer, 0);
+        vm.prank(enforcer);
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        savings.forcedTransfer(alice, pending, shares);
     }
 
     function test_Interest_OnlyTheScheduler() public {

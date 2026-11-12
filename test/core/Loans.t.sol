@@ -2,6 +2,7 @@
 pragma solidity ^0.8.27;
 
 import {IAccessManaged} from "@openzeppelin/contracts/access/manager/IAccessManaged.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {Roles} from "../../contracts/core/Roles.sol";
 import {GeneralLedger} from "../../contracts/core/GeneralLedger.sol";
 import {LendingGuard} from "../../contracts/core/LendingGuard.sol";
@@ -324,6 +325,22 @@ contract LoansTest is BankFixture {
         }
         _collect(ref);
         assertEq(loans.loan(ref).paid, 3);
+        assertEq(uint8(loans.loan(ref).stage), uint8(Loans.Stage.Performing));
+    }
+
+    /// @dev A collection the pause refuses is no missed instalment: the loan stays performing and every
+    /// instalment held up is collected once governance resumes the bank.
+    function test_Collect_WaitsOutAPause() public {
+        bytes32 ref = _draw(alice, SMALL_LOAN);
+        skip(INSTALMENT_PERIOD);
+        _pauseBank();
+        vm.prank(scheduler);
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        loans.collectDue(ref);
+        skip(INSTALMENT_PERIOD);
+        _resumeBank();
+        _collect(ref);
+        assertEq(loans.loan(ref).paid, 2);
         assertEq(uint8(loans.loan(ref).stage), uint8(Loans.Stage.Performing));
     }
 

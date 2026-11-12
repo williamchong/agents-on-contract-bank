@@ -3,6 +3,7 @@ pragma solidity ^0.8.27;
 
 import {AccessManaged} from "@openzeppelin/contracts/access/manager/AccessManaged.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {CustomerLimits} from "./CustomerLimits.sol";
 import {DepositToken} from "./DepositToken.sol";
 import {Payments} from "./Payments.sol";
@@ -15,7 +16,8 @@ import {Payments} from "./Payments.sol";
 /// payment counts against neither daily limit and leaves nothing behind if it cannot land, and to a payee
 /// at another bank through the payments module, which screens and queues it as any payment out. A
 /// payment the account cannot cover is missed and not tried again. The customer may cancel an order at
-/// any time. See open question 30 in docs/plan.md.
+/// any time. Nothing is paid, or missed, while the bank is paused; the dates it held up are paid once it
+/// resumes. See open questions 30 and 31 in docs/plan.md.
 contract StandingOrders is AccessManaged {
     enum Status {
         None,
@@ -118,6 +120,7 @@ contract StandingOrders is AccessManaged {
     /// @dev Makes every payment of the order due by now, oldest first. One the account cannot cover is
     /// missed and not tried again. A second trigger finds nothing more due.
     function payDue(bytes32 ref) external restricted {
+        if (token.paused()) revert Pausable.EnforcedPause();
         Order storage o = _active(ref);
         uint256 due = paymentsDue(ref);
         while (o.tried < due) {

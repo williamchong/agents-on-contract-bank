@@ -500,6 +500,8 @@ const wiring: [keyof Contracts, ContractName, string, bigint][] = [
   ['token', 'DepositToken', 'setFrozenTokens', Roles.FREEZER],
   ['token', 'DepositToken', 'blockUser', Roles.COMPLIANCE],
   ['token', 'DepositToken', 'unblockUser', Roles.GOVERNANCE],
+  ['token', 'DepositToken', 'pause', Roles.RISK],
+  ['token', 'DepositToken', 'unpause', Roles.GOVERNANCE],
   ['ledger', 'GeneralLedger', 'post', Roles.BOOKKEEPER],
   ['ledger', 'GeneralLedger', 'postWithMint', Roles.BOOKKEEPER],
   ['ledger', 'GeneralLedger', 'postWithBurn', Roles.BOOKKEEPER],
@@ -613,23 +615,39 @@ async function governFirstDay(bank: Bank, signer: Signer): Promise<void> {
 // A governance decision: three officers sign the time lock's schedule, the time lock holds it for its
 // delay, and anyone carries it out.
 export async function govern(bank: Bank, by: string, action: string, calls: Call[]): Promise<void> {
+  const decision = await scheduleDecision(bank, by, action, calls)
+  await advance(bank.chain, bank.settings.governanceDelay)
+  const done = await carryOut(bank, decision)
+  if (!done.ok) throw new Error(`Governance could not carry out ${action}: ${done.error}`)
+}
+
+export interface Decision {
+  action: string
+  targets: Address[]
+  payloads: Hex[]
+  salt: Hex
+}
+
+// The officers sign the time lock's schedule of a decision, which then waits out its delay.
+export async function scheduleDecision(bank: Bank, by: string, action: string, calls: Call[]): Promise<Decision> {
   const c = bank.contracts
-  const targets = calls.map((x) => x.to)
+  const decision = { action, targets: calls.map((x) => x.to), payloads: calls.map((x) => x.data), salt: numberToHex(await bank.read('MultiSignerAccount', c.officers, 'executionNonce', []), { size: 32 }) }
   const values = calls.map(() => 0n)
-  const payloads = calls.map((x) => x.data)
-  const salt = numberToHex(await bank.read('MultiSignerAccount', c.officers, 'executionNonce', []), { size: 32 })
   const scheduled = await bank.act(by, 'admin', `schedule: ${action}`, [
-    bank.call('TimelockController', c.timelock, 'scheduleBatch', [targets, values, payloads, zeroHash, salt, bank.settings.governanceDelay]),
+    bank.call('TimelockController', c.timelock, 'scheduleBatch', [decision.targets, values, decision.payloads, zeroHash, decision.salt, bank.settings.governanceDelay]),
   ])
   if (!scheduled.ok) throw new Error(`Governance could not schedule ${action}: ${scheduled.error}`)
-  await advance(bank.chain, bank.settings.governanceDelay)
-  const done = await bank.relay(
+  return decision
+}
+
+// Anyone carries out a scheduled decision; the time lock refuses it until its delay has passed.
+export function carryOut(bank: Bank, d: Decision): Promise<Outcome> {
+  return bank.relay(
     'anyone',
     'admin',
-    `carry out: ${action}`,
-    bank.call('TimelockController', c.timelock, 'executeBatch', [targets, values, payloads, zeroHash, salt]),
+    `carry out: ${d.action}`,
+    bank.call('TimelockController', bank.contracts.timelock, 'executeBatch', [d.targets, d.targets.map(() => 0n), d.payloads, zeroHash, d.salt]),
   )
-  if (!done.ok) throw new Error(`Governance could not carry out ${action}: ${done.error}`)
 }
 
 // Branch roles are proposed by the branch manager and approved by IT security; the ATM is enrolled by IT
