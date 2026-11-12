@@ -234,8 +234,8 @@ The scheduler says when; the contracts decide what, to whom and how much. A trig
 | Rotate a compromised key | IT security | Risk | | Role, approval |
 | Register or replace a partner's signing key | IT security | Governance | | Governance |
 | Revoke a compromised partner key | IT security | None; takes effect at once | Messages are refused until a new key is registered | Role |
-| Pause | Risk | None | | Role |
-| Resume | Governance | Multi-signature and time lock | | Governance |
+| Pause | Risk | None | Every movement, on the deposit token and with it the savings shares; scheduled work waits | Role |
+| Resume | Governance | Multi-signature and time lock | Work held up by the pause catches up | Governance |
 | Revoke a staff member's roles | Branch manager for their branch's roles; risk or governance for any staff role | None; takes effect at once | | Staff roles module |
 | Grant branch roles | Branch manager of that branch | IT security | Not to themselves; no conflicting pair | Staff roles module: role, approval, conflict check |
 | Grant control and assurance roles, and the branch manager role | Governance | Multi-signature and time lock | No conflicting pair | Governance; staff roles module conflict check |
