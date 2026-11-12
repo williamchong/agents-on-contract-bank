@@ -1,5 +1,5 @@
 // The guided tour: the five-minute pitch as a preset, one beat at a time, each making one claim and putting
-// it on screen. Milestone 2 reaches the first four beats. See docs/scenarios.md#guided-tour.
+// it on screen. Milestone 3 reaches the first five beats. See docs/scenarios.md#guided-tour.
 
 import { isAddressEqual, zeroAddress, type Address } from 'viem'
 import { HKD } from './books.ts'
@@ -12,6 +12,8 @@ export interface Beat {
   // What the presenter points at, and the claim the beat makes.
   pointAt: string
   claim: string
+  // The presets the beat plays, if it plays any, so a recording need not play them again.
+  plays?: string[]
   run(ctx: Context): Promise<Check[]>
 }
 
@@ -21,6 +23,18 @@ function preset(name: string) {
   return found
 }
 
+// A beat that plays presets one after another, on the bank each leaves.
+function playing(...names: string[]): Pick<Beat, 'plays' | 'run'> {
+  return {
+    plays: names,
+    async run(ctx) {
+      const checks: Check[] = []
+      for (const name of names) checks.push(...(await preset(name).run(ctx)))
+      return checks
+    },
+  }
+}
+
 export const beats: Beat[] = [
   {
     number: 1,
@@ -28,7 +42,7 @@ export const beats: Beat[] = [
     pointAt:
       'The story view and the waiting strip: cash in, an ATM withdrawal, a paper slip waiting for the supervisor; on the bank map, money moving between the houses, the branch and the ATM',
     claim: 'It reads like a bank, in plain sentences',
-    run: (ctx) => preset('Counter and ATM day').run(ctx),
+    ...playing('Counter and ATM day'),
   },
   {
     number: 2,
@@ -52,14 +66,14 @@ export const beats: Beat[] = [
     title: 'Try to break it',
     pointAt: 'One refusal after another, each with its reason, and a barrier dropping on the bank map for each',
     claim: "The chain decides; an agent's instructions are not the control",
-    run: (ctx) => preset('Red team').run(ctx),
+    ...playing('Red team'),
   },
   {
     number: 4,
     title: 'Fraud, with a way back',
     pointAt: 'The scenario card, the transfer waiting for an approver, the freeze, the reversal waiting for compliance, then the pass',
     claim: 'No member of staff acts alone, and a wrong is reversed on the record',
-    run: (ctx) => preset('Forged paper slip').run(ctx),
+    ...playing('Forged paper slip'),
   },
   {
     number: 5,
@@ -67,9 +81,6 @@ export const beats: Beat[] = [
     pointAt:
       'The capital ratio falling to its minimum and the refused drawdown; then the payment queue growing and draining as treasury sells securities, the water tower emptying and vans queueing at the post office gate',
     claim: 'Lending creates money only within limits; a bank can be solvent and still run short',
-    async run(ctx) {
-      const lending = await preset('Lending stopped by the capital ratio').run(ctx)
-      return [...lending, ...(await preset('Run on deposits').run(ctx))]
-    },
+    ...playing('Lending stopped by the capital ratio', 'Run on deposits'),
   },
 ]

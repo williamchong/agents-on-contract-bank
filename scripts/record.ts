@@ -1,19 +1,19 @@
 // Records a run of the bank for the dashboard to play back with no chain or services running: `pnpm record`.
 // On Hardhat's in-process chain, where time moves at once, it opens the bank, plays the guided tour's beats,
-// then a business day of daily operation for each adverse scenario, injected after that day's routines. It
-// writes the deployment, the story, the scenario cards and the bank's state at every block of the run to
-// dashboard/public/recording.json. Each state is read during the run, at its own block, so nothing reads old
+// then a business day of daily operation for each adverse scenario the tour did not already play, injected
+// after that day's routines. It writes the deployment, the story, the scenario cards and the bank's state at
+// every block of the run to dashboard/public/recording.json. Each state is read during the run, at its own block, so nothing reads old
 // state afterwards. Exits non-zero if any card fails. See docs/plan.md open question 18.
 //
 // `pnpm record:base-sepolia` records the run on Base Sepolia instead, relayed from the account whose key is
 // BASE_SEPOLIA_PRIVATE_KEY, in the environment or .env, and writes it to recordings/base-sepolia.json, which
 // the published playback plays. Its clock cannot be moved, so the time locks are waited out in real time and
-// the daily routines run once, the adverse scenarios following on the same day, which a day's limits leave
+// the daily routines run once, the adverse scenarios the tour did not play following on the same day, which a day's limits leave
 // room for.
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { network } from 'hardhat'
-import { connect, Control, presets, readBank, toJson, type BankState, type Card } from '@bank/services'
+import { beats, connect, Control, presets, readBank, toJson, type BankState, type Card } from '@bank/services'
 
 const { provider, networkName } = await network.getOrCreate()
 const onBaseSepolia = networkName === 'baseSepolia'
@@ -56,7 +56,10 @@ const show = (card: Card) => {
   if (card.kind !== 'routine' || card.status !== 'passed') cards.push(card)
 }
 const routines = presets.filter((p) => p.kind === 'routine')
-const scenarios = presets.filter((p) => p.kind === 'adverse')
+// A scenario a tour beat already played is not played again: some, such as lending stopped by the capital
+// ratio, use up what they test.
+const played = new Set(beats.flatMap((b) => b.plays ?? []))
+const scenarios = presets.filter((p) => p.kind === 'adverse' && !played.has(p.name))
 const runRoutines = async () => {
   for (const routine of routines) show(await control.runPreset(routine.name, true))
 }
