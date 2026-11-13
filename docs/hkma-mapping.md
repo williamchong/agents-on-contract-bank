@@ -18,11 +18,14 @@ This is a design mapping, not a compliance assessment. The separate HKMA guideli
 | How it fails | A run, or credit losses | A reserve shortfall, or a de-peg in secondary markets |
 | What the rules require | Capital, liquidity, deposit protection | Full backing, segregation, prompt redemption |
 
+The HKMA has prototyped a bank's stablecoin beside another money before. Project Aurum, with the BIS Innovation Hub Hong Kong Centre in 2022, built a wholesale interbank ledger and a retail e-wallet ledger carrying two tokens: an intermediated CBDC, owed by the central bank, and a CBDC-backed stablecoin, owed by the issuing bank with its backing held at the central bank and each token traceable to that backing. Aurum answers the central bank's question, how its money reaches the public through banks, and has no lending, interest or capital rules. This project answers one bank's: its deposits and its stablecoin on one public chain.
+
 ## How this design differs from the regime's assumptions
 
 - **Closed perimeter.** The guideline assumes a token that circulates on open ledgers among holders who may not be customers. Here the token sits on a public chain, but its allow-list admits only onboarded customers, so every holder is one.
 - **The issuer is a bank.** For a licensee that is an authorised institution, the capital, liquidity and other-business rules give way to the Banking Ordinance (4.1.3, 5.1.3, 5.2.2). Deposits and lending are that other business, and here they are the main business.
 - **Issued only against a deposit.** The guideline pictures funds arriving from outside. Here a customer converts their own deposit balance, and the bank moves the matching funds into the reserve.
+- **Backing at a custodian, not the central bank.** In Project Aurum a bank's stablecoin was backed by central bank money. Here, as the regime requires of a licensee, the reserve is cash and short bills held apart at a custodian, with a buffer for funds in transit.
 - **A stablecoin beside deposits.** The stablecoin pays no interest. Interest is paid on deposits, which are a different product under banking rules. Whether a regulator would accept both from the same issuer, or see the deposit as an "interest-like incentive" (2.6.1) for holding the stablecoin, is a legal question this project does not answer.
 
 ## Requirements reflected
@@ -191,6 +194,7 @@ There is no SPM module for tokenised deposits. What the HKMA expects is spread a
 - [HKMA: Stablecoin issuers](https://www.hkma.gov.hk/eng/key-functions/international-financial-centre/stablecoin-issuers/)
 - [HKMA: Guideline on Supervision of Licensed Stablecoin Issuers (PDF)](https://www.hkma.gov.hk/media/eng/doc/key-functions/ifc/stablecoin-issuers/Guideline_on_supervision_of_licensed_stablecoin_issuers_eng.pdf)
 - [HKMA: Register of Licensees under the Stablecoins Ordinance](https://www.hkma.gov.hk/eng/regulatory-resources/registers/register-of-licensed-stablecoin-issuers/)
+- [BIS: Project Aurum, a prototype for two-tier central bank digital currency, October 2022](https://www.bis.org/publ/othp57.htm)
 
 ### Banking
 
