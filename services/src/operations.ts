@@ -450,7 +450,12 @@ export async function payInterest(bank: Bank): Promise<Outcome | undefined> {
   const { savings } = bank.contracts
   const [paid, now] = await Promise.all([bank.read('Savings', savings, 'lastPaidDay', []), bank.now()])
   if (BigInt(paid) >= hongKongDay(now)) return undefined
-  return bank.act('scheduler', 'scheduler', 'pay the savings interest of the day', [bank.call('Savings', savings, 'payInterestDue', [])])
+  return triggerInterest(bank)
+}
+
+// The scheduler's trigger itself, sent whether or not any interest is due.
+export function triggerInterest(bank: Bank): Promise<Outcome> {
+  return bank.act('scheduler', 'scheduler', 'pay the savings interest of the day', [bank.call('Savings', bank.contracts.savings, 'payInterestDue', [])])
 }
 
 // Whom a standing order pays: another customer of the bank, or someone at another bank named as the story says it.

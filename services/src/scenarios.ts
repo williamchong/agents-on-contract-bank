@@ -23,6 +23,7 @@ import {
   customerTotal,
   decide,
   emitted,
+  hongKongDay,
   operationOf,
   orderRefs,
   customerPayee,
@@ -32,6 +33,7 @@ import {
   payStandingOrders,
   registerCustomerAsPayee,
   setUpStandingOrder,
+  triggerInterest,
   withdrawSavings,
   eventArg,
   lend,
@@ -315,19 +317,24 @@ export const presets: Preset[] = [
       }
       // A saver pays into savings and leaves it there for a month, as each day's close pays its interest.
       const saver = (await balanceOf(bank, 'Carol')) >= ROUTINE_SAVING ? 'Carol' : 'Bob'
-      const vaultBefore = await bank.read('Savings', savings, 'totalAssets', [])
+      const [vaultBefore, savedAt] = await Promise.all([bank.read('Savings', savings, 'totalAssets', []), bank.now()])
       const paidIn = await payIntoSavings(bank, saver, ROUTINE_SAVING)
       const shares = emitted(paidIn, 'Deposit') ? eventArg<bigint>(paidIn, 'Deposit', 'shares') : 0n
       // A month of instalments is collected first: repayments and interest are what make room to lend again
       // after lending has stopped at the capital ratio.
       const collected = await nextInstalment(ctx)
-      const [vaultAfter, worth] = await Promise.all([
+      const [vaultAfter, worth, monthEnd] = await Promise.all([
         bank.read('Savings', savings, 'totalAssets', []),
         bank.read('Savings', savings, 'previewRedeem', [shares]),
+        bank.now(),
       ])
       const interest = vaultAfter - vaultBefore - ROUTINE_SAVING
+      // On a public chain a month is ten minutes, which seldom crosses a business day's end, when interest is
+      // paid; a day that ended before the saver paid in may still be paid within it.
+      const dayClosed = hongKongDay(monthEnd) > hongKongDay(savedAt)
       // What the vault reports paying as the days closed, each day's entry against equity.
       const reported = eventsSince(bank, paidIn.line.seq, 'Savings', 'InterestPaid').reduce((sum, e) => sum + BigInt(e.args.amount as bigint), 0n)
+      const interestDue = dayClosed || reported > 0n
       // The saver takes back what they paid in and leaves the interest saving.
       const withdrawn = await withdrawSavings(bank, saver, ROUTINE_SAVING)
       const { name } = await mostRoom(bank)
@@ -348,8 +355,10 @@ export const presets: Preset[] = [
       const { capitalMinimum, liquidityMinimum } = bank.settings
       return [
         allowed(`${saver} pays into savings`, paidIn),
-        check("a month's savings interest is paid into the vault as each day closes", interest > 0n && interest === reported),
-        check("the saver's shares are worth more than they paid in", worth > ROUTINE_SAVING),
+        interestDue
+          ? check("a month's savings interest is paid into the vault as each day closes", interest > 0n && interest === reported)
+          : check('no business day closed in the month, so no savings interest is due yet', interest === 0n),
+        check("the saver's shares are worth what they paid in, and more once interest is paid", interestDue ? worth > ROUTINE_SAVING : worth >= ROUTINE_SAVING - 1n),
         allowed('they withdraw what they paid in, leaving the interest saving', withdrawn),
         check("the month's instalments collected, the reconciliation line reports a match", matched(collected, 'StatementAccepted') === true),
         allowed('a loan is proposed, approved, accepted and drawn', loan.outcome),
@@ -801,9 +810,10 @@ export const presets: Preset[] = [
       const transferred = await transfer(bank, 'Alice', 'Bob', 100n * HKD)
       const cashIn = await cashDeposit(bank, 'Bob', 100n * HKD)
       const saved = await payIntoSavings(bank, 'Carol', 100n * HKD)
-      // A day passes paused: the scheduler's trigger is refused, so the day's interest is held up, not lost.
-      await advance(bank.chain, DAY)
-      const interestPaused = await payInterest(bank)
+      // The scheduler's trigger is refused while paused, whether or not anything is due, so nothing is missed.
+      // Where the clock can be moved, a day passes paused, so its interest is held up and paid after the resume.
+      if (bank.chain.local) await advance(bank.chain, DAY)
+      const interestPaused = await triggerInterest(bank)
       const unchanged = (await customerTotal(bank)) + (await supply(bank)) === total
       const riskResumes = await bank.act('risk', 'head office', 'resume the bank itself', [bank.call('DepositToken', token, 'unpause', [])])
       const decision = await scheduleDecision(bank, 'governance officers', 'resume the bank', [bank.call('DepositToken', token, 'unpause', [])])
@@ -813,19 +823,21 @@ export const presets: Preset[] = [
       // Later presets run on the same bank, so it is never left paused, whatever the checks find.
       if (await bank.read('DepositToken', token, 'paused', [])) await govern(bank, 'governance officers', 'resume the bank', [bank.call('DepositToken', token, 'unpause', [])])
       const after = await transfer(bank, 'Alice', 'Bob', 100n * HKD)
-      const caughtUp = await payInterest(bank)
+      const caughtUp = await triggerInterest(bank)
       return [
         allowed('risk pauses the bank', paused),
         refusedWith('a transfer is refused as paused', transferred, 'EnforcedPause'),
         refusedWith('a cash deposit at the counter is refused as paused', cashIn, 'EnforcedPause'),
         refusedWith('paying into savings is refused as paused', saved, 'EnforcedPause'),
-        interestPaused ? refusedWith('the scheduler is refused while paused, so nothing is missed', interestPaused, 'EnforcedPause') : check('the scheduler is refused while paused, so nothing is missed', false, 'no interest was due'),
+        refusedWith('the scheduler is refused while paused, so nothing is missed', interestPaused, 'EnforcedPause'),
         check('nothing moves while paused', unchanged),
         refusedWith('risk cannot resume', riskResumes, 'AccessManagedUnauthorized'),
         refusedWith("governance's resume waits for its time lock", early, 'TimelockUnexpectedOperationState'),
         allowed('governance resumes after the time lock', resumed),
         allowed('money moves again', after),
-        caughtUp ? allowed('the interest held up is paid once the bank resumes', caughtUp) : check('the interest held up is paid once the bank resumes', false, 'none was due'),
+        bank.chain.local
+          ? check('the interest held up is paid once the bank resumes', emitted(caughtUp, 'InterestPaid'))
+          : allowed('the scheduler runs again once the bank resumes', caughtUp),
         ...(await invariants(bank)),
       ]
     },
