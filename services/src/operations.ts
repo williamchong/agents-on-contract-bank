@@ -13,6 +13,11 @@ export function balanceOf(bank: Bank, name: string): Promise<bigint> {
   return bank.read('DepositToken', bank.contracts.token, 'balanceOf', [bank.account(name)])
 }
 
+// What a holder can move: their balance less what holds have frozen.
+export function availableOf(bank: Bank, name: string): Promise<bigint> {
+  return bank.read('DepositToken', bank.contracts.token, 'available', [bank.account(name)])
+}
+
 export function supply(bank: Bank): Promise<bigint> {
   return bank.read('DepositToken', bank.contracts.token, 'totalSupply', [])
 }

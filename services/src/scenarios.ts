@@ -10,6 +10,7 @@ import type { Clearing } from './clearing.ts'
 import type { Custodian } from './custodian.ts'
 import {
   authorise,
+  availableOf,
   balanceOf,
   cancelLoan,
   cancelMandate,
@@ -65,6 +66,8 @@ import type { Outcome } from './submission.ts'
 
 // What a teller's drawer keeps for the next customers; the custodian moves cash above it to the vault.
 const DRAWER_FLOAT = 10_000n * HKD
+// The paper slip transfer in the counter and ATM day.
+const SLIP = 1_200n * HKD
 
 export interface Check {
   name: string
@@ -180,14 +183,16 @@ export const presets: Preset[] = [
       const waited = ref !== undefined && (await balanceOf(bank, 'Bob')) === bob - 1_000n * HKD && (await cashAt(bank, atm)) === atmCash
       const dispensed = ref ? await reportDispense(bank, ref, true) : held
       const app = await transfer(bank, 'Carol', 'Dave', 500n * HKD)
-      // On a paper slip even a small transfer waits for the supervisor.
-      const slip = await transferAtCounter(bank, 'Bob', 'Alice', 1_200n * HKD, { slip: "Bob's signed slip, 1,200 to Alice" })
+      // On a paper slip even a small transfer waits for the supervisor. Bob pays Alice, or she pays him on a day
+      // he cannot spare it, as a long run can leave him.
+      const [slipFrom, slipTo] = (await availableOf(bank, 'Bob')) >= SLIP ? (['Bob', 'Alice'] as const) : (['Alice', 'Bob'] as const)
+      const slip = await transferAtCounter(bank, slipFrom, slipTo, SLIP, { slip: `${slipFrom}'s signed slip, ${hkd(SLIP)} to ${slipTo}` })
       const slipRef = refOf(slip, 'OperationOpened')
       const slipWaited = slipRef !== undefined && (await bank.read('AssistedOperations', bank.contracts.assisted, 'nextApproverRole', [slipRef])) === Staff.supervisor
       const slipApproved = slipRef ? await decide(bank, 'supervisor', 'assisted', slipRef, 'approve') : slip
       // A larger transfer by card climbs the approval ladder to the supervisor too. Bob pays Carol, and Carol
       // pays him back on a day he is short, so the routine runs day after day.
-      const [payer, payee] = (await balanceOf(bank, 'Bob')) >= 60_000n * HKD ? (['Bob', 'Carol'] as const) : (['Carol', 'Bob'] as const)
+      const [payer, payee] = (await availableOf(bank, 'Bob')) >= 60_000n * HKD ? (['Bob', 'Carol'] as const) : (['Carol', 'Bob'] as const)
       const card = await transferAtCounter(bank, payer, payee, 60_000n * HKD, { card: true })
       const cardRef = refOf(card, 'OperationOpened')
       const cardApproved = cardRef ? await decide(bank, 'supervisor', 'assisted', cardRef, 'approve') : card
@@ -316,7 +321,7 @@ export const presets: Preset[] = [
         await registerCustomerAsPayee(bank, 'Carol', 'Dave')
       }
       // A saver pays into savings and leaves it there for a month, as each day's close pays its interest.
-      const saver = (await balanceOf(bank, 'Carol')) >= ROUTINE_SAVING ? 'Carol' : 'Bob'
+      const saver = (await availableOf(bank, 'Carol')) >= ROUTINE_SAVING ? 'Carol' : 'Bob'
       const [vaultBefore, savedAt] = await Promise.all([bank.read('Savings', savings, 'totalAssets', []), bank.now()])
       const paidIn = await payIntoSavings(bank, saver, ROUTINE_SAVING)
       const shares = emitted(paidIn, 'Deposit') ? eventArg<bigint>(paidIn, 'Deposit', 'shares') : 0n
