@@ -758,8 +758,9 @@ export const presets: Preset[] = [
       const { bank, clearing } = ctx
       // The clearing system charges a fee the bank never booked.
       await clearing.debit(25n * HKD)
-      const entries = await bank.read('GeneralLedger', bank.contracts.ledger, 'entryCount', [])
       const statement = await closeDay(ctx)
+      // Counted after the close, which may post scheduled work such as an instalment collected.
+      const entries = await bank.read('GeneralLedger', bank.contracts.ledger, 'entryCount', [])
       const current = await bank.read('Attestations', bank.contracts.attestations, 'isCurrent', [Ledger.Settlement])
       // A cash count that differs is marked the same way.
       const vaultCash = await cashAt(bank, vault())
@@ -771,6 +772,7 @@ export const presets: Preset[] = [
       const countId = numberToHex(eventArg<bigint>(count, 'CashCounted', 'id'), { size: 32 })
       const reported = await reportIncident(bank, 'statement mismatch', statementId, report('the clearing statement'))
       const countReported = await reportIncident(bank, 'cash count mismatch', countId, report('the vault count'))
+      const entriesReported = await bank.read('GeneralLedger', bank.contracts.ledger, 'entryCount', [])
       // Settled: the clearing system refunds the fee it charged in error, and the vault is counted again.
       await clearing.refund(25n * HKD)
       const recount = await countCash(bank, vault(), vaultCash, 'the vault again')
@@ -779,7 +781,7 @@ export const presets: Preset[] = [
         check('the reconciliation line fails', matched(statement, 'StatementAccepted') === false),
         check('the figure is marked, not current', !current),
         check('the cash count that differs is marked too', matched(count, 'CashCounted') === false),
-        check('nothing is posted to make them agree', (await bank.read('GeneralLedger', bank.contracts.ledger, 'entryCount', [])) === entries),
+        check('nothing is posted to make them agree', entriesReported === entries),
         check(
           'the incident is recorded and reported',
           emitted(reported, 'IncidentReported') &&
