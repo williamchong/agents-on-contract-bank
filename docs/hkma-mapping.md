@@ -100,7 +100,7 @@ The HKMA has prototyped a bank's stablecoin beside another money before. Project
 | Requirement | Para | How it is reflected |
 |---|---|---|
 | Records of on-chain and off-chain activity with audit trails | 8.1.1 | Indexer timeline including refusals and operator actions |
-| Personal data protection | 8.3.1 | No personal data on chain; names released only by role. Balances are public by address, which a real bank would avoid with its own chain or a privacy layer. |
+| Personal data protection | 8.3.1 | No personal data on chain; names released only by role. Balances are public by address, which a real bank would avoid with its own chain or a privacy layer, such as the pseudonyms and zero-knowledge proofs of [Project Aurum Phase 2](architecture.md#network). |
 | Complaints handled by staff not involved, within set times | 8.4.2, 8.4.3 | Support logs and follows complaints; disputed operations can be frozen and reversed |
 
 ## Not done
@@ -195,6 +195,7 @@ There is no SPM module for tokenised deposits. What the HKMA expects is spread a
 - [HKMA: Guideline on Supervision of Licensed Stablecoin Issuers (PDF)](https://www.hkma.gov.hk/media/eng/doc/key-functions/ifc/stablecoin-issuers/Guideline_on_supervision_of_licensed_stablecoin_issuers_eng.pdf)
 - [HKMA: Register of Licensees under the Stablecoins Ordinance](https://www.hkma.gov.hk/eng/regulatory-resources/registers/register-of-licensed-stablecoin-issuers/)
 - [BIS: Project Aurum, a prototype for two-tier central bank digital currency, October 2022](https://www.bis.org/publ/othp57.htm)
+- [BIS: Project Aurum Phase 2, privacy-enhancing technologies for digital cash, October 2026](https://www.bis.org/publications/project-aurum-phase-2-exploring-privacy-enhancing-technologies-digital-cash)
 
 ### Banking
 
